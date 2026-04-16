@@ -2,11 +2,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Cascadia OS — One-Click Installer  (Mac & Linux)
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/cascadia-os/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.sh | bash
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-REPO="YOUR_USERNAME/cascadia-os"   # ← replace with your GitHub username/repo
+REPO="zyrconlabs/cascadia-os"   # ← replace with your GitHub username/repo
 BRANCH="main"
 INSTALL_DIR="$HOME/cascadia-os"
 VENV_DIR="$INSTALL_DIR/.venv"
