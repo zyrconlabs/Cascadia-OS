@@ -2,6 +2,34 @@
 
 > **The execution layer for AI operators that actually finish the work.**
 
+---
+
+I was five years old the first time I took apart a telephone. Not for school. Because I needed to understand how the sound got through the wire.
+
+Decades later — aerospace engineering in Moscow, automation projects for Amazon and the US Navy, building at 2am while my daughter slept — I kept running into the same problem: AI that was impressive in demos and unreliable in production.
+
+I didn't want a chatbot. I wanted an operator I could trust. Something that remembers, asks before acting, and picks up where it left off after a crash. Something designed for the moment when things go wrong at three in the morning and nobody is watching.
+
+**That's what this is.** → [Full story](https://github.com/Zyrconlabs/cascadia-os/blob/main/STORY.md)
+
+---
+
+## See it working
+
+**One-click install — done in under a minute:**
+![Install](./assets/install.png)
+
+**Watchdog running — all 11 components healthy:**
+![Watchdog](./assets/watchdog.png)
+
+**PRISM dashboard — live system status:**
+![PRISM Dashboard](./assets/prism.png)
+
+**Crash recovery — 21/21 tests passed:**
+![Crash Recovery](./assets/crash_recovery.png)
+
+---
+
 Most AI tools are impressive in demos. They forget context, act without guardrails, and collapse when a workflow spans more than one session.
 
 Cascadia OS is built to a different standard — durable enough to survive crashes, supervised enough to ask before taking sensitive actions, and honest enough to tell you exactly what it can and can't do.
@@ -12,12 +40,12 @@ Cascadia OS is built to a different standard — durable enough to survive crash
 
 **Mac / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zyrconlabs/cascadia-os/main/install.sh | bash
 ```
 
 **Windows** — in PowerShell:
 ```powershell
-irm https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.bat -OutFile install.bat; .\install.bat
+irm https://raw.githubusercontent.com/Zyrconlabs/cascadia-os/main/install.bat -OutFile install.bat; .\install.bat
 ```
 
 > **Requires:** Python 3.11+ and git
@@ -167,7 +195,7 @@ I didn't want a chatbot. I wanted an operator I could trust. Something that reme
 
 That's what this is.
 
-→ [Full story](./STORY.md)
+→ [Full story](https://github.com/Zyrconlabs/cascadia-os/blob/main/STORY.md)
 
 ---
 
@@ -176,8 +204,8 @@ That's what this is.
 - [Contributing](./CONTRIBUTING.md)
 - [Security Policy](./SECURITY.md)
 - [Support](./SUPPORT.md)
-- [Story behind the project](./STORY.md)
+- [Story behind the project](https://github.com/Zyrconlabs/cascadia-os/blob/main/STORY.md)
 
 ---
 
-*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrcon-labs)*
+*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs)*
