@@ -1,0 +1,30 @@
+{
+  "log_dir": "./data/logs",
+  "database_path": "./data/runtime/cascadia.db",
+  "flint": {
+    "heartbeat_file": "./data/runtime/flint.heartbeat",
+    "heartbeat_interval_seconds": 5,
+    "heartbeat_stale_after_seconds": 15,
+    "status_port": 18791,
+    "health_interval_seconds": 5,
+    "drain_timeout_seconds": 10,
+    "max_restart_attempts": 5,
+    "restart_backoff_seconds": [5, 30, 120, 600]
+  },
+  "curtain": {
+    "signing_secret": "dev-secret-replace-in-production-with-secrets-token-hex-32"
+  },
+  "components": [
+    {"name": "crew",      "module": "cascadia.registry.crew",              "port": 18800, "tier": 1, "heartbeat_file": "./data/runtime/crew.heartbeat"},
+    {"name": "vault",     "module": "cascadia.memory.vault",             "port": 18801, "tier": 1, "heartbeat_file": "./data/runtime/vault.heartbeat"},
+    {"name": "sentinel",  "module": "cascadia.security.sentinel",          "port": 18802, "tier": 1, "heartbeat_file": "./data/runtime/sentinel.heartbeat"},
+    {"name": "curtain",   "module": "cascadia.encryption.curtain",   "port": 18803, "tier": 1, "heartbeat_file": "./data/runtime/curtain.heartbeat"},
+    {"name": "beacon",    "module": "cascadia.orchestrator.beacon",            "port": 18804, "tier": 2, "heartbeat_file": "./data/runtime/beacon.heartbeat", "depends_on": ["crew"]},
+    {"name": "stitch",    "module": "cascadia.automation.stitch",     "port": 18805, "tier": 2, "heartbeat_file": "./data/runtime/stitch.heartbeat"},
+    {"name": "vanguard",  "module": "cascadia.gateway.vanguard", "port": 18806, "tier": 2, "heartbeat_file": "./data/runtime/vanguard.heartbeat"},
+    {"name": "handshake", "module": "cascadia.bridge.handshake","port": 18807, "tier": 2, "heartbeat_file": "./data/runtime/handshake.heartbeat"},
+    {"name": "bell",      "module": "cascadia.chat.bell",         "port": 18808, "tier": 2, "heartbeat_file": "./data/runtime/bell.heartbeat"},
+    {"name": "almanac",   "module": "cascadia.guide.almanac",   "port": 18809, "tier": 2, "heartbeat_file": "./data/runtime/almanac.heartbeat"},
+    {"name": "prism",     "module": "cascadia.dashboard.prism",       "port": 18810, "tier": 3, "heartbeat_file": "./data/runtime/prism.heartbeat", "depends_on": ["crew", "sentinel", "beacon"]}
+  ]
+}

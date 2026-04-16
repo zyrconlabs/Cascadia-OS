@@ -1,0 +1,15 @@
+[project]
+name = "cascadia-os"
+version = "0.2.0"
+description = "Cascadia OS — local-first single-node operator platform"
+requires-python = ">=3.11"
+
+[project.scripts]
+cascadia-watchdog = "cascadia.kernel.watchdog:main"
+cascadia-flint    = "cascadia.kernel.flint:main"
+cascadia-once     = "cascadia.installer.once:main"
+
+[tool.cascadia]
+version = "0.2"
+control_plane = "cascadia.kernel.flint"
+entrypoint    = "cascadia.kernel.watchdog"
