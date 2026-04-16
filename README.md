@@ -12,12 +12,12 @@ Cascadia OS is built to a different standard — durable enough to survive crash
 
 **Mac / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Gammaproton/cascadia-os/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.sh | bash
 ```
 
 **Windows** — in PowerShell:
 ```powershell
-irm https://raw.githubusercontent.com/Gammaproton/cascadia-os/main/install.bat -OutFile install.bat; .\install.bat
+irm https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.bat -OutFile install.bat; .\install.bat
 ```
 
 > **Requires:** Python 3.11+ and git
