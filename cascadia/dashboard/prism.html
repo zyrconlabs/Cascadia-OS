@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Zyrcon AI · PRISM · Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--navy-900:#0f1a2e;--navy-800:#1a2744;--navy-700:#243556;--navy-600:#2e4470;--navy-500:#3d5a8a;--navy-400:#5e7faa;--navy-300:#8aa3c4;--navy-200:#b4c7de;--navy-100:#dce6f0;--navy-50:#f0f4f8;
+--white:#fff;--gray-50:#f8f9fb;--gray-100:#f1f3f6;--gray-150:#e8ebf0;--gray-200:#dde1e8;--gray-300:#c5cad4;--gray-400:#9ba3b0;--gray-500:#6e7787;--gray-600:#4a5568;
+--green:#34c759;--green-soft:rgba(52,199,89,.12);--green-glow:rgba(52,199,89,.18);--red:#e8453c;--red-soft:rgba(232,69,60,.1);--yellow:#d4a017;--yellow-soft:rgba(212,160,23,.1);
+--font:'Figtree',-apple-system,sans-serif;--mono:'IBM Plex Mono','SF Mono',monospace;--sidebar-w:340px;--topbar-h:56px;--ease:cubic-bezier(.25,1,.5,1)}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:var(--font);-webkit-font-smoothing:antialiased;background:var(--white);color:var(--navy-900)}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:3px}
+.app{display:flex;height:100vh;width:100%}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);border-right:1px solid var(--gray-200);display:flex;flex-direction:column;background:var(--gray-50);height:100vh}
+.sidebar__header{height:var(--topbar-h);min-height:var(--topbar-h);display:flex;align-items:center;padding:0 18px;border-bottom:1px solid var(--gray-200)}
+.sidebar__brand{display:flex;flex-direction:column}
+.sidebar__title{font-size:14px;font-weight:700;color:var(--navy-800)}.sidebar__sub{font-family:var(--mono);font-size:9.5px;font-weight:500;color:var(--gray-400);letter-spacing:.06em;margin-top:1px}
+.sidebar__search{padding:12px 14px;border-bottom:1px solid var(--gray-150)}
+.sidebar__search input{width:100%;height:36px;border:1px solid var(--gray-200);border-radius:9px;padding:0 12px;font-family:var(--font);font-size:13px;color:var(--navy-900);background:var(--white);outline:none;transition:border-color .15s ease}
+.sidebar__search input::placeholder{color:var(--gray-400)}.sidebar__search input:focus{border-color:var(--navy-300)}
+.sidebar__list{flex:1;overflow-y:auto;padding:2px 0}
+.sidebar__section{font-family:var(--mono);font-size:9px;font-weight:500;color:var(--gray-400);letter-spacing:.1em;text-transform:uppercase;padding:12px 18px 6px}
+.btn-icon{width:34px;height:34px;border-radius:9px;border:1px solid var(--gray-200);background:var(--white);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s var(--ease);color:var(--navy-500)}
+.btn-icon:hover{background:var(--navy-50);border-color:var(--navy-200);color:var(--navy-700)}.btn-icon:active{transform:scale(.93)}
+.btn-icon svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8}
+
+/* CELL ITEMS */
+.cell-item{display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer;transition:background .12s ease;border-bottom:1px solid var(--gray-100)}
+.cell-item:hover{background:var(--gray-100)}.cell-item--active{background:var(--white);box-shadow:inset 3px 0 0 var(--navy-600)}.cell-item--active:hover{background:var(--white)}
+.cell-item--beacon{border-bottom:2px solid var(--gray-200);padding:15px 18px}
+.cell-item__avatar{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;position:relative}
+.cell-item__avatar--beacon{background:var(--navy-700);color:var(--white);border-radius:50%;width:42px;height:42px;font-size:16px}
+.cell-item__avatar--cell{background:var(--navy-100);color:var(--navy-600)}
+.cell-item__avatar--worker{background:var(--navy-800);color:var(--white)}
+.cell-item__dot{position:absolute;bottom:-2px;right:-2px;width:12px;height:12px;border-radius:50%;border:2.5px solid var(--gray-50)}
+.cell-item--active .cell-item__dot{border-color:var(--white)}
+.dot--online{background:var(--green);box-shadow:0 0 6px var(--green-glow)}.dot--standby{background:var(--yellow)}.dot--offline{background:var(--red)}
+.cell-item__body{flex:1;min-width:0}.cell-item__name{font-size:14px;font-weight:600;color:var(--navy-800)}.cell-item__role{font-size:12px;color:var(--gray-500);margin-top:1px}
+.cell-item__meta{display:flex;gap:6px;margin-top:5px}
+.cell-item__tag{font-family:var(--mono);font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px}
+.tag--online{color:#1d7a3a;background:var(--green-soft)}.tag--standby{color:#8a6a0a;background:var(--yellow-soft)}.tag--offline{color:#a33029;background:var(--red-soft)}.tag--neutral{color:var(--navy-500);background:var(--navy-50)}.tag--worker{color:var(--navy-700);background:var(--navy-100)}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;height:100vh;min-width:0;background:var(--white)}
+.main__empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+.main__empty svg{width:48px;height:48px;stroke:var(--gray-300);fill:none;stroke-width:1.2}.main__empty p{font-size:16px;font-weight:600;color:var(--navy-400)}.main__empty span{font-size:13px;color:var(--gray-400)}
+
+/* DETAIL HEADER */
+.detail-header{height:var(--topbar-h);min-height:var(--topbar-h);display:flex;align-items:center;padding:0 24px;border-bottom:1px solid var(--gray-200);flex-shrink:0}
+.detail-header__left{display:flex;align-items:center;gap:12px;flex:1;cursor:pointer;user-select:none;-webkit-user-select:none}
+.detail-header__left:hover .detail-header__name{color:var(--navy-600)}
+.detail-header__avatar{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;position:relative}
+.detail-header__avatar--beacon{background:var(--navy-700);color:var(--white);border-radius:50%}
+.detail-header__avatar--cell{background:var(--navy-100);color:var(--navy-600)}
+.detail-header__avatar--worker{background:var(--navy-800);color:var(--white)}
+.detail-header__dot{position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;border:2px solid var(--white)}
+.detail-header__name{font-size:16px;font-weight:700;color:var(--navy-800);transition:color .12s}
+.detail-header__role{font-size:12px;color:var(--gray-500)}
+.detail-header__right{display:flex;align-items:center;gap:6px}
+.hdr-btn{height:30px;display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;font-weight:500;padding:0 10px;border-radius:8px;border:1px solid var(--gray-200);background:var(--white);color:var(--gray-500);cursor:pointer;transition:all .12s ease;letter-spacing:.04em;white-space:nowrap}
+.hdr-btn:hover{background:var(--gray-100);color:var(--navy-600);border-color:var(--gray-300)}
+.hdr-btn--active{background:var(--navy-50);color:var(--navy-700);border-color:var(--navy-200)}
+.hdr-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0}
+.hdr-btn--popout{border-color:var(--navy-200);color:var(--navy-600)}
+
+/* INFO STRIP */
+.info-strip{display:flex;gap:20px;padding:12px 24px;border-bottom:1px solid var(--gray-150);flex-shrink:0;flex-wrap:wrap}
+.info-chip__value{font-size:18px;font-weight:700;color:var(--navy-800);line-height:1}.info-chip__label{font-size:11px;color:var(--gray-500);margin-top:3px}
+.info-chip--progress{flex:1;min-width:100px;display:flex;flex-direction:column;justify-content:center}
+.mini-progress{width:100%;height:4px;background:var(--gray-150);border-radius:2px;overflow:hidden;margin-top:6px}
+.mini-progress__fill{height:100%;background:var(--navy-600);border-radius:2px;transition:width .6s var(--ease)}
+
+/* ══ WORKER PANEL ═════════════════════════════════════════════════ */
+.worker-panel{overflow:hidden;transition:max-height .35s var(--ease),opacity .25s ease;max-height:0;opacity:0;border-bottom:1px solid transparent;flex-shrink:0}
+.worker-panel--open{max-height:260px;opacity:1;border-bottom-color:var(--gray-150)}
+.worker-panel__inner{padding:14px 24px 16px;display:flex;flex-direction:column;gap:12px}
+.worker-panel__header{display:flex;align-items:center;justify-content:space-between}
+.worker-panel__title{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--gray-500)}
+.worker-live-dot{width:6px;height:6px;border-radius:50%;background:var(--gray-400);flex-shrink:0}
+.worker-live-dot--running{background:var(--green);box-shadow:0 0 5px var(--green-glow);animation:pulseDot 1.5s ease-in-out infinite}
+.worker-live-dot--stopped{background:var(--red)}
+.worker-panel__chips{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end}
+.worker-chip{display:flex;flex-direction:column;gap:3px}
+.worker-chip__val{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--navy-800);line-height:1}
+.worker-chip__val--sm{font-size:13px;padding-top:3px}
+.worker-chip__label{font-size:10px;color:var(--gray-500)}
+.worker-panel__progress{display:flex;flex-direction:column;gap:5px}
+.worker-panel__prog-meta{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--gray-500)}
+.worker-panel__controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.worker-btn{font-family:var(--mono);font-size:10px;font-weight:500;padding:5px 12px;border-radius:7px;border:1px solid var(--gray-200);background:var(--white);color:var(--navy-600);cursor:pointer;transition:all .12s ease;letter-spacing:.03em}
+.worker-btn:hover{background:var(--gray-100);border-color:var(--gray-300)}
+.worker-btn--stop{border-color:rgba(232,69,60,.3);color:var(--red)}.worker-btn--stop:hover{background:var(--red-soft);border-color:var(--red)}
+.worker-log{font-family:var(--mono);font-size:10px;color:var(--gray-500);line-height:1.7;border-top:1px solid var(--gray-150);padding-top:8px}
+.worker-log-line{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.worker-log-line--info{color:var(--navy-500)}.worker-log-line--warn{color:var(--yellow)}.worker-log-line--error{color:var(--red)}
+.worker-offline{font-family:var(--mono);font-size:11px;color:var(--gray-400);padding:8px 0}
+
+/* ══ THOUGHT BUBBLES ══════════════════════════════════════════════ */
+.thought-bubble{display:flex;align-items:flex-start;gap:8px;padding:7px 12px 7px 10px;background:var(--gray-50);border-left:2px solid var(--navy-200);border-radius:0 8px 8px 0;margin:3px 0 3px 38px;animation:msgIn .2s var(--ease);max-width:90%}
+.thought-bubble__dot{width:5px;height:5px;border-radius:50%;background:var(--navy-400);margin-top:4px;flex-shrink:0}
+.thought-type-search .thought-bubble__dot{background:var(--navy-500)}
+.thought-type-think  .thought-bubble__dot{background:var(--yellow)}
+.thought-type-write  .thought-bubble__dot{background:var(--green)}
+.thought-type-cycle  .thought-bubble__dot{background:var(--gray-300)}
+.thought-type-search{border-left-color:var(--navy-300)}
+.thought-type-think {border-left-color:var(--yellow)}
+.thought-type-write {border-left-color:var(--green)}
+.thought-type-cycle {border-left-color:var(--gray-300)}
+.thought-bubble__text{font-family:var(--mono);font-size:11px;color:var(--navy-600);flex:1;line-height:1.5}
+.thought-bubble__time{font-family:var(--mono);font-size:9px;color:var(--gray-400);white-space:nowrap;margin-left:8px;padding-top:2px;flex-shrink:0}
+
+/* ══ STATUS CARD (injected into chat) ════════════════════════════ */
+.worker-status-card{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:14px 16px;margin-top:4px;animation:cardIn .3s var(--ease)}
+@keyframes cardIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.wsc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.wsc-title{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--gray-500);display:flex;align-items:center;gap:7px}
+.wsc-chips{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+.wsc-chip{display:flex;flex-direction:column;gap:2px}
+.wsc-chip__val{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--navy-800)}
+.wsc-chip__val--sm{font-size:12px;padding-top:3px}
+.wsc-chip__lbl{font-size:10px;color:var(--gray-500)}
+.wsc-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.wsc-btn{font-family:var(--mono);font-size:10px;font-weight:500;padding:5px 12px;border-radius:7px;border:1px solid var(--gray-200);background:var(--white);color:var(--navy-600);cursor:pointer;transition:all .12s ease}
+.wsc-btn:hover{background:var(--gray-100)}.wsc-btn--stop{color:var(--red);border-color:rgba(232,69,60,.3)}.wsc-btn--stop:hover{background:var(--red-soft)}
+
+/* ACTIVITY BAR */
+.activity-bar{padding:0 24px;border-top:1px solid var(--gray-150);overflow:hidden;transition:all .3s var(--ease)}
+.activity-bar--hidden{max-height:0;padding:0 24px;border:none}.activity-bar--visible{max-height:120px;padding:8px 24px}
+.activity-bar__label{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.activity-bar__badges{display:flex;flex-wrap:wrap;gap:5px}
+.act-badge{font-family:var(--mono);font-size:10px;font-weight:500;padding:3px 9px;border-radius:16px;background:var(--gray-100);border:1px solid var(--gray-200);color:var(--gray-500);opacity:0;transform:translateY(3px);transition:all .25s ease}
+.act-badge.visible{opacity:1;transform:translateY(0)}.act-badge.active{background:var(--green-soft);border-color:rgba(52,199,89,.2);color:#1d7a3a}
+.scan-loader{display:flex;align-items:center;gap:8px;margin-top:6px;height:12px}
+.scan-track{flex:1;max-width:140px;height:2px;background:var(--gray-200);border-radius:2px;overflow:hidden;position:relative}
+.scan-beam{position:absolute;top:0;left:-40%;width:40%;height:100%;background:linear-gradient(90deg,transparent,var(--navy-400),transparent);animation:scanBeam 1.2s ease-in-out infinite}
+@keyframes scanBeam{0%{left:-40%}100%{left:140%}}
+.scan-dot{width:5px;height:5px;border-radius:50%;background:var(--navy-400);animation:pulseDot 1.2s ease-in-out infinite}
+@keyframes pulseDot{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+.standby-pulse{display:flex;align-items:center;gap:8px;padding:10px 0}
+.standby-ring{width:10px;height:10px;border-radius:50%;background:var(--yellow);animation:standbyBreath 2.5s ease-in-out infinite}
+@keyframes standbyBreath{0%,100%{opacity:.4;transform:scale(.85)}50%{opacity:1;transform:scale(1.1)}}.standby-text{font-family:var(--mono);font-size:11px;color:var(--gray-400)}
+
+/* STATUS CARDS (beacon /status) */
+.status-card{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--gray-50);border:1px solid var(--gray-150);border-radius:10px;opacity:0;transform:translateY(6px);animation:cardIn .35s var(--ease) forwards}
+.status-card__dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.status-card__dot--green{background:var(--green);box-shadow:0 0 6px var(--green-glow)}.status-card__dot--yellow{background:var(--yellow)}.status-card__dot--red{background:var(--red)}
+.status-card__info{flex:1;min-width:0}.status-card__name{font-size:13px;font-weight:600;color:var(--navy-800)}
+.status-card__task{font-size:11px;color:var(--gray-500);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.status-card__pct{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--navy-600)}
+
+/* START AREA */
+.start-area{display:flex;flex-direction:column;align-items:center;padding:8px 24px;flex-shrink:0}
+.start-btn{font-family:var(--font);font-size:13px;font-weight:600;padding:8px 28px;border-radius:20px;border:1.5px solid var(--navy-200);background:var(--white);color:var(--navy-600);cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:6px}
+.start-btn:hover{background:var(--navy-50);border-color:var(--navy-300)}.start-btn:active{transform:scale(.97)}
+.start-btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2}
+.cmd-menu{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;justify-content:center;transition:all .2s var(--ease);overflow:hidden}
+.cmd-menu--hidden{max-height:0;margin:0;opacity:0;pointer-events:none}
+.cmd-btn{font-family:var(--mono);font-size:11px;font-weight:500;padding:6px 14px;border-radius:8px;border:1px solid var(--gray-200);background:var(--white);color:var(--navy-600);cursor:pointer;transition:all .12s ease}
+.cmd-btn:hover{background:var(--navy-50);border-color:var(--navy-300)}.cmd-btn:active{transform:scale(.97)}
+
+/* CHAT */
+.chat-area{flex:1;display:flex;flex-direction:column;min-height:0}
+.chat-log{flex:1;overflow-y:auto;padding:16px 24px}
+@keyframes msgIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+.chat-msg{display:flex;gap:10px;margin-bottom:12px;animation:msgIn .2s var(--ease)}
+.chat-msg__avatar{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;margin-top:2px}
+.chat-msg__avatar--user{background:var(--navy-700);color:var(--white)}.chat-msg__avatar--beacon{background:var(--navy-600);color:var(--white);border-radius:50%}.chat-msg__avatar--cell{background:var(--navy-100);color:var(--navy-600)}.chat-msg__avatar--worker{background:var(--navy-800);color:var(--white)}
+.chat-msg__body{flex:1;min-width:0}.chat-msg__header{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.chat-msg__name{font-size:13px;font-weight:600;color:var(--navy-800)}.chat-msg__time{font-family:var(--mono);font-size:10px;color:var(--gray-400)}
+.chat-msg__text{font-size:14px;color:var(--navy-700);line-height:1.55;white-space:pre-wrap;word-break:break-word}
+
+/* CHAT INPUT */
+.chat-input-area{padding:8px 24px 16px}
+.chat-input-wrap{border:1.5px solid var(--gray-200);border-radius:18px;background:var(--white);transition:border-color .15s ease,box-shadow .15s ease}
+.chat-input-wrap:focus-within{border-color:var(--navy-300);box-shadow:0 0 0 3px rgba(61,90,138,.06)}
+.chat-input-wrap textarea{width:100%;border:none;outline:none;font-family:var(--font);font-size:14px;color:var(--navy-900);background:transparent;resize:none;height:50px;max-height:200px;line-height:25px;padding:14px 16px 4px}
+.chat-input-wrap textarea::placeholder{color:var(--gray-400)}
+.chat-toolbar{display:flex;align-items:center;justify-content:space-between;padding:4px 10px 10px}
+.chat-toolbar__left{display:flex;align-items:center;gap:2px}
+.chat-toolbar__right{display:flex;align-items:center;gap:6px}
+.tb-btn{width:32px;height:32px;border-radius:8px;border:none;background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--gray-400);transition:all .12s ease}
+.tb-btn:hover{background:var(--gray-100);color:var(--navy-600)}.tb-btn:active{transform:scale(.93)}
+.tb-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8}
+.tb-btn--send{background:var(--navy-700);color:var(--white);border-radius:50%;width:34px;height:34px}
+.tb-btn--send:hover{background:var(--navy-800)}.tb-btn--send svg{width:14px;height:14px;fill:currentColor;stroke:none}
+.tb-btn--status{border:1px solid transparent;border-radius:8px}
+.tb-btn--status-on{background:var(--navy-50);color:var(--navy-600);border-color:var(--navy-200)}
+.model-sel{position:relative}
+.model-sel__btn{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;font-weight:500;color:var(--gray-500);background:none;border:1px solid var(--gray-200);border-radius:8px;padding:5px 10px;cursor:pointer;transition:all .12s ease;white-space:nowrap}
+.model-sel__btn:hover{background:var(--gray-100);border-color:var(--gray-300);color:var(--navy-600)}
+.model-sel__btn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+.model-dd{position:absolute;bottom:calc(100% + 6px);right:0;background:var(--white);border:1px solid var(--gray-200);border-radius:10px;padding:4px;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.1);display:none;z-index:50}
+.model-dd.open{display:block;animation:fadeUp .15s var(--ease)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.model-opt{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--navy-700);transition:background .1s ease}
+.model-opt:hover{background:var(--gray-100)}.model-opt--active{background:var(--navy-50);font-weight:600}
+.model-opt span{font-size:10px;color:var(--gray-400)}
+.upload-file-input{display:none}
+
+/* MOBILE */
+.sidebar__back{display:none}.detail-header__mobile-menu{display:none}
+@media(max-width:768px){.sidebar{position:fixed;left:0;top:0;width:100%;min-width:100%;z-index:500;transition:transform .3s var(--ease)}.sidebar.hidden{transform:translateX(-100%)}.sidebar__back{display:flex;margin-right:4px}.detail-header__mobile-menu{display:flex}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="sidebar" id="sidebar">
+  <div class="sidebar__header">
+    <div class="sidebar__brand">
+      <button class="btn-icon sidebar__back" onclick="showSidebar()">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div>
+        <div class="sidebar__title">PRISM · Dashboard</div>
+        <div class="sidebar__sub">ZYRCON AI</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;margin-left:auto">
+      <button class="btn-icon" onclick="window.open('http://localhost:7001/bell','_blank')" title="Open Bell — lead capture widget">
+        <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="btn-icon" onclick="window.open('http://localhost:7001/api/status','_blank')" title="Gateway status">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="sidebar__search"><input type="text" placeholder="Search cells…" oninput="filterCells(this.value)"></div>
+  <div class="sidebar__list" id="cell-list"></div>
+</div>
+<div class="main" id="main-panel"></div>
+</div>
+<input type="file" id="chat-file-input" class="upload-file-input" multiple onchange="handleChatFile(this)">
+
+<script>
+// ── Zyrcon AI v0.2 — Gateway config ───────────────────────────────────────
+const GW='http://localhost:18806';   // Gateway :7001
+const CASCADIA='http://localhost:8080'; // Cascadia OS :7000
+const POLL=5000;
+// Models populated dynamically from Gateway /api/models
+let MODELS=[];
+let _activeModel=null;
+
+// Fetch models from Gateway on load
+async function loadModels(){
+  try{
+    const r=await fetch(GW+'/api/models');
+    if(r.ok){
+      const data=await r.json();
+      MODELS=data.map(m=>({
+        id:m.name, name:m.name.replace('zyrcon-','').replace('.gguf',''),
+        desc:`${m.size_gb}GB${m.label?' · '+m.label:''}`,
+        file:m.file, active:m.active
+      }));
+      const active=MODELS.find(m=>m.active)||MODELS[0];
+      if(active&&!S.model){S.model=active.id;_activeModel=active;}
+      if(S.selected)renderMain();
+    }
+  }catch(_){}
+  // Fallback if Gateway not yet up
+  if(!MODELS.length)MODELS=[
+    {id:'zyrcon-fast-3b',name:'fast-3b',desc:'Balanced · recommended',file:'zyrcon-fast-3b.gguf',active:true},
+    {id:'zyrcon-mini-1B',name:'mini-1B',desc:'Fast · lightweight',file:'zyrcon-mini-1B.gguf',active:false},
+    {id:'zyrcon-pro-7b',name:'pro-7b',desc:'Best quality',file:'zyrcon-pro-7b.gguf',active:false}
+  ];
+}
+const S={cells:[],selected:null,messages:{},connected:false,filter:'',cmdMenuOpen:{},activity:{},isMobile:window.innerWidth<=768,model:'fast',modelDDOpen:false,workerPanelOpen:false};
+const SL={active:'Online',online:'Online',standby:'Standby',offline:'Offline',error:'Offline',unknown:'Offline'};
+const SD={active:'dot--online',online:'dot--online',standby:'dot--standby',offline:'dot--offline',error:'dot--offline',unknown:'dot--offline'};
+const ST={active:'tag--online',online:'tag--online',standby:'tag--standby',offline:'tag--offline',error:'tag--offline',unknown:'tag--offline'};
+const DC={active:'status-card__dot--green',online:'status-card__dot--green',standby:'status-card__dot--yellow',offline:'status-card__dot--red',error:'status-card__dot--red'};
+const BCMDS=[{cmd:'/status',label:'⬡ System Status'},{cmd:'/health',label:'🩺 Health Check'},{cmd:'/costs',label:'💰 Cost Report'}];
+const CCMDS=[{cmd:'/detailed-status',label:'📊 Detailed Status'},{cmd:'/recent-tasks',label:'📋 Recent Tasks'},{cmd:'/logs',label:'📝 Activity Log'}];
+const WCMDS=[{cmd:'/status',label:'📡 Worker Status'},{cmd:'/start',label:'▶ Start Worker'},{cmd:'/stop',label:'⬛ Stop Worker'},{cmd:'/recent-tasks',label:'📋 Recent Results'}];
+
+// ── Worker integration ─────────────────────────────────────────────────────
+// ── Worker/Operator port map ───────────────────────────────────────────────
+// Workers with their own dashboards (accessed via Panel button)
+const WORKER_MAP={'recon':'http://localhost:8002','recon-worker':'http://localhost:8002'};
+function isWorker(id){return!!WORKER_MAP[id]}
+function workerApi(id){return WORKER_MAP[id]||'http://localhost:8002'}
+let _thoughtPoll=null;
+let _lastThoughtId=0;
+
+async function fetchWorkerStatus(id){
+  try{const r=await fetch(workerApi(id)+'/api/status',{signal:AbortSignal.timeout(2500)});if(r.ok)return r.json()}catch(_){}
+  return null;
+}
+async function fetchWorkerThoughts(id){
+  try{const r=await fetch(workerApi(id)+'/api/thoughts',{signal:AbortSignal.timeout(2500)});if(r.ok)return r.json()}catch(_){}
+  return[];
+}
+async function postWorkerStop(id){
+  try{await fetch(workerApi(id)+'/api/stop',{method:'POST',signal:AbortSignal.timeout(3000)})}catch(_){}
+}
+
+// ── Worker panel ───────────────────────────────────────────────────────────
+function toggleWorkerPanel(){
+  S.workerPanelOpen=!S.workerPanelOpen;
+  const p=document.getElementById('worker-panel');
+  const btn=document.getElementById('tb-status-btn');
+  if(p){p.classList.toggle('worker-panel--open',S.workerPanelOpen);if(S.workerPanelOpen)loadWorkerPanel()}
+  if(btn)btn.classList.toggle('tb-btn--status-on',S.workerPanelOpen);
+}
+async function loadWorkerPanel(){
+  const id=S.selected;if(!id||!isWorker(id))return;
+  const el=document.getElementById('worker-panel-inner');if(!el)return;
+  const data=await fetchWorkerStatus(id);
+  if(!data){el.innerHTML=`<div class="worker-offline">Recon Worker is offline — start it with <code>make worker</code></div><div class="worker-panel__controls"><button class="worker-btn hdr-btn--popout" onclick="window.open('${workerApi(id)}')">↗ Open Dashboard</button></div>`;return}
+  const st=data.state||{};const pr=data.progress||{};
+  const isRun=st.status==='running';
+  const dotCls=isRun?'worker-live-dot--running':st.status==='stopped'||st.status==='stop'?'worker-live-dot--stopped':'';
+  const statusColor=isRun?'var(--green)':st.status==='stopped'?'var(--red)':'var(--yellow)';
+  let progHTML='';
+  if(pr.mode==='quantity'){const pct=Math.min(pr.pct||0,100);progHTML=`<div class="worker-panel__progress"><div class="worker-panel__prog-meta"><span>${pr.current||0} / ${pr.target||0} rows</span><span>${pct.toFixed(1)}%</span></div><div class="mini-progress"><div class="mini-progress__fill" style="width:${pct}%"></div></div></div>`}
+  else if(pr.mode==='time'){progHTML=`<div class="worker-panel__progress"><div class="worker-panel__prog-meta"><span>Elapsed: ${pr.elapsed||'—'}</span><span>Remaining: ${pr.remaining||'—'}</span></div><div class="mini-progress"><div class="mini-progress__fill" style="width:${Math.min(pr.pct||0,100)}%"></div></div></div>`}
+  let logHTML='';
+  if(data.log_tail&&data.log_tail.length){const lines=data.log_tail.slice(-3);logHTML=`<div class="worker-log">${lines.map(l=>{const lvl=l.includes('ERROR')?'error':l.includes('WARNING')?'warn':'info';const ts=l.match(/\d{2}:\d{2}:\d{2}/)?.[0]||'';const msg=l.replace(/^\S+\s+\S+\s+\S+\s+/,'').trim();return`<span class="worker-log-line worker-log-line--${lvl}">${escH(ts?ts+' '+msg:msg)}</span>`}).join('')}</div>`}
+  el.innerHTML=`
+    <div class="worker-panel__header">
+      <div class="worker-panel__title"><span class="worker-live-dot ${dotCls}"></span>Recon Worker &nbsp;·&nbsp; <span style="color:${statusColor}">${(st.status||'idle').toUpperCase()}</span></div>
+      <div class="worker-panel__controls">
+        <button class="worker-btn hdr-btn--popout" onclick="window.open('${workerApi(id)}')">↗ Full</button>
+        <button class="worker-btn worker-btn--stop" onclick="stopWorkerFromPanel()">Stop</button>
+        <button class="worker-btn" style="padding:5px 8px" onclick="toggleWorkerPanel()">×</button>
+      </div>
+    </div>
+    <div class="worker-panel__chips">
+      <div class="worker-chip"><div class="worker-chip__val">${st.total_rows||0}</div><div class="worker-chip__label">Rows</div></div>
+      <div class="worker-chip"><div class="worker-chip__val">${st.cycle||0}</div><div class="worker-chip__label">Cycles</div></div>
+      <div class="worker-chip"><div class="worker-chip__val worker-chip__val--sm">${st.task_name||'—'}</div><div class="worker-chip__label">Task</div></div>
+      <div class="worker-chip"><div class="worker-chip__val worker-chip__val--sm">${st.model||'zyrcon-3b'}</div><div class="worker-chip__label">Model</div></div>
+    </div>
+    ${progHTML}${logHTML}`;
+}
+async function stopWorkerFromPanel(){
+  if(!confirm('Stop Recon Worker?'))return;
+  await postWorkerStop(S.selected);
+  setTimeout(loadWorkerPanel,1200);
+  addThoughtToChat({id:Date.now(),type:'stop',text:'Stop signal sent via Prism.',time:timeNow()});
+}
+
+// ── Thought stream ─────────────────────────────────────────────────────────
+function addThoughtToChat(t){
+  const log=document.getElementById('chat-log');if(!log)return;
+  const div=document.createElement('div');
+  const icons={search:'🔍',think:'⚙',write:'💾',cycle:'↻',info:'·',stop:'⬛'};
+  const icon=icons[t.type]||'·';
+  div.className=`thought-bubble thought-type-${t.type||'info'}`;
+  div.innerHTML=`<div class="thought-bubble__dot"></div><span class="thought-bubble__text">${escH(icon+' '+t.text)}</span><span class="thought-bubble__time">${escH(t.time)}</span>`;
+  log.appendChild(div);
+  log.scrollTop=log.scrollHeight;
+}
+async function pollThoughts(){
+  const id=S.selected;if(!id||!isWorker(id))return;
+  const thoughts=await fetchWorkerThoughts(id);
+  if(!thoughts||!thoughts.length)return;
+  const fresh=thoughts.filter(t=>t.id>_lastThoughtId);
+  if(fresh.length){_lastThoughtId=Math.max(...fresh.map(t=>t.id));fresh.forEach(addThoughtToChat)}
+  if(S.workerPanelOpen)loadWorkerPanel();
+  // Keep activity bar alive while worker is running
+  const lastT=thoughts[thoughts.length-1];
+  if(lastT&&(lastT.type==='search'||lastT.type==='think')){
+    if(!S.activity[id])showAct(id,'Recon running',[lastT.text.slice(0,32)+(lastT.text.length>32?'…':'')]);
+  }
+}
+function startThoughtPolling(){
+  _lastThoughtId=0;
+  if(_thoughtPoll)clearInterval(_thoughtPoll);
+  _thoughtPoll=setInterval(pollThoughts,5000);
+  pollThoughts();
+}
+function stopThoughtPolling(){if(_thoughtPoll){clearInterval(_thoughtPoll);_thoughtPoll=null}}
+
+// ── Worker status card (injected as chat message) ──────────────────────────
+function buildWorkerCard(data,id){
+  const st=data.state||{};const pr=data.progress||{};
+  const isRun=st.status==='running';
+  const dotC=isRun?'status-card__dot--green':st.status==='stopped'?'status-card__dot--red':'status-card__dot--yellow';
+  let progHTML='';
+  if(pr.mode==='quantity'){const pct=Math.min(pr.pct||0,100);progHTML=`<div style="margin:8px 0 0"><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--gray-500);margin-bottom:4px"><span>${pr.current||0}/${pr.target||0} rows</span><span>${pct.toFixed(1)}%</span></div><div class="mini-progress"><div class="mini-progress__fill" style="width:${pct}%"></div></div></div>`}
+  return`<div class="worker-status-card">
+    <div class="wsc-header"><div class="wsc-title"><span class="status-card__dot ${dotC}"></span>Recon Worker</div><span style="font-family:var(--mono);font-size:10px;color:var(--gray-500)">${(st.status||'idle').toUpperCase()}</span></div>
+    <div class="wsc-chips">
+      <div class="wsc-chip"><div class="wsc-chip__val">${st.total_rows||0}</div><div class="wsc-chip__lbl">Rows collected</div></div>
+      <div class="wsc-chip"><div class="wsc-chip__val">${st.cycle||0}</div><div class="wsc-chip__lbl">Cycles run</div></div>
+      <div class="wsc-chip"><div class="wsc-chip__val wsc-chip__val--sm">${st.model||'zyrcon-3b'}</div><div class="wsc-chip__lbl">Model</div></div>
+    </div>
+    ${progHTML}
+    <div class="wsc-actions">
+      <button class="wsc-btn" onclick="toggleWorkerPanel()">📊 Live Panel</button>
+      <button class="wsc-btn wsc-btn--stop" onclick="stopWorkerFromPanel()">⬛ Stop</button>
+      <button class="wsc-btn" onclick="window.open('${workerApi(id)}')">↗ Full Dashboard</button>
+    </div>
+  </div>`;
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function esc(s){const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
+function escH(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function initials(n){return n.split(/[\s\-]+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()}
+function timeNow(){return new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}
+function scrollChat(){requestAnimationFrame(()=>{const e=document.getElementById('chat-log');if(e)e.scrollTop=e.scrollHeight})}
+
+/* ── Gateway API ─────────────────────────────────────────────────────────── */
+async function gwFetch(method,path,body){
+  const opts={method,headers:{'Content-Type':'application/json'},
+    signal:AbortSignal.timeout(8000)};
+  if(body)opts.body=JSON.stringify(body);
+  try{
+    const r=await fetch(GW+path,opts);
+    if(r.ok)return r.json();
+  }catch(_){}
+  return null;
+}
+
+// Streaming chat to Cascadia OS via Gateway
+async function streamChat(messages,model,onToken,onDone){
+  try{
+    const resp=await fetch(GW+'/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:model||'zyrcon-ai',
+        messages,stream:true,temperature:0.7,max_tokens:600
+      })
+    });
+    const reader=resp.body.getReader();
+    const decoder=new TextDecoder();
+    let full='';
+    let buf='';
+    let done=false;
+    while(!done){
+      const result=await reader.read();
+      done=result.done;
+      if(result.value) buf+=decoder.decode(result.value,{stream:!done});
+      const lines=buf.split('\n');
+      buf=lines.pop();
+      for(const line of lines){
+        if(!line.startsWith('data: '))continue;
+        const raw=line.slice(6).trim();
+        if(raw==='[DONE]'){done=true;break;}
+        try{
+          const token=JSON.parse(raw).choices?.[0]?.delta?.content;
+          if(token){full+=token;onToken(token,full);}
+        }catch(_){}
+      }
+    }
+    onDone(full);
+  }catch(e){onDone('Cascadia OS is offline or loading. Check Flint menu bar.');}
+}
+
+// Model switch via Gateway
+async function switchModel(file){
+  const r=await gwFetch('POST','/api/model/switch',{model:file});
+  return r;
+}
+
+// Vault: just local session storage — no server vault in v0.2
+async function saveToVault(id){/* local messages only */}
+async function loadFromVault(id){return null;}
+// Legacy compat
+async function apiFetch(m,p,b){return gwFetch(m,p,b);}
+
+function ensureBeacon(){if(!S.cells.find(c=>c.id==='beacon')){S.cells.unshift({id:'beacon',name:'Beacon',role:'System Orchestrator',status:'active',model:'zyrcon-ai-v0.1',routing:'100% local',completion:0,hours:0,done:0,total:0,lastAction:'All systems nominal',uptime:'99.9%',files:[],currentTask:'Monitoring all cells',isBeacon:true})}S.cells.sort((a,b)=>a.id==='beacon'?-1:b.id==='beacon'?1:0)}
+
+// Map Gateway status (online/offline) to dashboard status (active/offline)
+function mapStatus(s){
+  if(s==='online')return'active';
+  if(s==='offline'||s==='error')return'offline';
+  if(s==='standby')return'standby';
+  return s||'offline';
+}
+
+async function refreshCells(){
+  // Get operators from Gateway
+  const ops=await gwFetch('GET','/api/operators');
+  // Get system status for Beacon
+  const sys=await gwFetch('GET','/api/status');
+
+  if(ops&&Array.isArray(ops)){
+    S.connected=true;
+    S.cells=ops.map(a=>({
+      id:a.id, name:a.name||a.id,
+      role:a.description||a.role||'Operator',
+      status:mapStatus(a.status),
+      model:a.model||'zyrcon-ai', routing:'local',
+      port:a.port||null,
+      completion:a.tasks?.completion??0,
+      hours:a.tasks?.hours??0,
+      done:a.tasks?.completed??0,
+      total:a.tasks?.total??0,
+      lastAction:a.tasks?.last_action??'—',
+      uptime:a.tasks?.uptime??'—', files:[],
+      currentTask:a.current_task||'—',
+      isBeacon:false,
+      isWorker:isWorker(a.id),
+      hasPanel:a.has_panel!==false,
+      uiPath:a.ui_path||'/'
+    }));
+    // Update Beacon with real system data
+    if(sys){
+      const beaconCell=S.cells.find(c=>c.id==='beacon');
+      if(beaconCell){
+        beaconCell.status=sys.cascadia?.status==='online'?'active':'offline';
+        beaconCell.currentTask=`${(sys.operators||[]).filter(o=>o.status==='online').length} operators online`;
+      }
+    }
+  }else{
+    S.connected=false;
+    if(!S.cells.length)S.cells=demoDB();
+    // Mark all as offline when gateway unreachable
+    else S.cells.forEach(c=>{if(!c.isBeacon)c.status='offline'});
+  }
+  ensureBeacon();renderSidebar();if(S.selected)renderMain();
+}
+
+async function sendMsg(id,text){
+  const t=timeNow();
+  if(!S.messages[id])S.messages[id]=[];
+  S.messages[id].push({time:t,type:'user',text});
+  renderMain();scrollChat();
+
+  // Worker/operator command intercept
+  if(isWorker(id)&&text.trim().toLowerCase()==='status'){handleCommand(id,'/status');return}
+  if(text.startsWith('/')){handleCommand(id,text);return}
+
+  showAct(id,'Thinking…');
+
+  // Build message history for context
+  const history=S.messages[id]
+    .filter(m=>m.type==='user'||m.type==='agent')
+    .slice(-10)
+    .map(m=>({role:m.type==='user'?'user':'assistant',content:m.text||''}));
+
+  // Add system prompt with cell role context
+  const c=S.cells.find(x=>x.id===id);
+  const systemMsg={role:'system',content:c?.isBeacon
+    ?'You are Beacon, the Zyrcon AI system orchestrator. Help manage and monitor AI operators.'
+    :`You are ${c?.name||id}, a Zyrcon AI operator. Role: ${c?.role||'assistant'}. Be concise and professional.`};
+
+  const msgs=[systemMsg,...history];
+  clearAct(id);
+
+  // Streaming placeholder
+  const streamMsg={time:timeNow(),type:'agent',text:'',streaming:true};
+  S.messages[id].push(streamMsg);
+  renderMain();scrollChat();
+
+  await streamChat(msgs,S.model,
+    (token,full)=>{
+      streamMsg.text=full;streamMsg.streaming=true;
+      // Update last message in DOM directly for performance
+      const log=document.getElementById('chat-log');
+      if(log){const last=log.querySelector('.chat-msg:last-child .chat-msg__text');
+        if(last)last.textContent=full;}
+      scrollChat();
+    },
+    (full)=>{
+      streamMsg.text=full;streamMsg.streaming=false;
+      renderMain();scrollChat();
+    }
+  );
+}
+
+function showAct(id,label,badges){S.activity[id]={label,badges:badges||[]};renderMain();if(badges&&badges.length){badges.forEach((_,i)=>{setTimeout(()=>{const el=document.getElementById('ab-'+i);if(el){el.classList.add('visible');if(i>0){const p=document.getElementById('ab-'+(i-1));if(p)p.classList.remove('active')}el.classList.add('active')}},i*350)})}}
+function clearAct(id){delete S.activity[id]}
+
+async function handleCommand(id,cmd){
+  const t=timeNow();const c=S.cells.find(x=>x.id===id);const workers=S.cells.filter(x=>!x.isBeacon);
+  if(!S.messages[id])S.messages[id]=[];
+
+  // ── Worker-specific commands ──
+  if(isWorker(id)){
+    if(cmd==='/status'){
+      showAct(id,'Fetching worker status',['Connecting to Recon Worker','Loading live data']);
+      const data=await fetchWorkerStatus(id);
+      clearAct(id);
+      if(!data){S.messages[id].push({time:t,type:'agent',text:'Recon Worker is offline.\nStart it: python3 recon_worker.py\nor: make worker'})}
+      else{S.messages[id].push({time:t,type:'agent',text:'',html:`<div class="chat-msg__text" style="margin-bottom:6px">Live status:</div>${buildWorkerCard(data,id)}`})}
+      renderMain();scrollChat();return;
+    }
+    if(cmd==='/stop'){
+      S.messages[id].push({time:t,type:'user',text:'/stop'});
+      showAct(id,'Sending stop signal');
+      await postWorkerStop(id);clearAct(id);
+      S.messages[id].push({time:t,type:'agent',text:'Stop signal sent. Worker will finish its current cycle and exit cleanly.'});
+      renderMain();scrollChat();return;
+    }
+    if(cmd==='/start'){
+      S.messages[id].push({time:t,type:'agent',text:'To start the worker, run in terminal:\n\nmake worker\n\nor: python3 recon_worker.py\n\nThen watch live thoughts appear here automatically.'});
+      renderMain();scrollChat();return;
+    }
+    if(cmd==='/recent-tasks'){
+      showAct(id,'Fetching recent results');
+      const data=await fetchWorkerStatus(id);clearAct(id);
+      const rows=data?.state?.total_rows||0;const cycles=data?.state?.cycle||0;
+      S.messages[id].push({time:t,type:'agent',text:`Recent activity:\n• Total rows collected: ${rows}\n• Cycles completed: ${cycles}\n• Last cycle: ${data?.state?.last_cycle||'—'}\n• Model: ${data?.state?.model||'zyrcon-3b'}`});
+      renderMain();scrollChat();return;
+    }
+  }
+
+  // ── Beacon commands ──
+  if(cmd==='/status'&&id==='beacon'){
+    showAct(id,'Querying system',['Pinging Gateway','Checking operators','Reading Vault']);
+    const sys=await gwFetch('GET','/api/status');
+    clearAct(id);
+    if(!sys){S.messages[id].push({time:t,type:'agent',text:'Gateway offline. Start services:\nopen ~/Zyrcon Ai/Installer and run make start'});renderMain();scrollChat();return;}
+    const ops=sys.operators||[];const workers=S.cells.filter(x=>!x.isBeacon);
+    const cards=ops.map((op,i)=>{
+      const st=mapStatus(op.status);
+      const dc=DC[st]||'status-card__dot--red';
+      return`<div class="status-card" style="animation-delay:${i*0.1}s"><div class="status-card__dot ${dc}"></div><div class="status-card__info"><div class="status-card__name">${esc(op.name)}</div><div class="status-card__task">:${op.port} · ${op.description||op.role||'Operator'}</div></div><div class="status-card__pct" style="font-size:11px">${st==='active'?'●':st==='offline'?'◯':'◑'}</div></div>`;
+    }).join('');
+    const cas=sys.cascadia?.status;const vault=sys.vault||{};
+    S.messages[id].push({time:t,type:'agent',text:'',html:`
+      <div class="chat-msg__text" style="margin-bottom:8px">System status — Zyrcon AI v0.2</div>
+      <div class="status-card" style="margin-bottom:6px">
+        <div class="status-card__dot ${cas==='online'?'status-card__dot--green':'status-card__dot--red'}"></div>
+        <div class="status-card__info"><div class="status-card__name">Cascadia OS</div><div class="status-card__task">:7000 · Inference engine</div></div>
+        <div class="status-card__pct" style="font-size:11px">${cas==='online'?'●':'◯'}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">${cards||'<div style="font-size:13px;color:var(--gray-400)">No operators installed</div>'}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--gray-500)">Vault: ${vault.leads||0} leads · ${vault.logs||0} logs · ${vault.memory||0} memory files</div>`});
+    renderMain();scrollChat();return;
+  }
+  if(cmd==='/health'&&id==='beacon'){
+    showAct(id,'Running health checks',['Ping Cascadia OS :7000','Ping Gateway :7001','Check operators']);
+    const sys=await gwFetch('GET','/api/status');
+    clearAct(id);
+    if(!sys){S.messages[id].push({time:t,type:'agent',text:'Gateway not responding.\nRun: make -C ~/Zyrcon\\ Ai/Installer start'});renderMain();scrollChat();return;}
+    const cas=sys.cascadia?.status==='online';const ops=sys.operators||[];const online=ops.filter(o=>o.status==='online').length;
+    S.messages[id].push({time:t,type:'agent',text:`Health Report\n\nCascadia OS :7000  ${cas?'✓ Online':'✗ Offline'}\nGateway     :7001  ✓ Online\nOperators   ${online}/${ops.length} responding\n\n${cas?'All core systems nominal.':'Cascadia OS is loading — model may still be initializing.'}`});
+    renderMain();scrollChat();return;
+  }
+  if(cmd==='/costs'){showAct(id,'Calculating');setTimeout(()=>{clearAct(id);S.messages[id].push({time:t,type:'agent',text:'Cost Report (today):\n\n• Local inference: $0.00\n• Cloud API: $0.06\n• Total: $0.06\n• Budget remaining: $0.44 / $0.50'});renderMain();scrollChat();saveToVault(id)},600);return}
+  if(cmd==='/detailed-status'&&c){showAct(id,'Collecting');setTimeout(()=>{clearAct(id);S.messages[id].push({time:t,type:'agent',text:`${c.name} — Detailed Status\n\n• Status: ${SL[c.status]}\n• Completion: ${c.completion}%\n• Tasks: ${c.done}/${c.total}\n• Hours: ${c.hours}h\n• Uptime: ${c.uptime}\n• Model: ${c.model}\n• Working on: ${c.currentTask}`});renderMain();scrollChat();saveToVault(id)},500);return}
+  if(cmd==='/recent-tasks'){showAct(id,'Fetching');setTimeout(()=>{clearAct(id);S.messages[id].push({time:t,type:'agent',text:`Recent tasks:\n1. ${c?.lastAction||'—'}\n2. Previous task completed\n3. System check passed`});renderMain();scrollChat();saveToVault(id)},400);return}
+  if(cmd==='/logs'){showAct(id,'Reading');setTimeout(()=>{clearAct(id);S.messages[id].push({time:t,type:'agent',text:'Activity log — no entries yet.'});renderMain();scrollChat();saveToVault(id)},400);return}
+  S.messages[id].push({time:t,type:'agent',text:`Unknown command: ${cmd}`});renderMain();scrollChat();
+}
+
+/* RENDER SIDEBAR */
+function renderSidebar(){const list=document.getElementById('cell-list');const q=S.filter.toLowerCase();const cells=q?S.cells.filter(c=>c.name.toLowerCase().includes(q)||c.role.toLowerCase().includes(q)):S.cells;const beacon=cells.find(c=>c.isBeacon);const workers=cells.filter(c=>!c.isBeacon);let html='';
+if(beacon){const a=S.selected==='beacon'?' cell-item--active':'';const d=SD[beacon.status];html+=`<div class="cell-item cell-item--beacon${a}" onclick="selectCell('beacon')"><div class="cell-item__avatar cell-item__avatar--beacon">⬡<div class="cell-item__dot ${d}"></div></div><div class="cell-item__body"><div class="cell-item__name">Beacon</div><div class="cell-item__role">System Orchestrator</div><div class="cell-item__meta"><span class="cell-item__tag tag--online">System</span></div></div></div>`}
+if(workers.length)html+=`<div class="sidebar__section">Cells</div>`;
+workers.forEach(c=>{const a=S.selected===c.id?' cell-item--active':'';const d=SD[c.status]||'dot--offline';const tg=ST[c.status]||'tag--offline';const lb=SL[c.status]||'Offline';const avCls=c.isWorker?'cell-item__avatar--worker':'cell-item__avatar--cell';html+=`<div class="cell-item${a}" onclick="selectCell('${c.id}')"><div class="cell-item__avatar ${avCls}">${initials(c.name)}<div class="cell-item__dot ${d}"></div></div><div class="cell-item__body"><div class="cell-item__name">${esc(c.name)}</div><div class="cell-item__role">${esc(c.role)}</div><div class="cell-item__meta"><span class="cell-item__tag ${tg}">${lb}</span><span class="cell-item__tag ${c.isWorker?'tag--worker':'tag--neutral'}">${c.isWorker?'Worker':'Completion '+c.completion+'%'}</span></div></div></div>`});
+list.innerHTML=html}
+
+/* RENDER MAIN */
+function renderMain(){const panel=document.getElementById('main-panel');
+if(!S.selected){panel.innerHTML=`<div class="main__empty"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg><p>Select a cell to begin</p><span>Start with Beacon for system overview</span></div>`;return}
+const c=S.cells.find(x=>x.id===S.selected);if(!c)return;
+const msgs=S.messages[c.id]||[];const d=SD[c.status]||'dot--offline';
+const av=c.isBeacon?'detail-header__avatar--beacon':c.isWorker?'detail-header__avatar--worker':'detail-header__avatar--cell';
+const ini=c.isBeacon?'⬡':initials(c.name);const lb=SL[c.status]||'Offline';
+const cmds=c.isBeacon?BCMDS:c.isWorker?WCMDS:CCMDS;
+const mOpen=S.cmdMenuOpen[c.id]?'':'cmd-menu--hidden';const act=S.activity[c.id];
+const curModel=MODELS.find(m=>m.id===S.model);
+
+// Header — clicking left side toggles worker panel; non-worker headers are non-clickable
+const headerClick=c.isWorker?`onclick="toggleWorkerPanel()"`:c.isBeacon?'':' ';
+const headerHint=c.isWorker?`title="Click to toggle status panel"`:'';
+
+let html=`<div class="detail-header">
+  <div class="detail-header__left" ${headerClick} ${headerHint}>
+    <button class="btn-icon detail-header__mobile-menu" onclick="showSidebar()" style="flex-shrink:0"><svg viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18" stroke-linecap="round"/></svg></button>
+    <div class="detail-header__avatar ${av}">${ini}<div class="detail-header__dot ${d}"></div></div>
+    <div><div class="detail-header__name">${esc(c.name)}</div><div class="detail-header__role">${lb} · ${esc(c.role)}</div></div>
+    ${c.isWorker?`<svg style="width:12px;height:12px;stroke:var(--gray-400);fill:none;stroke-width:2;margin-left:4px;transition:transform .2s" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
+  </div>
+  <div class="detail-header__right">
+    ${c.hasPanel&&c.port&&c.status==='active'?`<a class="hdr-btn hdr-btn--popout" href="http://localhost:${c.port}${c.uiPath||'/'}" target="_blank" style="text-decoration:none;background:linear-gradient(135deg,#4facfe22,#a78bfa22);border-color:#a78bfa44;color:#6d5acd">Panel · :${c.port} ↗</a>`:''}
+    ${c.isWorker?`<button id="tb-status-btn" class="hdr-btn tb-btn--status${S.workerPanelOpen?' tb-btn--status-on':''}" onclick="toggleWorkerPanel()" title="Live status panel"><svg viewBox="0 0 24 24"><path d="M1 6l4.5 4.5M1 18l4.5-4.5M8.5 12H23M17 6l4 4.5-4 5" stroke-linecap="round" stroke-linejoin="round"/></svg>&nbsp;Status</button>
+    <button class="hdr-btn hdr-btn--popout" onclick="window.open('${workerApi(c.id)}')" title="Open full worker dashboard">↗ Full</button>`:''}
+  </div>
+</div>`;
+
+// Worker panel slot (only for worker cells)
+if(c.isWorker){
+  html+=`<div class="worker-panel${S.workerPanelOpen?' worker-panel--open':''}" id="worker-panel"><div class="worker-panel__inner" id="worker-panel-inner"><div class="worker-offline" style="font-family:var(--mono);font-size:11px;color:var(--gray-400)">Loading…</div></div></div>`;
+}
+
+// Info strip (regular cells only)
+if(!c.isBeacon&&!c.isWorker){html+=`<div class="info-strip"><div class="info-chip"><div class="info-chip__value">${c.completion}%</div><div class="info-chip__label">Completion</div></div><div class="info-chip"><div class="info-chip__value">${c.hours}</div><div class="info-chip__label">Hours</div></div><div class="info-chip"><div class="info-chip__value">${c.done}/${c.total}</div><div class="info-chip__label">Tasks</div></div><div class="info-chip info-chip--progress"><div class="mini-progress"><div class="mini-progress__fill" style="width:${c.completion}%"></div></div></div></div>`}
+
+// Messages
+let mHTML='';
+msgs.forEach(m=>{
+  if(m.type==='system')return;
+  if(m.type==='thought')return; // thoughts injected directly as DOM nodes
+  const isU=m.type==='user';
+  const avC=isU?'chat-msg__avatar--user':c.isBeacon?'chat-msg__avatar--beacon':c.isWorker?'chat-msg__avatar--worker':'chat-msg__avatar--cell';
+  const nm=isU?'You':c.name;const i2=isU?'AP':c.isBeacon?'⬡':initials(c.name);
+  const ct=m.html||`<div class="chat-msg__text">${esc(m.text)}</div>`;
+  mHTML+=`<div class="chat-msg"><div class="chat-msg__avatar ${avC}">${i2}</div><div class="chat-msg__body"><div class="chat-msg__header"><span class="chat-msg__name">${esc(nm)}</span><span class="chat-msg__time">${esc(m.time)}</span></div>${ct}</div></div>`;
+});
+
+// Activity
+let actHTML='';
+if(act){const badges=act.badges.map((b,i)=>`<div class="act-badge" id="ab-${i}">${esc(b)}</div>`).join('');actHTML=`<div class="activity-bar activity-bar--visible"><div class="activity-bar__label">${esc(act.label)}</div>${badges?`<div class="activity-bar__badges">${badges}</div>`:''}<div class="scan-loader"><div class="scan-dot"></div><div class="scan-track"><div class="scan-beam"></div></div></div></div>`}
+else if(c.status==='standby'&&!c.isBeacon&&!c.isWorker){actHTML=`<div class="activity-bar activity-bar--visible"><div class="standby-pulse"><div class="standby-ring"></div><span class="standby-text">Standby · Ready</span></div></div>`}
+else{actHTML=`<div class="activity-bar activity-bar--hidden"></div>`}
+
+// Commands & input
+const cBtns=cmds.map(x=>`<button class="cmd-btn" onclick="runCmd('${x.cmd}')">${x.label}</button>`).join('');
+const startHTML=`<div class="start-area"><button class="start-btn" onclick="toggleCmd('${c.id}')"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>${c.isWorker?'Commands':'Start'}</button><div class="cmd-menu ${mOpen}">${cBtns}</div></div>`;
+const modelOpts=MODELS.map(m=>`<div class="model-opt${m.id===S.model?' model-opt--active':''}" onclick="setModel('${m.id}')">${m.name} <span>${m.desc}</span></div>`).join('');
+
+const statusBtnTb=c.isWorker?`<button id="tb-status-btn-bar" class="tb-btn tb-btn--status${S.workerPanelOpen?' tb-btn--status-on':''}" onclick="toggleWorkerPanel()" title="Status panel"><svg viewBox="0 0 24 24"><path d="M1 6l4.5 4.5M1 18l4.5-4.5M8.5 12H23M17 6l4 4.5-4 5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`:'';
+
+html+=`<div class="chat-area"><div class="chat-log" id="chat-log">${mHTML}</div>${actHTML}${startHTML}
+<div class="chat-input-area"><div class="chat-input-wrap">
+<textarea id="chat-input" rows="1" placeholder="${c.isWorker?'Message Recon Worker… or type "status"':'Message '+esc(c.name)+'…'}" onkeydown="handleKey(event)" oninput="autoGrow(this)"></textarea>
+<div class="chat-toolbar">
+  <div class="chat-toolbar__left">
+    <button class="tb-btn" onclick="document.getElementById('chat-file-input').click()" title="Attach"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></button>
+    <button class="tb-btn" onclick="toggleCmd('${c.id}')" title="Commands"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+    ${statusBtnTb}
+  </div>
+  <div class="chat-toolbar__right">
+    <div class="model-sel"><button class="model-sel__btn" onclick="toggleModelDD()">${curModel?.name||'Fast'} <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="model-dd${S.modelDDOpen?' open':''}" id="model-dd">${modelOpts}</div></div>
+    <button class="tb-btn tb-btn--send" onclick="doSend()"><svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+  </div>
+</div></div></div></div>`;
+
+panel.innerHTML=html;scrollChat();
+
+// Animate act badges
+if(act&&act.badges.length){act.badges.forEach((_,i)=>{setTimeout(()=>{const el=document.getElementById('ab-'+i);if(el){el.classList.add('visible');if(i>0){const p=document.getElementById('ab-'+(i-1));if(p)p.classList.remove('active')}el.classList.add('active')}},i*350)})}
+
+// If worker panel was open, reload it
+if(c.isWorker&&S.workerPanelOpen){loadWorkerPanel()}
+}
+
+/* ACTIONS */
+async function selectCell(id){
+  stopThoughtPolling();
+  S.selected=id;S.cmdMenuOpen[id]=false;S.modelDDOpen=false;delete S.activity[id];
+  // Don't reset panel open state on re-select
+  if(!S.messages[id]||!S.messages[id].length){const vault=await loadFromVault(id);S.messages[id]=vault||[]}
+  renderSidebar();renderMain();
+  if(isWorker(id)){startThoughtPolling();}
+}
+function showSidebar(){document.getElementById('sidebar').classList.remove('hidden')}
+function filterCells(q){S.filter=q;renderSidebar()}
+function toggleCmd(id){S.cmdMenuOpen[id]=!S.cmdMenuOpen[id];renderMain()}
+function runCmd(cmd){if(!S.selected)return;S.cmdMenuOpen[S.selected]=false;if(!S.messages[S.selected])S.messages[S.selected]=[];S.messages[S.selected].push({time:timeNow(),type:'user',text:cmd});renderMain();handleCommand(S.selected,cmd)}
+function doSend(){const inp=document.getElementById('chat-input');if(!inp||!inp.value.trim())return;sendMsg(S.selected,inp.value.trim());inp.value='';inp.style.height='24px'}
+function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSend()}}
+function autoGrow(el){el.style.height='24px';el.style.height=Math.min(el.scrollHeight,120)+'px'}
+function handleChatFile(input){if(!input.files.length||!S.selected)return;if(!S.messages[S.selected])S.messages[S.selected]=[];S.messages[S.selected].push({time:timeNow(),type:'user',text:'📎 '+Array.from(input.files).map(f=>f.name).join(', ')});renderMain();scrollChat();input.value=''}
+function setModel(id){
+  S.model=id;S.modelDDOpen=false;
+  const m=MODELS.find(x=>x.id===id);
+  if(m&&m.file){
+    // Switch model on Cascadia OS via Gateway
+    switchModel(m.file).then(r=>{
+      if(S.selected){
+        if(!S.messages[S.selected])S.messages[S.selected]=[];
+        S.messages[S.selected].push({time:timeNow(),type:'agent',
+          text:`Switching to ${m.name} — takes 20-30 seconds while the model loads.`});
+        renderMain();scrollChat();
+      }
+    });
+  }
+  renderMain();
+}
+function toggleModelDD(){S.modelDDOpen=!S.modelDDOpen;renderMain()}
+document.addEventListener('click',e=>{if(!e.target.closest('.model-sel')&&S.modelDDOpen){S.modelDDOpen=false;renderMain()}});
+
+function demoDB(){return[
+{id:'scout',name:'Scout',role:'Inbound Lead Capture & Qualification',status:'offline',model:'zyrcon-ai',routing:'local',port:8000,completion:0,hours:0,done:0,total:0,lastAction:'Offline',uptime:'—',files:[],currentTask:'Start Scout to activate',isBeacon:false,isWorker:false,hasPanel:true,uiPath:'/bell'},
+{id:'recon',name:'Recon',role:'Outbound Opportunity Scanning',status:'offline',model:'zyrcon-ai',routing:'local',port:8002,completion:0,hours:0,done:0,total:0,lastAction:'Offline',uptime:'—',files:[],currentTask:'Start Recon to activate',isBeacon:false,isWorker:true,hasPanel:true,uiPath:'/'},
+]}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+S.cells=demoDB();
+ensureBeacon();
+renderSidebar();
+renderMain();
+// Load models first, then start polling
+loadModels().then(()=>{
+  refreshCells();
+  setInterval(refreshCells,POLL);
+  setInterval(loadModels,30000); // refresh model list every 30s
+});
+window.addEventListener('resize',()=>{S.isMobile=window.innerWidth<=768});
+</script>
+</body>
+</html>

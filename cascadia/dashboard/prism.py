@@ -16,6 +16,7 @@ from PRISM alone without reading logs.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -72,6 +73,7 @@ class PrismService:
         self._flint_port: int = self.config['flint']['status_port']
 
         # Register all PRISM routes
+        self.runtime.register_route('GET',  '/',                      self.serve_ui)
         self.runtime.register_route('GET',  '/api/prism/overview',    self.overview)
         self.runtime.register_route('GET',  '/api/prism/system',      self.system_status)
         self.runtime.register_route('GET',  '/api/prism/crew',        self.crew_status)
@@ -85,6 +87,10 @@ class PrismService:
     # ------------------------------------------------------------------
     # Aggregated views
     # ------------------------------------------------------------------
+
+    def serve_ui(self, _):
+        html = (Path(__file__).parent / "prism.html").read_bytes()
+        return 200, {"__html__": html}
 
     def overview(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """

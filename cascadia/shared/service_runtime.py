@@ -87,9 +87,19 @@ class ServiceRuntime:
                 n = int(self.headers.get('Content-Length', '0'))
                 return json.loads(self.rfile.read(n).decode('utf-8')) if n else {}
 
+            def _send_html(self, code: int, body: bytes) -> None:
+                self.send_response(code)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
             def do_GET(self) -> None:  # noqa: N802
                 code, payload = runtime.route_request('GET', self.path, {})
-                self._send_json(code, payload)
+                if isinstance(payload, dict) and '__html__' in payload:
+                    self._send_html(code, payload['__html__'])
+                else:
+                    self._send_json(code, payload)
 
             def do_POST(self) -> None:  # noqa: N802
                 code, payload = runtime.route_request('POST', self.path, self._read_payload())
