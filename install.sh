@@ -115,7 +115,12 @@ echo "  Config:  $INSTALL_DIR/config.json"
 echo "  Logs:    $INSTALL_DIR/logs/"
 echo ""
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-    warn "Add ~/.local/bin to your PATH to use the 'cascadia' command:"
-    warn "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
-    warn "  source ~/.bashrc"
+    for profile in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+        if [[ -f "$profile" ]] && ! grep -q ".local/bin" "$profile"; then
+            echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> "$profile"
+            info "Added ~/.local/bin to $profile"
+            break
+        fi
+    done
+    export PATH="$HOME/.local/bin:$PATH"
 fi
