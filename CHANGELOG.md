@@ -2,45 +2,128 @@
 
 ---
 
-## v0.34 — 2026-04-18
+## v0.34.0 — 2026-04-18
 
 ### Summary
-PRISM live poll loop. Runs and Approvals surfaces now pull real data from
-the Cascadia OS backend every 3 seconds. Version strings updated to v0.33
-throughout the dashboard.
+Major operator ecosystem release. Five operators now generate real output locally
+using Qwen 3B via llama.cpp — no cloud API required. Full stack starts in one
+command. SwiftBar menu bar plugin provides live system status and one-click
+controls. PRISM dashboard shows live operator cards. Single-source version
+management from pyproject.toml.
 
-### Changed — `cascadia/dashboard/prism.html`
-- Version strings updated: `v0.21` → `v0.33` in title, sidebar, system
-  overview messages, health report, and help dialog
-- **`pollLiveRuns()`** — new async function polling `/api/prism/runs` and
-  `/api/prism/approvals` every 3 seconds via the existing `prismFetch()` helper.
-  Only re-renders if data changed (JSON diff check — no unnecessary repaints)
-- **`startLivePoll()`** — starts the poll loop; called once from the init block
-  alongside `refreshCells()`
-- **Runs surface** — live runs section injected at top of Run Timeline showing
-  real `run_state` badges (running, waiting_human, complete, failed, blocked).
-  Live indicator dot in topbar. Falls back gracefully when Cascadia is offline.
-- **Approvals surface** — live approvals from PRISM API injected above session
-  approvals. Each card shows run_id, action_key, age, and Approve/Reject buttons.
-- **`approveFromPrism(id, decision)`** — POSTs to `/api/prism/approve`, removes
-  card optimistically, re-polls after 800ms to pick up resumed run state
-- **`renderLiveRunRow()`** — renders a single live run row with goal, run_id,
-  current step, and timestamp
-- **`renderLiveApprovalCard()`** — renders a live approval card with inline
-  approve/reject actions
-- **`runStateBadge(state)`** — generates coloured badge for any run_state value
-- CSS additions: `.live-dot` (animated green pulse), `.run-live-row`,
-  `.rls-badge` + state variants, `.prism-live-header`, `.approval-live-card`
+### Platform
 
-### What the demo flow looks like now
-1. Lead comes in via SCOUT chat widget
-2. Workflow starts — PRISM Runs surface shows `running` badge immediately
-3. Approval gate fires — PRISM Approvals surface shows the card with Approve button
-4. Operator clicks Approve in PRISM — run resumes
-5. PRISM Runs surface updates to `complete` within 3 seconds
-6. All without any manual refresh
+**`cascadia/kernel/flint.py`**
+- LLM proxy added — `POST /v1/chat/completions` on port 4011
+  Translates OpenAI-compatible format to any local or cloud LLM backend.
+  Zero new dependencies — pure stdlib urllib. All operators route through FLINT.
+- `/api/flint/status` now returns `components_healthy` and `components_total`
+  counts so demo.sh and SwiftBar can display `11/11` format
+- `/health` now includes `version` field
+- Version strings removed from source — all read from `cascadia/__init__.py`
+
+**`cascadia/__init__.py`**
+- New central version reader — parses `pyproject.toml` at import time
+- Exposes `__version__`, `VERSION`, `VERSION_SHORT`
+- To bump version: edit `pyproject.toml` only — everything updates on restart
+
+**`cascadia/operators/recon/recon_worker.py`**
+- Wired to Qwen 3B via FLINT proxy (`zyrcon-ai-v0.1`)
+- Hallucination filter added to `validate_rows()` — rejects placeholder
+  contacts (john.doe@, 555-1234, generic LinkedIn URLs) before writing to CSV
+- Updated search queries for better Houston warehouse contact yield
+
+**`cascadia/dashboard/prism.py` + `prism.html`**
+- `/api/prism/operators` endpoint — reads `registry.json`, pings each
+  operator's health endpoint, returns live status for all 8 operators
+- Operator cards section added to PRISM sidebar — live status, category
+  color coding, production/beta badges, clickable links to dashboards
+- Polls every 15 seconds independently of component refresh
+
+**`config.json`**
+- `llm` block added: `provider`, `url`, `model`, `api_key`
+- Default: llama.cpp on `http://127.0.0.1:8080`, model `zyrcon-ai-v0.1`
+
+**`pyproject.toml`**
+- Version bumped to `0.34.0`
+
+### Operators
+
+**RECON** (port 7001) — production
+- Autonomous outbound lead research, Houston warehouse contacts
+- 283 cycles run, 67+ leads collected across multiple sessions
+- CSV output with hallucination filtering active
+- Sample output: `samples/recon-houston-warehouse-leads-2026-04-18.csv`
+
+**SCOUT** (port 7002) — production
+- Inbound lead capture and qualification chat widget
+- Port changed from 7000 (macOS Control Center conflict) to 7002
+- Wired to FLINT LLM proxy
+
+**QUOTE** (port 8007) — production
+- RFQ → professional proposal in under 30 seconds
+- Tested live: Gulf Coast Logistics 85,000 sqft warehouse redesign
+- Pricing engine: $8–$22/sqft warehouse design range
+- Sample output: `samples/proposal-Gulf-Coast-Logistics-2026-04-18.md`
+
+**CHIEF** (port 8006) — production
+- Daily executive brief synthesizing all operator data
+- Reads RECON CSV, QUOTE proposals, Vault memory
+- Sample output: `samples/chief-brief-2026-04-18.md`
+
+**Aurelia** (port 8009) — beta
+- Personal executive assistant — commitments, priorities, weekly CEO report
+- Morning brief endpoint: `GET /api/morning-brief`
+
+**Debrief** (port 8008) — beta
+- Post-call intelligence logger
+- Tested live: Gulf Coast Logistics call — extracted action items, commitments,
+  follow-up email draft from raw notes in under 60 seconds
+- Sample output: `samples/debrief-gulf-coast-logistics-2026-04-18.md`
+
+### Infrastructure
+
+**`start.sh`** — new
+- Single command brings up full stack in correct order:
+  llama.cpp → Cascadia OS (11 components) → RECON → SCOUT → QUOTE → CHIEF
+- Health checks at each step, graceful fallback if already running
+
+**`stop.sh`** — new
+- Cleanly terminates all processes
+
+**`tools/swiftbar/cascadia.1m.sh`** — new
+- SwiftBar menu bar plugin for macOS
+- Shows live component count (`⬡ 11/11`), LLM status, all operator statuses
+- One-click: open PRISM, open RECON, Start/Stop/Run Demo
+- Pending approval alerts surfaced in menu bar
+- Install: copy to `~/swiftbar-plugins/`, requires SwiftBar (swiftbar.app)
+
+**`cascadia/operators/registry.json`** — new
+- Central manifest for all 8 operators
+- Fields: id, name, category, description, status, port, autonomy, sample_output
+
+**`samples/`** — new directory
+- `recon-houston-warehouse-leads-2026-04-18.csv`
+- `proposal-Gulf-Coast-Logistics-2026-04-18.md`
+- `chief-brief-2026-04-18.md`
+- `debrief-gulf-coast-logistics-2026-04-18.md`
+- `README.md`
+
+### Model
+
+- All operators unified on `zyrcon-ai-v0.1` (Qwen2.5-3B-Instruct-Q4_K_M)
+- Running via llama.cpp with Metal GPU offload on Apple Silicon
+- FLINT proxy handles OpenAI-compatible format — operators need no changes
+  when switching between local and cloud backends
+
+### Demo
+
+`bash demo.sh` — end-to-end workflow unchanged, now shows `11/11` components
+`bash start.sh` — full stack up in ~60 seconds from cold start
+
 
 ---
+
 
 ## v0.33 — 2026-04-18
 
