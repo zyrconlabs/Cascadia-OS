@@ -104,10 +104,56 @@ nohup "$VENV_DIR/bin/python" -m cascadia.kernel.watchdog --config "$INSTALL_DIR/
 sleep 4
 if [[ "$(uname)" == "Darwin" ]]; then open "http://127.0.0.1:6300" 2>/dev/null || true; fi
 
+
+# ── 11. Flint menu bar controller ─────────────────────────────────────────────
+PLUGIN_SRC="$INSTALL_DIR/cascadia/flint/cascadia.5s.sh"
+chmod +x "$PLUGIN_SRC"
+
+SWIFTBAR_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
+XBAR_DIR="$HOME/Library/Application Support/xbar/plugins"
+ARGOS_DIR="$HOME/.config/argos"
+INSTALLED_FLINT=false
+
+if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ -d "$SWIFTBAR_DIR" ]]; then
+        cp "$PLUGIN_SRC" "$SWIFTBAR_DIR/cascadia.5s.sh"
+        chmod +x "$SWIFTBAR_DIR/cascadia.5s.sh"
+        success "Flint plugin installed → SwiftBar"
+        INSTALLED_FLINT=true
+    elif [[ -d "$XBAR_DIR" ]]; then
+        cp "$PLUGIN_SRC" "$XBAR_DIR/cascadia.5s.sh"
+        chmod +x "$XBAR_DIR/cascadia.5s.sh"
+        success "Flint plugin installed → xbar"
+        INSTALLED_FLINT=true
+    fi
+    if [[ "$INSTALLED_FLINT" = false ]]; then
+        echo ""
+        info "Menu bar controller (Flint) not auto-installed."
+        echo "  Install SwiftBar to enable it:"
+        echo "    brew install swiftbar"
+        echo "  Then copy the plugin:"
+        echo "    mkdir -p \"$SWIFTBAR_DIR\""
+        echo "    cp \"$PLUGIN_SRC\" \"$SWIFTBAR_DIR/\""
+        echo "  Or run manually: python -m cascadia.flint.tray"
+    fi
+elif [[ "$(uname)" == "Linux" ]]; then
+    if [[ -d "$ARGOS_DIR" ]]; then
+        cp "$PLUGIN_SRC" "$ARGOS_DIR/cascadia.5s.sh"
+        chmod +x "$ARGOS_DIR/cascadia.5s.sh"
+        success "Flint plugin installed → Argos"
+        INSTALLED_FLINT=true
+    fi
+    if [[ "$INSTALLED_FLINT" = false ]]; then
+        echo ""
+        info "Menu bar controller not auto-installed."
+        echo "  Install Argos (GNOME) or run: python -m cascadia.flint.tray"
+    fi
+fi
+
 # ── 10. Done ──────────────────────────────────────────────────────────────────
 echo ""
 success "════════════════════════════════════════"
-success " Cascadia OS v0.21 installed successfully"
+success " Cascadia OS v0.32 installed successfully"
 success "════════════════════════════════════════"
 echo ""
 echo "  Start:   cascadia"
