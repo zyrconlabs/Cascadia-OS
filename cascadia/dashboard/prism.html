@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>PRISM — Cascadia OS v0.21</title>
+<title>PRISM — Cascadia OS v0.33</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -293,6 +293,19 @@ button{cursor:pointer;font-family:var(--font)}input,textarea,select{font-family:
 .appr-btn{font-family:var(--mono);font-size:10px;font-weight:500;padding:5px 14px;border-radius:7px;border:1px solid var(--gray-200);background:var(--white);color:var(--navy-600);transition:all .12s}
 .appr-btn--approve{background:var(--green-soft);border-color:rgba(52,199,89,.3);color:#1d7a3a}.appr-btn--approve:hover{background:rgba(52,199,89,.2)}
 .appr-btn--reject{background:var(--red-soft);border-color:rgba(232,69,60,.3);color:var(--red)}.appr-btn--reject:hover{background:rgba(232,69,60,.2)}
+.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;animation:livepulse 2s ease-in-out infinite;vertical-align:middle}
+@keyframes livepulse{0%,100%{opacity:1;box-shadow:0 0 0 0 var(--green-glow)}50%{opacity:.6;box-shadow:0 0 0 5px transparent}}
+.run-live-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--gray-150);border-radius:9px;background:var(--white);margin-bottom:6px}
+.rls-badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;flex-shrink:0}
+.rls-running{background:rgba(79,172,254,.12);color:var(--prism-a)}
+.rls-waiting_human{background:rgba(212,175,55,.14);color:var(--yellow)}
+.rls-complete{background:var(--green-soft);color:var(--green)}
+.rls-failed{background:var(--red-soft);color:var(--red)}
+.rls-blocked{background:rgba(167,139,250,.12);color:var(--purple)}
+.rls-pending{background:var(--surface);color:var(--gray-500)}
+.prism-live-header{display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11px;color:var(--gray-400);font-family:var(--mono)}
+.approval-live-card{background:var(--white);border:1px solid rgba(212,175,55,.4);border-radius:9px;padding:14px;margin-bottom:8px}
+.approval-live-meta{font-size:10px;color:var(--gray-400);font-family:var(--mono);margin:4px 0 10px}
 .approvals-empty{padding:40px;text-align:center;color:var(--gray-400);font-size:13px;display:flex;flex-direction:column;align-items:center;gap:8px}
 .approvals-empty svg{width:32px;height:32px;stroke:var(--gray-300);fill:none;stroke-width:1.5}
 
@@ -379,7 +392,7 @@ input[type="file"]{display:none}
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__header">
-      <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v0.21</div></div>
+      <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v0.33</div></div>
       <div id="conn-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gray-300);flex-shrink:0" title="Gateway status"></div>
     </div>
     <div class="sidebar__search"><input type="text" placeholder="Search cells…" oninput="filterCells(this.value)"></div>
@@ -843,7 +856,7 @@ async function handleCommand(id, cmd) {
       return `<div class="status-card" style="animation-delay:${i*.04}s"><div class="sc-dot ${dc}"></div><div class="sc-info"><div class="sc-name">${name.toUpperCase()}</div><div class="sc-task">${state}</div></div><div class="sc-pct">${ok?'●':state==='starting'?'◑':'◯'}</div></div>`;
     }).join('');
     S.messages[id].push({time:t,type:'agent',html:`
-      <div class="msg-text" style="margin-bottom:10px">Cascadia OS v0.21 — System Overview</div>
+      <div class="msg-text" style="margin-bottom:10px">Cascadia OS v0.33 — System Overview</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">
         <div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:8px;padding:9px 11px">
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--navy-800)">${healthy}</div>
@@ -870,7 +883,7 @@ async function handleCommand(id, cmd) {
       const total = Object.keys(comps).length;
       const ready = Object.values(comps).filter(s=>s==='ready').length;
       const lines = Object.entries(comps).map(([n,s])=>`  ${n.padEnd(10)} ${s==='ready'?'✓ ready':s==='starting'?'… starting':'✗ '+s}`).join('\n');
-      S.messages[id].push({time:t,type:'agent',text:`Health Report — Cascadia OS v0.21\n\n${lines}\n\n${ready}/${total} components ready.${ready===total?'\nAll systems nominal.':'\nSome components still initializing.'}`});
+      S.messages[id].push({time:t,type:'agent',text:`Health Report — Cascadia OS v0.33\n\n${lines}\n\n${ready}/${total} components ready.${ready===total?'\nAll systems nominal.':'\nSome components still initializing.'}`});
     }
     await Vault.saveMessages(id,S.messages[id]); renderMain(); scrollChat(); return;
   }
@@ -1097,6 +1110,7 @@ function renderRunsSurface() {
     <div class="topbar">
       <div class="topbar__left"><div style="font-size:15px;font-weight:700;color:var(--navy-800)">Run Timeline</div></div>
       <div class="topbar__right">
+        <span id="runs-live-badge" style="font-family:var(--mono);font-size:10px;color:var(--gray-400)"></span>
         <button class="hbtn" onclick="exportRuns()">↓ Export JSON</button>
       </div>
     </div>
@@ -1115,9 +1129,27 @@ function renderRunsSurface() {
         <span class="spacer"></span>
         <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">${runs.length} runs</span>
       </div>
-      ${runs.length===0?`<div class="runs-empty">No runs match filters. Interact with workers to generate run history.</div>`:''}
+      <div id="live-runs-section"></div>
+      ${runs.length===0&&(!S.liveRuns||S.liveRuns.length===0)?`<div class="runs-empty">No runs yet. Submit a lead through BELL or SCOUT to start a workflow.</div>`:''}
       ${runs.map(run=>renderRunRow(run)).join('')}
     </div>`;
+  // Inject live runs section after innerHTML set
+  const liveSection = document.getElementById('live-runs-section');
+  const lr = S.liveRuns || [];
+  const badge = document.getElementById('runs-live-badge');
+  if (liveSection) {
+    if (lr.length) {
+      liveSection.innerHTML = '<div class="prism-live-header"><span class="live-dot"></span>live · ' + lr.length + ' run' + (lr.length!==1?'s':'') + ' from Cascadia OS</div>'
+        + lr.map(renderLiveRunRow).join('')
+        + '<div style="height:1px;background:var(--gray-150);margin:12px 0 10px"></div>';
+    } else if (S.connected) {
+      liveSection.innerHTML = '<div class="prism-live-header" style="color:var(--gray-300)">No active runs · waiting for workflow activity</div><div style="height:1px;background:var(--gray-150);margin:10px 0 10px"></div>';
+    } else {
+      liveSection.innerHTML = '';
+    }
+  }
+  if (badge) badge.textContent = S.connected ? '● live' : '◯ offline';
+  if (badge) badge.style.color = S.connected ? 'var(--green)' : 'var(--red)';
 }
 function renderRunRow(run) {
   const cls={running:'run-status--run',completed:'run-status--done',failed:'run-status--fail'}[run.status]||'run-status--pend';
@@ -1210,10 +1242,20 @@ function renderApprovalsSurface() {
       <div class="topbar__right"><span style="font-family:var(--mono);font-size:11px;color:${pending.length?'var(--yellow)':'var(--green)'}">${pending.length} pending</span></div>
     </div>
     <div class="surface">
-      ${!pending.length?`<div class="approvals-empty"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span>All clear — no pending approvals</span></div>`:''}
+      <div id="live-approvals-section"></div>
+      ${!pending.length&&(!S.liveApprovals||!S.liveApprovals.length)?`<div class="approvals-empty"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span>All clear — no pending approvals</span></div>`:''}
       ${pending.map(a=>renderApprovalCard(a,false)).join('')}
       ${resolved.length?`<div style="font-family:var(--mono);font-size:9.5px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.08em;padding:14px 0 8px">Resolved</div>${resolved.map(a=>renderApprovalCard(a,true)).join('')}`:''}
     </div>`;
+  const las = document.getElementById('live-approvals-section');
+  const la = S.liveApprovals || [];
+  if (las) {
+    las.innerHTML = la.length
+      ? '<div class="prism-live-header"><span class="live-dot"></span>' + la.length + ' approval' + (la.length!==1?'s':'') + ' waiting — from Cascadia OS</div>'
+        + la.map(renderLiveApprovalCard).join('')
+        + '<div style="height:1px;background:var(--gray-150);margin:12px 0 10px"></div>'
+      : '';
+  }
 }
 function renderApprovalCard(a, resolved) {
   const wName=S.cells.find(c=>c.id===a.workerId)?.name||a.workerId;
@@ -1543,6 +1585,84 @@ async function doClearVault() {
   renderAdminSurface();
 }
 
+
+/* === LIVE RUN POLL — real data from Cascadia PRISM API every 3s === */
+S.liveRuns = [];
+S.liveApprovals = [];
+
+async function pollLiveRuns() {
+  const [rd, ad] = await Promise.all([
+    prismFetch('/api/prism/runs').catch(() => null),
+    prismFetch('/api/prism/approvals').catch(() => null),
+  ]);
+  let changed = false;
+  if (rd && Array.isArray(rd.runs)) {
+    if (JSON.stringify(rd.runs) !== JSON.stringify(S.liveRuns)) { S.liveRuns = rd.runs; changed = true; }
+  }
+  if (ad && Array.isArray(ad.approvals)) {
+    if (JSON.stringify(ad.approvals) !== JSON.stringify(S.liveApprovals)) { S.liveApprovals = ad.approvals; changed = true; }
+    ad.approvals.forEach(a => {
+      if (!S.approvals.find(x => x.id === String(a.id))) {
+        S.approvals.push({ id: String(a.id), workerId: 'bell', title: 'Email send approval',
+          summary: 'Run: ' + a.run_id, payload: a.action_key || '', risk: 'medium',
+          actionType: a.action_key || 'email.send', requiredRole: 'operator',
+          status: 'pending', createdAt: Date.now() });
+      }
+    });
+  }
+  if (changed) {
+    updateNavBadges();
+    if (S.surface === 'runs')      renderRunsSurface();
+    if (S.surface === 'approvals') renderApprovalsSurface();
+  }
+}
+
+function startLivePoll() {
+  pollLiveRuns();
+  setInterval(pollLiveRuns, 3000);
+}
+
+function runStateBadge(state) {
+  const cls = 'rls-' + (state || 'pending').replace(/[^a-z_]/g,'');
+  return '<span class="rls-badge ' + cls + '">' + (state || 'pending').replace(/_/g,' ') + '</span>';
+}
+
+function renderLiveRunRow(run) {
+  const age = run.updated_at ? new Date(run.updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) : '';
+  return '<div class="run-live-row"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--navy-800);margin-bottom:3px">' + esc(run.goal||'—') + '</div>'
+    + '<div style="font-size:10px;color:var(--gray-400);font-family:var(--mono)">' + esc(run.run_id) + ' · step: ' + esc(run.current_step||'—') + ' · ' + age + '</div>'
+    + '</div>' + runStateBadge(run.run_state) + '</div>';
+}
+
+function renderLiveApprovalCard(a) {
+  const age = a.created_at ? Math.round((Date.now()-new Date(a.created_at).getTime())/60000)+'m ago' : '';
+  return '<div class="approval-live-card">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+    + '<div style="font-size:13px;font-weight:600;color:var(--navy-800)">Approval required</div>'
+    + runStateBadge('waiting_human') + '</div>'
+    + '<div class="approval-live-meta">run: ' + esc(a.run_id) + ' · ' + esc(a.action_key||'email.send') + ' · ' + age + '</div>'
+    + '<div class="approval-live-actions">'
+    + '<button class="appr-btn appr-btn--approve" onclick="approveFromPrism(' + a.id + ',\'approved\')">✓ Approve</button>'
+    + '<button class="appr-btn appr-btn--reject" onclick="approveFromPrism(' + a.id + ',\'denied\')">✗ Reject</button>'
+    + '</div></div>';
+}
+
+async function approveFromPrism(approvalId, decision) {
+  try {
+    await fetch(PRISM_URL + '/api/prism/approve', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({approval_id: approvalId, decision}),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch(_) {}
+  S.liveApprovals = S.liveApprovals.filter(a => a.id !== approvalId);
+  const sa = S.approvals.find(x => x.id === String(approvalId));
+  if (sa) sa.status = decision;
+  updateNavBadges();
+  renderApprovalsSurface();
+  setTimeout(pollLiveRuns, 800);
+}
+
 /* ═══ SURFACE SWITCHER ═══ */
 function switchSurface(surface) {
   S.surface=surface;
@@ -1597,7 +1717,7 @@ function toggleRunDetail(id) { S.selectedRun=S.selectedRun===id?null:id; renderR
 function replayRun(id) { const r=Object.values(S.runs).flat().find(x=>x.id===id); if(r)selectCell(r.workerId); }
 function exportRuns() { const data=JSON.stringify(getFilteredRuns(),null,2); const blob=new Blob([data],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');a.href=url;a.download='prism_runs.json';a.click();URL.revokeObjectURL(url); }
 function showAddWorker() { alert('Add worker:\n\nRegister a new worker by providing a WorkerManifest:\n• id (unique)\n• name / role\n• apiBaseUrl (e.g. http://localhost:8004)\n• supportsThoughts / supportsPanel\n• metricsSchema\n\nWorker SDK and manifest editor: Studio surface → Phase 2'); }
-function showHelp() { alert('PRISM — Cascadia OS v0.21\n\n• Ops: Chat, thought stream, worker panels\n• Runs: Full run history, events, replay, filters\n• Observability: Real vault metrics + gateway\n• Approvals: Review and resolve pending actions\n• Studio: Drag-and-drop flow builder with node test\n• Admin: Users, API keys (persisted), vault, audit log, Gateway Contract check\n\nGateway Contract v1 at localhost:7001'); }
+function showHelp() { alert('PRISM — Cascadia OS v0.33\n\n• Ops: Chat, thought stream, worker panels\n• Runs: Full run history, events, replay, filters\n• Observability: Real vault metrics + gateway\n• Approvals: Review and resolve pending actions\n• Studio: Drag-and-drop flow builder with node test\n• Admin: Users, API keys (persisted), vault, audit log, Gateway Contract check\n\nGateway Contract v1 at localhost:7001'); }
 
 /* ═══ UTILITIES ═══ */
 function esc(s){const d=document.createElement('div');d.textContent=String(s||'');return d.innerHTML;}
@@ -1652,6 +1772,7 @@ renderSidebar(); renderMain(); updateNavBadges();
 (async()=>{
   await refreshCells();
   setInterval(refreshCells, POLL);
+  startLivePoll();
 })();
 </script>
 </body>
