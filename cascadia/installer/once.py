@@ -230,7 +230,7 @@ class SetupServer:
         self._httpd = HTTPServer(('127.0.0.1', SETUP_PORT), self._make_handler())
 
         print(f'\n  ╔══════════════════════════════════════════╗')
-        print(f'  ║   Cascadia OS v{VERSION} — AI Setup Wizard    ║')
+        print(f'  ║   Cascadia OS v{VERSION} — AI Setup Wizard  ║')
         print(f'  ╚══════════════════════════════════════════╝')
         print(f'\n  Opening browser setup at:')
         print(f'  → http://127.0.0.1:{SETUP_PORT}/')
