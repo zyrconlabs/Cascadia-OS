@@ -4,8 +4,11 @@ VAULT: Private institutional memory.
 Structured durable storage for operator knowledge, customer context,
 approved outputs, and shared memory. Capability-checked on every access.
 """
-# MATURITY: FUNCTIONAL — SQLite persistence and capability gating work. Semantic retrieval is v0.3.
+# MATURITY: FUNCTIONAL — SQLite persistence and capability gating work. Semantic retrieval is v0.35.
 from __future__ import annotations
+
+import json
+import urllib.request
 
 import argparse
 import json
@@ -99,14 +102,41 @@ class VaultService:
         self.runtime.register_route('POST', '/list', self.list_keys)
 
     def _check_cap(self, payload: Dict[str, Any], required: str) -> Optional[tuple[int, Dict[str, Any]]]:
-        """Check capability via CREW before allowing vault access."""
+        """
+        Check capability via CREW /validate endpoint.
+        Falls back to payload-declared capabilities when CREW is unreachable
+        (e.g. during startup or testing) so the system degrades gracefully.
+        Owns: capability enforcement gate. Does not own registry or policy.
+        """
         operator_id = payload.get('operator_id', '')
         if not operator_id:
             return 400, {'error': 'operator_id required'}
-        # In production: call CREW /validate endpoint
-        # Capability validation — cross-check against SENTINEL in v0.35
+
+        # Primary: call CREW /validate
+        if self._crew_port:
+            try:
+                body = json.dumps({'sender': operator_id, 'capability': required}).encode()
+                req = urllib.request.Request(
+                    f'http://127.0.0.1:{self._crew_port}/validate',
+                    data=body, method='POST',
+                    headers={'Content-Type': 'application/json'},
+                )
+                with urllib.request.urlopen(req, timeout=2) as r:
+                    result = json.loads(r.read().decode())
+                    if not result.get('ok', False):
+                        return 403, {
+                            'error': f'capability denied by CREW: {required}',
+                            'operator_id': operator_id,
+                        }
+                    return None
+            except Exception:
+                pass  # CREW unreachable — fall through to payload fallback
+
+        # Fallback: trust payload-declared capabilities (startup / offline mode)
         caps = payload.get('capabilities', [])
-        has_cap = required in caps or any(c.endswith('*') and required.startswith(c[:-1]) for c in caps)
+        has_cap = required in caps or any(
+            c.endswith('*') and required.startswith(c[:-1]) for c in caps
+        )
         if not has_cap:
             return 403, {'error': f'missing capability: {required}', 'operator_id': operator_id}
         return None
