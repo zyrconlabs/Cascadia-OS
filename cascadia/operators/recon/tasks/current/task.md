@@ -1,7 +1,7 @@
 ---
 name: example-task
 goal: Find warehouse facility managers and operations directors in Houston TX with contact details
-model: zyrcon-3b
+model: zyrcon-ai-v0.1
 fields:
   - full_name: Full name of the person
   - title: Job title
@@ -15,7 +15,7 @@ stop:
   mode: quantity        # Options: quantity | time | status
   quantity: 100         # Stop after N data rows collected
   # time: 24h           # Alternatives: 60m | 6h | 24h | 7d
-  # mode: status        # Stop only via dashboard button or status: stop below
+  # mode: status        # Stop only via dashboard button or status: active below
 
 status: active          # Change to: stop  —  to halt the worker
 

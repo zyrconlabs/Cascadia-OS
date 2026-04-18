@@ -18,9 +18,10 @@
       "category": "inbound",
       "description": "Inbound lead capture and qualification engine. Embeds a chat widget on any webpage. Qualifies leads via conversation and routes them into the Cascadia workflow engine.",
       "status": "production",
-      "port": 7000,
+      "port": 7002,
       "autonomy": "semi-autonomous",
-      "sample_output": null
+      "sample_output": null,
+      "health_path": "/api/health"
     },
     {
       "id": "quote",
