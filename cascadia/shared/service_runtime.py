@@ -14,6 +14,7 @@ from .logger import configure_logging
 
 class ReusableHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
+    allow_reuse_port = True
 
 
 class ServiceRuntime:
