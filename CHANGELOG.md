@@ -2,6 +2,49 @@
 
 ---
 
+## v0.33 — 2026-04-18
+
+### Summary
+CURTAIN field encryption upgraded from XOR placeholder to AES-256-GCM.
+Public interface unchanged — no callers require modification.
+All existing tests pass. 11 additional security tests added.
+
+### Changed — `cascadia/encryption/curtain.py`
+- `encrypt_field()` — replaced XOR+SHA256 keystream (v0.2 placeholder, 32-byte limit,
+  no authentication) with AES-256-GCM (authenticated encryption, arbitrary length,
+  tamper-evident, 96-bit random nonce per call)
+- `decrypt_field()` — now raises `ValueError` on authentication failure (tampered
+  ciphertext or tag) rather than silently returning garbage
+- `MATURITY` tag updated from `STUB` to `PRODUCTION`
+- Docstring updated — removed "v0.3 placeholder" references
+- Added `derive_field_key(signing_secret)` — derives a 32-byte AES key from the
+  master signing secret using PBKDF2-HMAC-SHA256 with a fixed label salt
+- Added `GET /capabilities` route — reports signing and encryption algorithms in use
+- Added `POST /encrypt` and `POST /decrypt` HTTP routes on CurtainService
+- `CurtainService.__init__` now derives `_field_key` from signing_secret automatically
+
+### Added — `pyproject.toml`
+- `cryptography>=42.0.0` declared as a project dependency
+- `[project.optional-dependencies]` section added:
+  - `operators` — flask, flask-cors, requests, ddgs
+  - `tray` — pystray, pillow
+- Version bumped to `0.33.0`
+
+### Security properties of AES-256-GCM vs previous XOR implementation
+| Property | XOR (v0.2) | AES-256-GCM (v0.33) |
+|---|---|---|
+| Authentication | None | 128-bit GCM tag |
+| Tamper detection | No | Yes — raises ValueError |
+| Max plaintext length | 32 bytes | Unlimited |
+| Nonce reuse risk | Per-call random | Per-call random (12 bytes) |
+| Diligence safe | No | Yes |
+
+### Unchanged
+All other modules unchanged from v0.32. HMAC-SHA256 envelope signing was already
+correct in v0.2 and is not modified.
+
+---
+
 ## v0.31 — 2026-04-18
 
 ### Summary
