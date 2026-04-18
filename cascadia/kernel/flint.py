@@ -295,7 +295,7 @@ class Flint:
         threading.Thread(target=self._serve_status, daemon=True, name='flint-status').start()
         self.start_tiers()
         self.process_state = 'ready'
-        self.logger.info('FLINT ready — Cascadia OS v' + VERSION')
+        self.logger.info('FLINT ready — Cascadia OS v' + VERSION)
         self.monitor_loop()
 
 
