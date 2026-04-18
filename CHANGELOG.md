@@ -2,6 +2,46 @@
 
 ---
 
+## v0.34 — 2026-04-18
+
+### Summary
+PRISM live poll loop. Runs and Approvals surfaces now pull real data from
+the Cascadia OS backend every 3 seconds. Version strings updated to v0.33
+throughout the dashboard.
+
+### Changed — `cascadia/dashboard/prism.html`
+- Version strings updated: `v0.21` → `v0.33` in title, sidebar, system
+  overview messages, health report, and help dialog
+- **`pollLiveRuns()`** — new async function polling `/api/prism/runs` and
+  `/api/prism/approvals` every 3 seconds via the existing `prismFetch()` helper.
+  Only re-renders if data changed (JSON diff check — no unnecessary repaints)
+- **`startLivePoll()`** — starts the poll loop; called once from the init block
+  alongside `refreshCells()`
+- **Runs surface** — live runs section injected at top of Run Timeline showing
+  real `run_state` badges (running, waiting_human, complete, failed, blocked).
+  Live indicator dot in topbar. Falls back gracefully when Cascadia is offline.
+- **Approvals surface** — live approvals from PRISM API injected above session
+  approvals. Each card shows run_id, action_key, age, and Approve/Reject buttons.
+- **`approveFromPrism(id, decision)`** — POSTs to `/api/prism/approve`, removes
+  card optimistically, re-polls after 800ms to pick up resumed run state
+- **`renderLiveRunRow()`** — renders a single live run row with goal, run_id,
+  current step, and timestamp
+- **`renderLiveApprovalCard()`** — renders a live approval card with inline
+  approve/reject actions
+- **`runStateBadge(state)`** — generates coloured badge for any run_state value
+- CSS additions: `.live-dot` (animated green pulse), `.run-live-row`,
+  `.rls-badge` + state variants, `.prism-live-header`, `.approval-live-card`
+
+### What the demo flow looks like now
+1. Lead comes in via SCOUT chat widget
+2. Workflow starts — PRISM Runs surface shows `running` badge immediately
+3. Approval gate fires — PRISM Approvals surface shows the card with Approve button
+4. Operator clicks Approve in PRISM — run resumes
+5. PRISM Runs surface updates to `complete` within 3 seconds
+6. All without any manual refresh
+
+---
+
 ## v0.33 — 2026-04-18
 
 ### Summary
