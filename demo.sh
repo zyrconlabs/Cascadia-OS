@@ -8,7 +8,7 @@
 # Usage: bash demo.sh [--auto]   (--auto skips manual pause prompts)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-set -e
+
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="$REPO_DIR/config.json"
@@ -148,7 +148,7 @@ pause 2
 
 pkill -f "cascadia.kernel.watchdog" 2>/dev/null || true
 pkill -f "cascadia.kernel.flint"   2>/dev/null || true
-sleep 1
+sleep 2
 
 if ! check_running; then
   ok "Process killed — Cascadia is DOWN"
