@@ -1,15 +1,8 @@
-# Cascadia OS v0.30 — Manual
+# Cascadia OS v0.31 — Manual
 
-## Purpose
+## What changed in v0.31
 
-v0.30 is the first fully merged release. It consolidates:
-- The complete kernel and durability layer from v0.21/v0.29
-- The browser-based AI setup wizard (ONCE) from v0.21
-- The PRISM live dashboard UI restored from v0.21
-- The `_send_html` routing capability in service_runtime
-- Zyrcon AI as a supported local inference backend alongside llama.cpp and Ollama
-
-The kernel remains small and supervisory. Durable execution is proven by crash tests. The installer now guides non-technical users through AI model selection in a browser UI.
+Two fully implemented operators added — SCOUT and RECON. Both run as standalone Flask services in the `7xxx` operator band, supervised by FLINT via manifest.json discovery. The persona folder architecture (job_description / company_policy / current_task) lets you change operator behavior by editing markdown files, no code changes needed.
 
 ---
 
@@ -17,149 +10,149 @@ The kernel remains small and supervisory. Durable execution is proven by crash t
 
 ### Startup tiers
 
-FLINT starts components in dependency order:
-
 | Tier | Components | Depends on |
 |---|---|---|
 | 1 | CREW, VAULT, SENTINEL, CURTAIN | — |
 | 2 | BEACON, STITCH, VANGUARD, HANDSHAKE, BELL, ALMANAC | CREW (BEACON only) |
 | 3 | PRISM | CREW, SENTINEL, BEACON |
-
-Each tier waits for all components in the previous tier to report healthy before proceeding.
+| Operators | SCOUT (7000), RECON (7001) | Started independently or via FLINT |
 
 ### Kernel layer
 
-Owns:
-- Process lifecycle (start, health poll, restart with backoff, graceful shutdown)
-- Dependency-tier startup sequencing
-- External watchdog liveness monitoring
-- Top-level system status at `localhost:4011`
+Owns: process lifecycle, tier startup, health polling, restart/backoff, graceful shutdown, watchdog liveness, system status at `localhost:4011`.
 
-Does not own: workflow planning, task scheduling, approval UI, installer logic.
+Does not own: workflow planning, scheduling, approval UI, operator business logic.
 
-### Durability layer
+### Operator layer
 
-The most important part. Every run is journaled to SQLite before any side effect executes.
-
-- `run_store.py` — run records, process_state + run_state split
-- `step_journal.py` — append-only step ledger, source of truth for resume
-- `resume_manager.py` — calculates safe resume point from committed steps
-- `idempotency.py` — SHA-256 keyed side effect records, UNIQUE constraint prevents double-execution
-- `migration.py` — idempotent schema migrations, handles legacy DB upgrades
-
-### Policy and gating
-
-- `runtime_policy.py` — allow / deny / approval_required per action type
-- `approval_store.py` — persists approval requests and decisions, wakes blocked runs
-- `dependency_manager.py` — detects missing operators/permissions, writes blocked state
+Operators are independent services. Each has:
+- A `manifest.json` describing its id, port, capabilities, start command, and health path
+- A `requirements.txt` with its own dependencies
+- A `config.json` pointing to the LLM endpoint and vault directory
+- A persona folder structure for configurable behavior
 
 ---
 
-## State model
+## SCOUT operator
 
-### ProcessState
-- `starting` — process launched, not yet ready
-- `ready` — health check passing
-- `degraded` — health check failing but process alive
-- `draining` — shutdown in progress
-- `offline` — process not running
+### What it does
+Inbound lead capture. Runs a streaming chat session with website visitors, qualifies them, extracts contact details using AI + regex double-pass, scores leads hot/warm/cold, and estimates deal value by project type and square footage.
 
-### RunState
-- `pending` — queued, not started
-- `running` — actively executing
-- `blocked` — waiting on a missing dependency or permission
-- `retrying` — resuming after a crash or failure
-- `waiting_human` — approval required before proceeding
-- `poisoned` — permanently failed, will never resume
-- `complete` — finished successfully
-- `failed` — failed with no retry
-- `abandoned` — timed out or manually cancelled
+### Start
+```bash
+cd cascadia/operators/scout
+pip install -r requirements.txt
+python scout_server.py
+```
+
+### Endpoints
+```
+GET  /bell                    — chat widget UI
+GET  /doorbell                — embeddable iframe version
+POST /api/stream              — SSE streaming chat
+POST /api/chat                — sync chat
+GET  /api/leads               — all captured leads
+GET  /api/lead/<session_id>   — single lead with full conversation
+GET  /api/stats               — totals, hot/warm counts, today's leads
+GET  /api/health              — health check for FLINT
+POST /api/clear               — wipe session and lead data (dev only)
+```
+
+### Persona system
+Scout's behavior is driven entirely by three markdown folders:
+
+```
+scouts/lead-engine/
+  job_description/role.md      — who Scout is, its personality, what it knows
+  company_policy/policy.md     — rules, escalation language, what it cannot say
+  current_task/task.md         — current focus, priority project types
+```
+
+Edit these files to change Scout's behavior. No code changes, no restart required — the system prompt rebuilds on each new session.
+
+### Lead scoring
+Scout automatically scores every lead:
+- **Hot** — contact info provided + timeline under 60 days or urgent flag
+- **Warm** — contact info provided, longer timeline
+- **Cold** — no contact info
+
+### Deal value estimation
+Estimated deal value is calculated per project type and square footage:
+
+| Project type | Rate range per sqft |
+|---|---|
+| Warehouse new | $8–$22 |
+| Warehouse retrofit | $5–$16 |
+| Industrial drafting | $6–$18 |
+| Facility layout | $4–$14 |
+| Dock design | $3–$10 |
+| Rack layout | $3–$9 |
+
+### Groq fallback
+If the local LLM is unavailable, Scout falls back to Groq cloud inference automatically. Set `groq_api_key` in `scout.config.json` to enable.
 
 ---
 
-## Database schema
+## RECON operator
 
-Tables: `meta`, `runs`, `steps`, `side_effects`, `approvals`, `run_trace`
+### What it does
+Outbound research agent. Reads a task from `tasks/current/task.md`, runs search queries via DuckDuckGo, scores and deduplicates results, writes structured CSV output, and streams live progress to a dashboard.
 
-### runs
-Key columns: `run_id`, `operator_id`, `tenant_id`, `goal`, `current_step`, `input_snapshot`, `state_snapshot`, `retry_count`, `last_checkpoint`, `process_state`, `run_state`, `blocked_reason`, `blocking_entity`, `dependency_request`, `created_at`, `updated_at`
+### Start
+```bash
+cd cascadia/operators/recon
+pip install -r requirements.txt
+python recon_worker.py &    # research worker
+python dashboard.py         # live dashboard
+open http://localhost:7001/
+```
 
-### steps
-Append-only step ledger. `step_index` is 0-based.
+### Task configuration
+Create or edit `tasks/current/task.md` with YAML frontmatter:
 
-### side_effects
-One row per external action. Statuses: `planned`, `committed`, `failed`, `compensated`.
-
-### approvals
-One row per approval request/decision. Decisions: `pending`, `approved`, `denied`.
-
+```markdown
+---
+title: "Houston warehouse operators"
+queries:
+  - "warehouse operator Houston TX"
+  - "3PL logistics Houston"
+max_results: 50
+cycles: 3
 ---
 
-## Runtime flows
+## Goal
+Find industrial and warehouse operators in the Greater Houston area
+who may need facility design or layout services.
+```
 
-### Resume flow
-1. Load run from `run_store`
-2. Scan completed steps in ascending `step_index` order
-3. Stop at the first step whose side effects are not fully committed
-4. Restore state from the last fully committed step
-5. Resume from `last_committed + 1`
+### Output
+Results are written to CSV in `data/vault/operators/recon/` with columns: title, url, description, score, source, timestamp.
 
-### Approval-aware resume
-- If run is `waiting_human` and approval is `pending` — does not auto-resume
-- If `approved` — `approval_store` transitions run to `retrying`
-- If `denied` — run transitions to `failed`
-
-### Dependency blocking
-`dependency_manager` checks required operators are installed and healthy, and requested permissions are granted. If anything is missing it writes `run_state = blocked` with `blocked_reason`, `blocking_entity`, and `dependency_request`. It does not install, fix, or retry dependencies.
+### Known issues (fix before production use)
+- Two simultaneous worker processes can cause state conflicts — ensure only one instance runs
+- Inline comments in task.md YAML frontmatter break the parser — keep frontmatter values clean
+- `state.json` model name must match your actual running model name exactly
 
 ---
 
 ## AI configuration
 
-### Browser wizard (default)
+### Supported backends
 
-Running `python -m cascadia.installer.once` opens `http://127.0.0.1:4010/` with a 4-step wizard:
-
-1. System scan — RAM, GPU, Ollama detection, Python version
-2. AI model selection — QuickStart or manual (local / cloud / Ollama / skip)
-3. Config editor — editable JSON block, live validation
-4. Launch — start commands, link to PRISM
-
-### Terminal fallback
-
-```bash
-python -m cascadia.installer.once --no-browser
-```
-
-Prompts through the same four paths interactively.
-
-### Supported AI backends
-
-| Provider | config.json `provider` value |
+| Provider | config value |
 |---|---|
-| Local llama.cpp | `llama-cpp` |
-| Zyrcon AI (zyrcon-engine) | `llama-cpp` with `base_url: http://localhost:7000` |
-| Ollama | `ollama` |
+| Local llama.cpp | `llama-cpp` with `base_url: http://localhost:4011` |
+| Ollama | `ollama` with `base_url: http://localhost:11434` |
 | OpenAI | `openai` |
 | Anthropic | `anthropic` |
 | Groq | `groq` |
 | Any OpenAI-compatible | `custom` |
 
----
-
-## Operator manifest schema
-
-Fields:
-- `id` — unique operator identifier
-- `name` — display name
-- `version` — semver
-- `type` — `system`, `service`, `skill`, or `composite`
-- `capabilities` — list of capability strings the operator provides
-- `required_dependencies` — operators that must be present and healthy
-- `requested_permissions` — permissions the operator needs
-- `autonomy_level` — `manual_only`, `assistive`, `semi_autonomous`, or `autonomous`
-- `health_hook` — HTTP path for health checks
-- `description` — human-readable description
+### Setup wizard
+```bash
+python -m cascadia.installer.once           # browser wizard at :4010
+python -m cascadia.installer.once --no-browser  # terminal prompts
+```
 
 ---
 
@@ -173,6 +166,12 @@ python -m cascadia.installer.once
 ### Start the OS
 ```bash
 python -m cascadia.kernel.watchdog --config config.json
+```
+
+### Start operators
+```bash
+cd cascadia/operators/scout && python scout_server.py &
+cd cascadia/operators/recon && python recon_worker.py &
 ```
 
 ### Check system status
@@ -191,37 +190,45 @@ python -m unittest discover -s tests -v
 python tests/test_crash_recovery.py
 ```
 
-### Troubleshooting
+---
 
-- **Component restarts repeatedly** — check heartbeat paths and ports in `config.json`, inspect logs in `data/logs/`
-- **Run resumes from wrong step** — inspect `steps` and `side_effects` tables
-- **Approval never wakes a run** — inspect `approvals` table and run's `run_state`
-- **Dependency block unclear** — inspect `blocked_reason`, `blocking_entity`, `dependency_request` in `runs` table
-- **PRISM shows blank** — confirm `prism.html` is present at `cascadia/dashboard/prism.html`
-- **Setup wizard 500 error** — confirm `setup.html` is present at `cascadia/installer/setup.html`
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| PRISM shows blank page | Confirm `cascadia/dashboard/prism.html` exists |
+| Setup wizard 500 error | Confirm `cascadia/installer/setup.html` exists next to `once.py` |
+| Scout can't reach LLM | Check `bridge_url` in `scout.config.json` — should be `http://127.0.0.1:4011` |
+| Recon YAML parse error | Remove inline comments from task.md frontmatter |
+| Recon double-process conflict | `pkill -f recon_worker` then restart single instance |
+| Component restarts repeatedly | Check heartbeat paths and ports in `config.json`, inspect `data/logs/` |
+| Run resumes from wrong step | Inspect `steps` and `side_effects` tables in the database |
+| Approval never wakes a run | Inspect `approvals` table and run's `run_state` |
 
 ---
 
-## Not in v0.30
+## Port reference
 
-Deliberately deferred:
-
-- SENTINEL enforcement hooks into operator execution loop
-- CURTAIN AES-256-GCM / asymmetric key exchange
-- HANDSHAKE HTTP execution to external APIs
-- VANGUARD SMTP / SMS channel adapters
-- PRISM WebSocket real-time push
-- SCOUT calendar and email operator implementation
-- Workflow scheduler / trigger manager
-- MicroVM operator isolation
-- Multi-node HA / GRID
+| Port | Band | Component |
+|---|---|---|
+| 4010 | 4xxx — kernel | ONCE (install time only) |
+| 4011 | 4xxx — kernel | FLINT status API |
+| 5100–5103 | 5xxx — foundation | CREW, VAULT, SENTINEL, CURTAIN |
+| 6200–6205 | 6xxx — runtime | BEACON, STITCH, VANGUARD, HANDSHAKE, BELL, ALMANAC |
+| 6300 | 6xxx — visibility | PRISM |
+| 7000 | 7xxx — operators | SCOUT |
+| 7001 | 7xxx — operators | RECON |
+| 7002+ | 7xxx — operators | future operators |
+| 8200+ | 8xxx — expansion | GRID, DEPOT (roadmap) |
 
 ---
 
-## Design principles
+## Not in v0.31
 
-1. **Trustworthy before clever.** Prove the data model before adding features.
-2. **Own your layer.** Execution does not own policy. Policy does not own storage.
-3. **Explicit blocking.** A blocked run stays blocked until a human or system event resolves it.
-4. **Journal first.** No side effect executes before it is written to the step journal.
-5. **Idempotency at the DB layer.** Not by convention — by UNIQUE constraint.
+- VANGUARD dynamic operator discovery (v0.32)
+- SENTINEL enforcement end-to-end (v0.32)
+- CURTAIN AES-256-GCM / asymmetric key exchange (v0.32)
+- HANDSHAKE HTTP execution to external APIs (v0.32)
+- PRISM WebSocket real-time push (v0.32)
+- BELL persona routing (v0.32)
+- Model switcher in PRISM (v0.32)

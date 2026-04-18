@@ -1,0 +1,6 @@
+{
+  "worker_port":   7001,
+  "cascadia_port": 4011,
+  "vault_dir":     "./data/vault/operators/recon",
+  "task_dir":      "./cascadia/operators/recon/tasks/current"
+}

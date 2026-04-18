@@ -1,0 +1,10 @@
+{
+  "server_port":   7000,
+  "bridge_url":    "http://127.0.0.1:4011",
+  "model":         "zyrcon-ai",
+  "groq_api_key":  "",
+  "groq_model":    "llama-3.1-8b-instant",
+  "groq_fallback": true,
+  "scout_folder":  "scouts/lead-engine",
+  "vault_dir":     "./data/vault/operators/scout"
+}

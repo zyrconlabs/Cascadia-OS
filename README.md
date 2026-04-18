@@ -30,12 +30,6 @@ I didn't want a chatbot. I wanted an operator I could trust. Something that reme
 
 ---
 
-Most AI tools are impressive in demos. They forget context, act without guardrails, and collapse when a workflow spans more than one session.
-
-Cascadia OS is built to a different standard — durable enough to survive crashes, supervised enough to ask before taking sensitive actions, and honest enough to tell you exactly what it can and can't do.
-
----
-
 ## One-Click Install
 
 **Mac / Linux:**
@@ -50,8 +44,6 @@ irm https://raw.githubusercontent.com/Zyrconlabs/cascadia-os/main/install.bat -O
 
 > **Requires:** Python 3.11+ and git
 
-The installer clones the repo, creates a virtual environment, installs the package, runs the browser-based AI setup wizard, and adds a `cascadia` launcher to your PATH.
-
 ---
 
 ## Manual Start
@@ -60,17 +52,14 @@ The installer clones the repo, creates a virtual environment, installs the packa
 # First-time setup (opens browser wizard at http://127.0.0.1:4010)
 python -m cascadia.installer.once
 
-# Terminal-only setup (no browser)
+# Terminal-only setup
 python -m cascadia.installer.once --no-browser
 
-# Start the OS (watchdog keeps FLINT alive)
+# Start the OS
 python -m cascadia.kernel.watchdog --config config.json
 
 # Run all tests
 python -m unittest discover -s tests -v
-
-# Run crash and recovery drills
-python tests/test_crash_recovery.py
 ```
 
 ---
@@ -87,7 +76,7 @@ Cascadia OS coordinates AI operators that:
 
 ---
 
-## What is working right now (v0.30)
+## What is working right now (v0.31)
 
 ### Control plane
 | Module | What it does |
@@ -98,7 +87,7 @@ Cascadia OS coordinates AI operators that:
 ### Installer
 | Module | What it does |
 |---|---|
-| ONCE `installer/once.py` | Browser setup wizard, RAM/GPU/Ollama detection, AI model config, directory init, manifest validation |
+| ONCE `installer/once.py` | Browser setup wizard, RAM/GPU/Ollama detection, AI model config, directory init |
 | setup.html `installer/setup.html` | 4-step browser UI: system scan → model selection → config editor → launch |
 
 ### Durability layer
@@ -123,7 +112,7 @@ Cascadia OS coordinates AI operators that:
 | CREW | `registry/crew.py` | Operator group registry with wildcard capability validation |
 | VAULT | `memory/vault.py` | Durable SQLite-backed memory, capability-gated |
 | SENTINEL | `security/sentinel.py` | Risk classification: low / medium / high / critical per action |
-| CURTAIN | `encryption/curtain.py` | HMAC-SHA256 envelope signing and field encryption (stdlib only) |
+| CURTAIN | `encryption/curtain.py` | HMAC-SHA256 envelope signing and field encryption |
 | BEACON | `orchestrator/beacon.py` | Capability-checked routing and operator handoffs |
 | STITCH | `automation/stitch.py` | Workflow sequencing with built-in templates |
 | VANGUARD | `gateway/vanguard.py` | Inbound channel normalization, outbound dispatch |
@@ -132,84 +121,80 @@ Cascadia OS coordinates AI operators that:
 | ALMANAC | `guide/almanac.py` | Component catalog, glossary (26 terms), runbooks |
 | PRISM | `dashboard/prism.py` | Live dashboard at `localhost:6300/` — runs, approvals, blocked, crew |
 
----
-
-## Reliability guarantees — proven by crash tests
-
-These are tested in `tests/test_crash_recovery.py`. Not just claimed.
-
-| Scenario | Behavior |
-|---|---|
-| Kill operator mid-run | Resumes from last committed step, not step 0 |
-| Crash after side effect declared but not committed | Re-attempts the effect on resume |
-| Crash after side effect committed | Skips the effect — never duplicates |
-| Approval-required run restarted | Stays `waiting_human`, never auto-resumes |
-| Poisoned or complete run | Never resumed under any condition |
-| Multiple crashes in sequence | `retry_count` increments correctly each time |
+### Operators (v0.31 — new)
+| Name | Port | What it does |
+|---|---|---|
+| SCOUT | `operators/scout/` · `7000` | Inbound lead capture — streaming chat, session history, AI + regex lead extraction, hot/warm/cold scoring, estimated deal value |
+| RECON | `operators/recon/` · `7001` | Outbound research agent — task.md-driven queries, CSV output, deduplication, live SSE dashboard |
 
 ---
 
-## AI model setup
+## SCOUT operator
 
-ONCE supports four paths, selected in the browser wizard or terminal fallback:
+SCOUT is an AI-powered lead capture agent. Embed the chat widget on any website — it qualifies visitors, extracts contact details, and scores leads automatically.
 
-| Path | How |
-|---|---|
-| Local llama.cpp | Downloads Qwen 2.5 (3B / 7B / 14B) — private, no API cost |
-| Zyrcon AI | Points to your running `zyrcon-engine` on `localhost:7000` |
-| Cloud API | OpenAI, Anthropic, Groq, or any compatible endpoint |
-| Ollama | Detects running models at `localhost:11434` automatically |
+```bash
+# Install Scout dependencies
+cd cascadia/operators/scout
+pip install -r requirements.txt
 
-The browser wizard opens at `http://127.0.0.1:4010/` during install. Use `--no-browser` for headless or server installs.
+# Start Scout
+python scout_server.py
+
+# Chat widget
+open http://localhost:7000/bell
+
+# Embeddable doorbell (iframe)
+open http://localhost:7000/doorbell
+
+# Lead pipeline
+GET http://localhost:7000/api/leads
+GET http://localhost:7000/api/stats
+```
+
+Scout uses a 3-folder persona system — swap the markdown files to change its personality without touching code:
+
+```
+scouts/lead-engine/
+  job_description/role.md      ← who Scout is
+  company_policy/policy.md     ← what Scout can and cannot say
+  current_task/task.md         ← what Scout is focused on right now
+```
+
+---
+
+## RECON operator
+
+RECON is an outbound research agent. Give it a task via `tasks/current/task.md` and it searches, deduplicates, scores, and outputs structured CSV.
+
+```bash
+# Install Recon dependencies
+cd cascadia/operators/recon
+pip install -r requirements.txt
+
+# Start Recon worker + dashboard
+python recon_worker.py &
+python dashboard.py
+
+# Live research dashboard
+open http://localhost:7001/
+```
 
 ---
 
 ## PRISM dashboard
 
 ```bash
-# Live UI
 open http://127.0.0.1:6300/
 
-# API endpoints
-GET  http://127.0.0.1:6300/api/prism/overview    # Full system snapshot
-GET  http://127.0.0.1:6300/api/prism/runs        # Recent run states
-GET  http://127.0.0.1:6300/api/prism/approvals   # Pending human decisions
-GET  http://127.0.0.1:6300/api/prism/blocked     # Runs blocked on dependencies
-GET  http://127.0.0.1:6300/api/prism/crew        # Active operators
-GET  http://127.0.0.1:6300/api/prism/sentinel    # Risk levels
-GET  http://127.0.0.1:4011/health                # FLINT liveness check
+GET  http://127.0.0.1:6300/api/prism/overview
+GET  http://127.0.0.1:6300/api/prism/runs
+GET  http://127.0.0.1:6300/api/prism/approvals
+GET  http://127.0.0.1:6300/api/prism/blocked
+GET  http://127.0.0.1:6300/api/prism/crew
+GET  http://127.0.0.1:6300/api/prism/sentinel
+GET  http://127.0.0.1:4011/health
 ```
-
----
-
-## What is partial in v0.30
-
-Present and registered, but not fully wired end-to-end yet:
-
-- **SENTINEL** — risk rules work; enforcement hooks into the full operator loop are v0.31
-- **CURTAIN** — HMAC signing works; AES-256-GCM and asymmetric key exchange are v0.31
-- **HANDSHAKE** — connection registry works; actual HTTP execution to external APIs is v0.31
-- **VANGUARD** — normalization works; real channel adapters (SMTP, SMS) are v0.31
-- **PRISM** — aggregation queries work; real-time WebSocket push is v0.31
-
----
-
-## Roadmap
-
-### v0.31
-- SENTINEL enforcement wired end-to-end
-- CURTAIN AES-256-GCM + asymmetric key exchange
-- HANDSHAKE HTTP execution to external APIs
-- VANGUARD SMTP and SMS channel adapters
-- PRISM WebSocket real-time push
-- SCOUT operator — calendar and email implementation
-
-### v0.4+
-- GRID — decentralized compute network
-- DEPOT — operator marketplace
-- Scheduler and trigger manager
-- MicroVM operator isolation
-- Multi-node HA
 
 ---
 
@@ -230,8 +215,51 @@ Present and registered, but not fully wired end-to-end yet:
 | 6204 | 6xxx — runtime | BELL |
 | 6205 | 6xxx — runtime | ALMANAC |
 | 6300 | 6xxx — visibility | PRISM (dashboard UI + API) |
-| 7000+ | 7xxx — operators | SCOUT, RECON, future operators |
+| 7000 | 7xxx — operators | SCOUT |
+| 7001 | 7xxx — operators | RECON |
+| 7002+ | 7xxx — operators | future operators |
 | 8200+ | 8xxx — expansion | GRID, DEPOT (roadmap) |
+
+---
+
+## Reliability guarantees
+
+| Scenario | Behavior |
+|---|---|
+| Kill operator mid-run | Resumes from last committed step, not step 0 |
+| Crash after side effect committed | Skips the effect — never duplicates |
+| Approval-required run restarted | Stays `waiting_human`, never auto-resumes |
+| Multiple crashes in sequence | `retry_count` increments correctly each time |
+
+---
+
+## What is partial in v0.31
+
+- **SENTINEL** — risk rules work; enforcement hooks into the full operator loop are v0.32
+- **CURTAIN** — HMAC signing works; AES-256-GCM and asymmetric key exchange are v0.32
+- **HANDSHAKE** — connection registry works; actual HTTP execution to external APIs is v0.32
+- **VANGUARD** — normalization works; dynamic operator discovery and real channel adapters are v0.32
+- **PRISM** — aggregation queries work; real-time WebSocket push is v0.32
+
+---
+
+## Roadmap
+
+### v0.32
+- VANGUARD dynamic operator discovery (scan_operators pattern)
+- SENTINEL enforcement wired end-to-end
+- CURTAIN AES-256-GCM + asymmetric key exchange
+- HANDSHAKE HTTP execution to external APIs
+- PRISM WebSocket real-time push
+- BELL persona routing (operator-specific system prompts)
+- Model switcher in PRISM
+
+### v0.4+
+- GRID — decentralized compute network
+- DEPOT — operator marketplace
+- Scheduler and trigger manager
+- MicroVM operator isolation
+- Multi-node HA
 
 ---
 
