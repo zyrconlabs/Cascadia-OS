@@ -1,0 +1,40 @@
+[project]
+name = "cascadia-os"
+version = "0.43.0"
+description = "Cascadia OS — local-first single-node operator platform"
+requires-python = ">=3.11"
+dependencies = [
+    "cryptography>=42.0.0",
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    "requests>=2.31.0",
+    "ddgs>=4.0.0",
+]
+
+[project.optional-dependencies]
+operators = [
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    "requests>=2.31.0",
+    "ddgs>=4.0.0",
+]
+
+tray = [
+    "pystray>=0.19.0",
+    "pillow>=10.0.0",
+]
+
+[project.scripts]
+cascadia-watchdog = "cascadia.kernel.watchdog:main"
+cascadia-flint    = "cascadia.kernel.flint:main"
+cascadia-once     = "cascadia.installer.once:main"
+cascadia          = "cascadia.kernel.watchdog:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cascadia*"]
+
+[tool.cascadia]
+version = "0.43"
+control_plane = "cascadia.kernel.flint"
+entrypoint    = "cascadia.kernel.watchdog"

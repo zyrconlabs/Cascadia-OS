@@ -1,0 +1,10 @@
+{
+  "server_port": 7002,
+  "bridge_url": "http://127.0.0.1:4011",
+  "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+  "groq_api_key": "",
+  "groq_model": "llama-3.1-8b-instant",
+  "groq_fallback": true,
+  "scout_folder": "scouts/lead-engine",
+  "vault_dir": "./data/vault/operators/scout"
+}
