@@ -60,6 +60,69 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     curl -sf http://127.0.0.1:4011/health > /dev/null && echo "✓ Cascadia OS ready (11/11)" || echo "✗ Cascadia OS failed"
 fi
 
+# ── 3. Operators ──────────────────────────────────────────────────────────
+# RECON
+if curl -sf http://127.0.0.1:8002/api/health > /dev/null 2>&1; then
+    echo "✓ RECON already running"
+else
+    echo "▸ Starting RECON..."
+    mkdir -p data/vault/operators/recon/tasks/current
+    if [[ ! -f data/vault/operators/recon/tasks/current/task.md ]]; then
+        cp cascadia/operators/recon/tasks/current/task.md data/vault/operators/recon/tasks/current/ 2>/dev/null || true
+    fi
+    "$PYTHON" cascadia/operators/recon/dashboard.py >> data/logs/recon.log 2>&1 &
+    sleep 2
+    curl -sf http://127.0.0.1:8002/api/health > /dev/null && echo "✓ RECON ready" || echo "✗ RECON failed"
+fi
+
+# SCOUT
+if curl -sf http://127.0.0.1:7002/api/health > /dev/null 2>&1; then
+    echo "✓ SCOUT already running"
+else
+    echo "▸ Starting SCOUT..."
+    "$PYTHON" cascadia/operators/scout/scout_server.py >> data/logs/scout.log 2>&1 &
+    sleep 2
+    curl -sf http://127.0.0.1:7002/api/health > /dev/null && echo "✓ SCOUT ready" || echo "✗ SCOUT failed"
+fi
+
+# ── 3. Operators ──────────────────────────────────────────────────────────
+PYTHON="${REPO}/.venv/bin/python3"
+[[ ! -f "$PYTHON" ]] && PYTHON="python3"
+
+declare -A OPERATORS=(
+    ["recon"]="8002"
+    ["scout"]="7002"
+    ["quote"]="8007"
+    ["chief"]="8006"
+    ["aurelia"]="8009"
+    ["debrief"]="8008"
+    ["competition-researcher"]="8005"
+    ["jr-programmer"]="8004"
+)
+
+declare -A OPERATOR_ENTRY=(
+    ["recon"]="dashboard.py"
+    ["scout"]="scout_server.py"
+    ["quote"]="dashboard.py"
+    ["chief"]="dashboard.py"
+    ["aurelia"]="dashboard.py"
+    ["debrief"]="dashboard.py"
+    ["competition-researcher"]="dashboard.py"
+    ["jr-programmer"]="dashboard.py"
+)
+
+for op in "${!OPERATORS[@]}"; do
+    port="${OPERATORS[$op]}"
+    entry="${OPERATOR_ENTRY[$op]}"
+    op_path="$REPO/cascadia/operators/$op/$entry"
+    if curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null 2>&1; then
+        echo "✓ $op already running"
+    elif [[ -f "$op_path" ]]; then
+        "$PYTHON" "$op_path" >> "data/logs/${op}.log" 2>&1 &
+        sleep 1
+        curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null             && echo "✓ $op started"             || echo "✗ $op failed — check data/logs/${op}.log"
+    fi
+done
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
@@ -69,6 +132,8 @@ echo ""
 echo "  PRISM dashboard  →  http://localhost:6300/"
 echo "  RECON            →  http://localhost:8002/"
 echo "  SCOUT            →  http://localhost:7002/"
+echo "  CHIEF            →  http://localhost:8006/"
+echo "  QUOTE            →  http://localhost:8007/"
 echo ""
 echo "  Run demo:  bash demo.sh"
 echo ""
