@@ -3,17 +3,8 @@
   "name": "Competition Researcher",
   "version": "1.0.0",
   "port": 8005,
-  "description": "Competitive intelligence agent",
-  "entry": "dashboard.py",
+  "start_cmd": "dashboard.py",
   "health_path": "/api/health",
-  "chat_path": "/api/chat",
-  "status_path": "/api/status",
   "autostart": true,
-  "dependencies": [
-    "flask>=3.0.0",
-    "flask-cors>=4.0.0",
-    "requests>=2.31.0",
-    "ddgs>=4.0.0"
-  ],
   "author": "Zyrcon Labs"
 }
