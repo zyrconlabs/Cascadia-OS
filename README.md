@@ -130,7 +130,7 @@ These sample outputs were generated on a MacBook Air M1 using a local Qwen 3B ba
 | Output | What it shows |
 |---|---|
 | [Houston warehouse leads](./samples/recon-houston-warehouse-leads-2026-04-18.csv) | RECON — 25+ search cycles, hallucination-filtered |
-| [Gulf Coast Logistics proposal](./samples/proposal-Gulf-Coast-Logistics-2026-04-18.md) | Full proposal from one-paragraph RFQ in 30 seconds |
+| [Gulf Coast Logistics proposal](./samples/proposal-GC-Logistics-2026-04-18.md) | Full proposal from one-paragraph RFQ in 30 seconds |
 | [Morning brief](./samples/chief-brief-2026-04-18.md) | CHIEF — 90-second executive brief from live operator data |
 | [Post-call debrief](./samples/debrief-gulf-coast-logistics-2026-04-18.md) | Action items and follow-up draft from raw call notes |
 
