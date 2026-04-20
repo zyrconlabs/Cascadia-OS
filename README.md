@@ -48,17 +48,39 @@ bash demo.sh
 
 ## See it working
 
-**One-click install — done in under a minute:**
+**One command installs everything — under a minute:**
 ![Install](./assets/install.png)
+![Install Complete](./assets/install_complete.png)
 
-**Watchdog running — all 11 kernel components healthy:**
-![Watchdog](./assets/watchdog.png)
-
-**PRISM dashboard — live system status:**
+**PRISM dashboard — all operators online, SwiftBar live status:**
 ![PRISM Dashboard](./assets/prism.png)
 
-**Crash recovery — 21/21 tests passed:**
-![Crash Recovery](./assets/crash_recovery.png)
+**Settings — hardware detection, Local AI recommended automatically:**
+![Settings](./assets/settings.png)
+
+**Health & Observability — infrastructure and operators, all green:**
+![Health](./assets/health.png)
+
+**Real metrics from session — 15 runs, $0.017, zero failures:**
+![Observability](./assets/observability.png)
+
+**Approval gates — nothing sensitive executes without human sign-off:**
+![Approvals](./assets/approvals.png)
+
+**Operators at work — Debrief extracting action items from call notes:**
+![Debrief](./assets/debrief.png)
+
+**CHIEF morning brief — RECON dashboard showing 67 rows, 283 research cycles:**
+![RECON Dashboard](./assets/recon_dashboard.png)
+
+**Demo — lead arrives, approval gate fires, system crashes, resumes exactly where it left off:**
+![Demo](./assets/demo_complete.png)
+
+**All 11 kernel components ready — one watchdog, one FLINT, stable:**
+![Watchdog](./assets/watchdog.png)
+
+**Local inference — Apple M1 running at full GPU acceleration, no cloud:**
+![GPU Inference](./assets/gpu_inference.png)
 
 ---
 
@@ -98,7 +120,6 @@ Cascadia OS coordinates AI operators that:
 ### Durability layer
 | Module | What it does |
 |---|---|
-| VAULT | SQLite-backed memory, context and state across sessions |
 | VAULT | SQLite-backed memory, context and state across sessions and crashes |
 | CURTAIN | AES-256-GCM field encryption, HMAC-SHA256 envelope signing |
 
@@ -158,7 +179,6 @@ Full documentation: [PRISM_MANUAL.md](./PRISM_MANUAL.md)
 |---|---|---|---|
 | RECON | Intelligence | Production | Autonomous web research, extracts contacts to CSV |
 | SCOUT | Inbound | Production | Chat widget, qualifies leads, routes to workflow |
-| QUOTE | Sales | Beta  | RFQ to proposal in under 5 minutes |
 | QUOTE | Sales | Beta | RFQ to proposal in under 5 minutes |
 | CHIEF | Intelligence | Beta | Daily brief synthesizing all operators |
 | Aurelia | Executive | Beta | EA — commitments, priorities, weekly CEO report |
