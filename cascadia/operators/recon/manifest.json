@@ -1,17 +1,25 @@
 {
-  "id":            "recon",
-  "name":          "RECON",
-  "version":       "1.0.0",
-  "port":          8002,
-  "entry_point":   "cascadia.operators.recon.dashboard",
-  "health_path":   "/api/health",
-  "ui_path":       "/",
-  "description":   "Outbound opportunity scanning and research agent",
-  "prism_card":    true,
-  "autostart":     true,
-  "vault_dir":     "recon",
-  "dependencies":  ["flask", "requests", "ddgs"],
-  "capabilities":  ["research.outbound", "lead.scan", "report.csv"],
+  "id": "recon",
+  "name": "RECON",
+  "version": "1.0.0",
+  "port": 8002,
+  "description": "Outbound opportunity scanning and research agent",
+  "start_cmd": "dashboard.py",
+  "health_path": "/api/health",
+  "ui_path": "/",
+  "prism_card": true,
+  "autostart": true,
+  "vault_dir": "recon",
+  "dependencies": [
+    "flask",
+    "requests",
+    "ddgs"
+  ],
+  "capabilities": [
+    "research.outbound",
+    "lead.scan",
+    "report.csv"
+  ],
   "autonomy_level": "assistive",
-  "author":        "Zyrcon Labs"
+  "author": "Zyrcon Labs"
 }

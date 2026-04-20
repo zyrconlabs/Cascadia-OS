@@ -6,7 +6,7 @@ Remove the folder, it's gone. The manager has zero hardcoded operator knowledge.
 
 Design contract:
   - Scans OPERATORS_DIR for subdirectories containing manifest.json
-  - Respects manifest fields: autostart, port, health_path, entry_point
+  - Respects manifest fields: autostart, port, health_path, start_cmd
   - Supervises with restart-on-crash and health polling
   - Shuts down cleanly when stop() is called
 
@@ -16,6 +16,7 @@ If this file grows complex, that is a design error.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -24,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 
-OPERATORS_DIR = Path(__file__).parent.parent / "operators"
+OPERATORS_DIR   = Path(__file__).parent.parent / "operators"
 HEALTH_INTERVAL = 10       # seconds between health checks
 RESTART_DELAY   = 5        # seconds before restarting a crashed operator
 STARTUP_GRACE   = 8        # seconds to wait after start before first health check
@@ -39,34 +40,37 @@ class OperatorProcess:
         self.name         = manifest.get("name", self.id.upper())
         self.port         = manifest["port"]
         self.health_path  = manifest.get("health_path", "/api/health")
-        self.entry_point  = manifest.get("entry_point")   # module path e.g. cascadia.operators.recon.dashboard
-        self.start_script = manifest.get("start_cmd")     # fallback: legacy script name
+        self.start_cmd    = manifest.get("start_cmd", "dashboard.py")
         self.operator_dir = operator_dir
         self.logger       = logger
         self.proc: Optional[subprocess.Popen] = None
         self._stopped     = False
 
-    def _build_cmd(self) -> list[str]:
-        if self.entry_point:
-            return [sys.executable, "-m", self.entry_point]
-        if self.start_script:
-            script = self.operator_dir / self.start_script.replace("python3 ", "").strip()
+    def _build_cmd(self) -> list:
+        # start_cmd is a script filename relative to operator_dir
+        script = self.operator_dir / self.start_cmd.replace("python3 ", "").strip()
+        if script.exists():
             return [sys.executable, str(script)]
-        raise ValueError(f"Operator {self.id}: manifest has no entry_point or start_cmd")
+        raise ValueError(f"Operator {self.id}: script not found at {script}")
+
+    def _log_file(self):
+        log_dir = self.operator_dir.parent.parent.parent / "data" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        return open(str(log_dir / f"{self.id}.log"), "a")
 
     def start(self) -> None:
         cmd = self._build_cmd()
         self.logger.info("OperatorManager starting %s (port %s)", self.name, self.port)
+        log = self._log_file()
         self.proc = subprocess.Popen(
             cmd,
             cwd=str(self.operator_dir),
             env=self._env(),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log,
+            stderr=log,
         )
 
     def _env(self) -> dict:
-        import os
         env = os.environ.copy()
         env["CASCADIA_PORT"] = str(self.port)
         env["CASCADIA_OPERATOR_ID"] = self.id
@@ -103,7 +107,7 @@ class OperatorManager:
 
     def __init__(self, logger) -> None:
         self.logger    = logger
-        self.operators: dict[str, OperatorProcess] = {}
+        self.operators: dict = {}
         self._thread: Optional[threading.Thread] = None
         self._running  = False
 
@@ -120,13 +124,16 @@ class OperatorManager:
             try:
                 manifest = json.loads(manifest_path.read_text())
                 op_id = manifest["id"]
+                if not manifest.get("autostart", False):
+                    self.logger.info("OperatorManager skipping %s (autostart: false)", op_id)
+                    continue
                 self.operators[op_id] = OperatorProcess(manifest, op_dir, self.logger)
                 self.logger.info("OperatorManager discovered: %s (port %s)", manifest.get("name", op_id), manifest.get("port"))
             except Exception as e:
                 self.logger.error("OperatorManager: bad manifest at %s — %s", op_dir, e)
 
     def start_all(self) -> None:
-        """Start all operators with autostart: true."""
+        """Start all discovered operators."""
         for op in self.operators.values():
             try:
                 op.start()
@@ -147,7 +154,6 @@ class OperatorManager:
                     continue
                 if not op.is_alive():
                     if op.is_healthy():
-                        self.logger.info("OperatorManager: %s process gone but port healthy — skipping restart", op.name)
                         continue
                     self.logger.warning("OperatorManager: %s exited — restarting in %ss", op.name, RESTART_DELAY)
                     time.sleep(RESTART_DELAY)

@@ -3,16 +3,8 @@
   "name": "QUOTE",
   "version": "1.0.0",
   "port": 8007,
-  "description": "AI proposal and RFQ generator",
-  "entry": "dashboard.py",
+  "start_cmd": "dashboard.py",
   "health_path": "/api/health",
-  "chat_path": "/api/chat",
-  "status_path": "/api/status",
   "autostart": true,
-  "dependencies": [
-    "flask>=3.0.0",
-    "flask-cors>=4.0.0",
-    "requests>=2.31.0"
-  ],
   "author": "Zyrcon Labs"
 }
