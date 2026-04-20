@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════
 # Cascadia OS — full stack startup
-# Starts: Cascadia OS (11 components) + llama.cpp + RECON + QUOTE + CHIEF
+# Starts: llama.cpp + Cascadia OS (11 components) + all 8 operators
 # ═══════════════════════════════════════════════════════════════════════════
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
@@ -53,7 +53,7 @@ fi
 
 if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     echo "▸ Starting Cascadia OS..."
-    PYTHON="${REPO}/.venv/bin/python"
+    PYTHON="${REPO}/.venv/bin/python3"
     [[ ! -f "$PYTHON" ]] && PYTHON="python3"
     "$PYTHON" -m cascadia.kernel.watchdog --config config.json >> data/logs/flint.log 2>&1 &
     sleep 10
@@ -61,29 +61,7 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
 fi
 
 # ── 3. Operators ──────────────────────────────────────────────────────────
-# RECON
-if curl -sf http://127.0.0.1:8002/api/health > /dev/null 2>&1; then
-    echo "✓ RECON already running"
-else
-    echo "▸ Starting RECON..."
-    mkdir -p data/vault/operators/recon/tasks/current
-    if [[ ! -f data/vault/operators/recon/tasks/current/task.md ]]; then
-        cp cascadia/operators/recon/tasks/current/task.md data/vault/operators/recon/tasks/current/ 2>/dev/null || true
-    fi
-    "$PYTHON" cascadia/operators/recon/dashboard.py >> data/logs/recon.log 2>&1 &
-    sleep 2
-    curl -sf http://127.0.0.1:8002/api/health > /dev/null && echo "✓ RECON ready" || echo "✗ RECON failed"
-fi
 
-# SCOUT
-if curl -sf http://127.0.0.1:7002/api/health > /dev/null 2>&1; then
-    echo "✓ SCOUT already running"
-else
-    echo "▸ Starting SCOUT..."
-    "$PYTHON" cascadia/operators/scout/scout_server.py >> data/logs/scout.log 2>&1 &
-    sleep 2
-    curl -sf http://127.0.0.1:7002/api/health > /dev/null && echo "✓ SCOUT ready" || echo "✗ SCOUT failed"
-fi
 
 # ── 3. Operators ──────────────────────────────────────────────────────────
 PYTHON="${REPO}/.venv/bin/python3"
