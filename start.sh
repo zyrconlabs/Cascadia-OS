@@ -89,32 +89,9 @@ fi
 PYTHON="${REPO}/.venv/bin/python3"
 [[ ! -f "$PYTHON" ]] && PYTHON="python3"
 
-declare -A OPERATORS=(
-    ["recon"]="8002"
-    ["scout"]="7002"
-    ["quote"]="8007"
-    ["chief"]="8006"
-    ["aurelia"]="8009"
-    ["debrief"]="8008"
-    ["competition-researcher"]="8005"
-    ["jr-programmer"]="8004"
-)
-
-declare -A OPERATOR_ENTRY=(
-    ["recon"]="dashboard.py"
-    ["scout"]="scout_server.py"
-    ["quote"]="dashboard.py"
-    ["chief"]="dashboard.py"
-    ["aurelia"]="dashboard.py"
-    ["debrief"]="dashboard.py"
-    ["competition-researcher"]="dashboard.py"
-    ["jr-programmer"]="dashboard.py"
-)
-
-for op in "${!OPERATORS[@]}"; do
-    port="${OPERATORS[$op]}"
-    entry="${OPERATOR_ENTRY[$op]}"
-    op_path="$REPO/cascadia/operators/$op/$entry"
+start_operator() {
+    local op="$1" port="$2" entry="$3"
+    local op_path="$REPO/cascadia/operators/$op/$entry"
     if curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null 2>&1; then
         echo "✓ $op already running"
     elif [[ -f "$op_path" ]]; then
@@ -122,7 +99,16 @@ for op in "${!OPERATORS[@]}"; do
         sleep 1
         curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null             && echo "✓ $op started"             || echo "✗ $op failed — check data/logs/${op}.log"
     fi
-done
+}
+
+start_operator "recon"                  "8002" "dashboard.py"
+start_operator "scout"                  "7002" "scout_server.py"
+start_operator "quote"                  "8007" "dashboard.py"
+start_operator "chief"                  "8006" "dashboard.py"
+start_operator "aurelia"                "8009" "dashboard.py"
+start_operator "debrief"               "8008" "dashboard.py"
+start_operator "competition-researcher" "8005" "dashboard.py"
+start_operator "jr-programmer"          "8004" "dashboard.py"
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
