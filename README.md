@@ -1,18 +1,18 @@
 # Cascadia OS
 
-> The execution layer for AI operators that actually finish the work.
+> **The execution layer for AI operators that actually finish the work.**
 
 ---
 
-Before I built AI operators, I built machines that could not be allowed to fail.
-
 I was five years old the first time I took apart a telephone. Not for school. Because I needed to understand how the sound got through the wire.
 
-Decades later — after aerospace engineering, industrial automation, and building always-on systems under real heat, cost, and security constraints — I kept running into the same problem: AI that looked impressive in demos and became unreliable the moment it touched real work.
+Before I built AI operators, I built machines that could not be allowed to fail.
+
+Decades later — after aerospace engineering, industrial automation, large-scale warehouse and government infrastructure work, and building always-on systems under real heat, cost, and security constraints — I kept running into the same problem: AI that looked impressive in demos and became unreliable the moment it touched real work.
 
 I didn't want a chatbot. I wanted an operator I could trust. Something that remembers, asks before acting, resumes after failure, and stays bounded when the stakes are real.
 
-That's what this is. → [Full story](STORY.md)
+**That's what this is.** → [Full story](./STORY.md)
 
 ---
 
@@ -21,6 +21,7 @@ That's what this is. → [Full story](STORY.md)
 - **Durable by design** — resumes from committed state after failure
 - **Human-controlled** — approval gates block risky actions until explicitly approved
 - **Local-first economics** — useful on local hardware, with cloud used only when it is worth it
+- **Cloud-optional** — runs locally first, with external models as a choice rather than a requirement
 
 ---
 
@@ -32,26 +33,25 @@ curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install
 
 Installs Homebrew (if needed), SwiftBar, Cascadia OS, registers a login agent, and links the menu bar controller. Everything starts automatically at boot. No manual steps.
 
-> Requires: Python 3.11+ and git. Everything else is handled automatically.
+> **Requires:** Python 3.11+ and git. Everything else is handled automatically.
 
-→ [Full quickstart guide](QUICKSTART.md)
+→ [Full quickstart guide](./QUICKSTART.md)
 
 ---
 
-## Run the Demo
+## 🎬 Run the Demo
 
-After installing, run the investor demo — ~90 seconds end-to-end:
+After installing, run the demo — ~90 seconds end-to-end:
 
 ```bash
 bash demo.sh
 ```
 
-What you'll see:
-
+**What you'll see:**
 1. Lead arrives → workflow starts automatically
 2. System classifies, enriches, drafts a response
 3. Approval gate fires — email held until a human approves
-4. System crashes mid-run (deliberate)
+4. **System crashes mid-run** (deliberate)
 5. Restarts — resumes from exact same step, zero duplication
 6. Approval given → email sent → CRM logged → complete
 
@@ -59,13 +59,67 @@ What you'll see:
 
 ## See it working
 
-One-click install — done in under a minute: ![Install](assets/install.gif)
+Built-in screenshots and terminal captures live in [`assets/`](./assets/).
 
-Watchdog running — all 13 components healthy: ![Watchdog](assets/watchdog.png)
+**One command installs everything:**
 
-PRISM dashboard — live system status: ![PRISM Dashboard](assets/prism.png)
+![Install](./assets/install.png)
+![Install Complete](./assets/install_complete.png)
 
-Crash recovery — 21/21 tests passed: ![Crash Recovery](assets/tests.png)
+**PRISM dashboard and system setup:**
+
+![PRISM Dashboard](./assets/prism.png)
+![Settings](./assets/settings.png)
+
+**Health, observability, and approvals:**
+
+![Health](./assets/health.png)
+![Observability](./assets/observability.png)
+![Approvals](./assets/approvals.png)
+
+**Operators in action:**
+
+![CHIEF](./assets/chief.png)
+![Debrief](./assets/debrief.png)
+![Recon Dashboard](./assets/recon_dashboard.png)
+
+**Crash recovery and durability:**
+
+![Demo Start](./assets/demo_start.png)
+![Crash Recovery](./assets/crash_recovery.png)
+![Demo Complete](./assets/demo_complete.png)
+
+**Kernel and local inference:**
+
+![Watchdog](./assets/watchdog.png)
+![Kernel Health](./assets/kernel_health.png)
+![GPU Inference](./assets/gpu_inference.png)
+
+---
+
+## Asset library
+
+All built-in assets currently in the repo:
+
+| Asset | What it shows |
+|---|---|
+| [`assets/install.png`](./assets/install.png) | Fresh installer run from terminal |
+| [`assets/install_complete.png`](./assets/install_complete.png) | Full stack started, PRISM opened, boot automation confirmed |
+| [`assets/prism.png`](./assets/prism.png) | Main PRISM dashboard with operators online |
+| [`assets/settings.png`](./assets/settings.png) | Hardware detection and AI mode selection |
+| [`assets/health.png`](./assets/health.png) | Health & observability page for infrastructure and operators |
+| [`assets/observability.png`](./assets/observability.png) | Session metrics, cost, token usage, run counts |
+| [`assets/approvals.png`](./assets/approvals.png) | Approval gate UI with medium/high-risk actions |
+| [`assets/chief.png`](./assets/chief.png) | CHIEF view with Almanac help pane |
+| [`assets/debrief.png`](./assets/debrief.png) | Debrief operator extracting next steps from call notes |
+| [`assets/recon_dashboard.png`](./assets/recon_dashboard.png) | RECON worker dashboard with rows, cycles, and recent results |
+| [`assets/demo_start.png`](./assets/demo_start.png) | Demo starts, inbound lead arrives, approval gate fires |
+| [`assets/crash_recovery.png`](./assets/crash_recovery.png) | Deliberate mid-run crash followed by correct resume behavior |
+| [`assets/demo_complete.png`](./assets/demo_complete.png) | Demo completes with approval, email dispatch, and CRM log |
+| [`assets/watchdog.png`](./assets/watchdog.png) | Full stack startup with services and ports |
+| [`assets/watchdog2.png`](./assets/watchdog2.png) | Menu bar control and PRISM quick actions |
+| [`assets/kernel_health.png`](./assets/kernel_health.png) | Direct component health and FLINT/watchdog process view |
+| [`assets/gpu_inference.png`](./assets/gpu_inference.png) | Local Apple Silicon inference and power usage |
 
 ---
 
@@ -75,10 +129,10 @@ These sample outputs were generated on a MacBook Air M1 using a local Qwen 3B ba
 
 | Output | What it shows |
 |---|---|
-| [Houston warehouse leads](samples/houston_warehouse_leads.md) | RECON — 25+ search cycles, hallucination-filtered |
-| [Gulf Coast Logistics proposal](samples/gulf_coast_logistics_proposal.md) | Full proposal from one-paragraph RFQ in 30 seconds |
-| [Morning brief](samples/morning_brief.md) | CHIEF — 90-second executive brief from live operator data |
-| [Post-call debrief](samples/post_call_debrief.md) | Action items and follow-up draft from raw call notes |
+| [Houston warehouse leads](./samples/recon-houston-warehouse-leads-2026-04-18.csv) | RECON — 25+ search cycles, hallucination-filtered |
+| [Gulf Coast Logistics proposal](./samples/proposal-Gulf-Coast-Logistics-2026-04-18.md) | Full proposal from one-paragraph RFQ in 30 seconds |
+| [Morning brief](./samples/chief-brief-2026-04-18.md) | CHIEF — 90-second executive brief from live operator data |
+| [Post-call debrief](./samples/debrief-gulf-coast-logistics-2026-04-18.md) | Action items and follow-up draft from raw call notes |
 
 ---
 
@@ -97,23 +151,18 @@ Cascadia OS coordinates AI operators that:
 ## Architecture
 
 ### Control plane
-
 | Module | What it does |
 |---|---|
 | FLINT | Process supervision, tiered startup, health polling, restart/backoff |
 | Watchdog | External FLINT liveness monitor — lives outside the supervision tree |
 
 ### Durability layer
-
 | Module | What it does |
 |---|---|
-| run_store | Durable run records with process_state + run_state split |
-| step_journal | Append-only step log — source of truth for resume |
-| resume_manager | Safe resume-point calculation from committed steps |
-| idempotency | SHA-256 keyed side effect records, UNIQUE DB constraint |
+| VAULT | SQLite-backed memory, context and state across sessions and crashes |
+| CURTAIN | AES-256-GCM field encryption, HMAC-SHA256 envelope signing |
 
 ### Named components
-
 | Name | Port | What it does |
 |---|---:|---|
 | CREW | 5100 | Operator registry with wildcard capability validation |
@@ -148,11 +197,10 @@ Tested in `tests/test_crash_recovery.py`. Not just claimed.
 
 Open `http://localhost:6300/` while Cascadia is running.
 
-Surfaces: Live operator status · Run timeline · Approvals · Observability · Studio · Admin
+**Surfaces:** Live operator status · Run timeline · Approvals · Observability · Studio · Admin
 
-API:
-
-```text
+**API:**
+```bash
 GET  :6300/api/prism/overview    # Full system snapshot
 GET  :6300/api/prism/runs        # Live run states
 GET  :6300/api/prism/approvals   # Pending human decisions
@@ -160,7 +208,7 @@ POST :6300/api/prism/approve     # Approve or deny a gated action
 GET  :6300/api/prism/crew        # Active operators
 ```
 
-Full documentation: [PRISM Manual](PRISM_MANUAL.md)
+Full documentation: [PRISM_MANUAL.md](./PRISM_MANUAL.md)
 
 ---
 
@@ -170,12 +218,12 @@ Full documentation: [PRISM Manual](PRISM_MANUAL.md)
 |---|---|---|---|
 | RECON | Intelligence | Production | Autonomous web research, extracts contacts to CSV |
 | SCOUT | Inbound | Production | Chat widget, qualifies leads, routes to workflow |
-| QUOTE | Sales | Production | RFQ to proposal in under 5 minutes |
-| CHIEF | Intelligence | Production | Daily brief synthesizing all operators |
+| QUOTE | Sales | Beta | RFQ to proposal in under 5 minutes |
+| CHIEF | Intelligence | Beta | Daily brief synthesizing all operators |
 | Aurelia | Executive | Beta | EA — commitments, priorities, weekly CEO report |
 | Debrief | Sales | Beta | Post-call logger — action items, follow-up drafts |
 
-Operator registry: [cascadia/operators/registry.json](cascadia/operators/registry.json)
+Operator registry: [cascadia/operators/registry.json](./cascadia/operators/registry.json)
 
 ---
 
@@ -192,13 +240,13 @@ Operator registry: [cascadia/operators/registry.json](cascadia/operators/registr
 
 ## Docs
 
-- [Quickstart](QUICKSTART.md)
-- [Manual](MANUAL.md)
-- [PRISM Manual](PRISM_MANUAL.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security Policy](SECURITY.md)
-- [Story behind the project](STORY.md)
+- [Quickstart](./QUICKSTART.md)
+- [Manual](./MANUAL.md)
+- [PRISM Manual](./PRISM_MANUAL.md)
+- [Contributing](./CONTRIBUTING.md)
+- [Security Policy](./SECURITY.md)
+- [Story behind the project](./STORY.md)
 
 ---
 
-Built in Houston, Texas — [Zyrcon Labs](https://zyrcon.ai/)
+*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs)*
