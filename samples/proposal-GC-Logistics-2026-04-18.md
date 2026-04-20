@@ -12,7 +12,7 @@
 
 ## Executive Summary
 
-We are excited to partner with Gulf Coast Logistics for your warehouse design project. Our team has deep expertise in industrial design and layout, and we are committed to delivering a state-of-the-art facility that meets your specific needs and exceeds your expectations. With a focus on efficiency and flexibility, we will ensure that your new warehouse is optimized for your operations and future growth.
+We are excited to partner with GC Logistics for your warehouse design project. Our team has deep expertise in industrial design and layout, and we are committed to delivering a state-of-the-art facility that meets your specific needs and exceeds your expectations. With a focus on efficiency and flexibility, we will ensure that your new warehouse is optimized for your operations and future growth.
 
 ## Understanding of Your Needs
 
