@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cascadia OS — System Ready</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f5f7;--white:#ffffff;--ink:#1d1d1f;--ink2:#424245;--ink3:#86868b;
+  --border:rgba(0,0,0,0.08);--radius:14px;
+  --green:#1d9e75;--green-bg:#e1f5ee;--green-text:#085041;
+  --yellow:#ba7517;--yellow-bg:#faeeda;--yellow-text:#633806;
+  --red:#e24b4a;--red-bg:#fcebeb;--red-text:#791f1f;
+  --blue:#0071e3;--gray:#6e6e73;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  padding:40px 20px 60px;-webkit-font-smoothing:antialiased}
+
+.header{text-align:center;margin-bottom:48px}
+.logo{font-family:'DM Serif Display',serif;font-size:1.5rem;font-weight:400;
+  color:var(--ink);margin-bottom:8px;letter-spacing:-.01em}
+.logo span{background:linear-gradient(90deg,#4facfe,#a78bfa);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.headline{font-family:'DM Serif Display',serif;font-size:2.8rem;font-weight:300;
+  line-height:1.1;letter-spacing:-.02em;margin-bottom:12px}
+.headline em{font-style:italic}
+.sub{font-size:1rem;color:var(--ink3);font-weight:300;line-height:1.6}
+
+.card{background:var(--white);border-radius:var(--radius);
+  border:0.5px solid var(--border);overflow:hidden;
+  width:100%;max-width:680px;margin-bottom:16px;
+  box-shadow:0 2px 12px rgba(0,0,0,.04)}
+
+.group-label{font-size:.68rem;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink3);
+  padding:14px 20px 8px;background:var(--bg)}
+
+.check-row{display:grid;grid-template-columns:20px 1fr auto;
+  gap:12px;align-items:flex-start;padding:14px 20px;
+  border-bottom:0.5px solid var(--border)}
+.check-row:last-child{border-bottom:none}
+
+.check-icon{width:20px;height:20px;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.icon-ok{background:var(--green-bg)}
+.icon-ok svg{stroke:var(--green);width:11px;height:11px}
+.icon-warn{background:var(--yellow-bg)}
+.icon-warn svg{stroke:var(--yellow);width:11px;height:11px}
+.icon-error{background:var(--red-bg)}
+.icon-error svg{stroke:var(--red);width:11px;height:11px}
+.icon-loading{background:#f1efe8}
+.icon-loading::after{content:'';width:8px;height:8px;border-radius:50%;
+  border:1.5px solid #aeaeb2;border-top-color:#424245;
+  animation:spin .7s linear infinite;display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.check-body{}
+.check-label{font-size:.9rem;font-weight:500;color:var(--ink);margin-bottom:2px}
+.check-detail{font-size:.78rem;color:var(--ink3);font-weight:300;line-height:1.5}
+
+.check-badge{font-size:.68rem;font-weight:600;padding:3px 10px;border-radius:99px;
+  white-space:nowrap;align-self:flex-start;margin-top:2px}
+.badge-ok{background:var(--green-bg);color:var(--green-text)}
+.badge-warn{background:var(--yellow-bg);color:var(--yellow-text)}
+.badge-error{background:var(--red-bg);color:var(--red-text)}
+.badge-loading{background:#f1efe8;color:#86868b}
+
+.summary-card{background:var(--white);border-radius:var(--radius);
+  border:0.5px solid var(--border);padding:32px 28px;
+  width:100%;max-width:680px;text-align:center;margin-bottom:16px;
+  display:none}
+.summary-card.visible{display:block}
+.summary-icon{width:64px;height:64px;border-radius:50%;margin:0 auto 16px;
+  display:flex;align-items:center;justify-content:center}
+.summary-icon.all-ok{background:var(--green-bg)}
+.summary-icon.has-errors{background:var(--red-bg)}
+.summary-icon.has-warnings{background:var(--yellow-bg)}
+.summary-icon svg{width:28px;height:28px}
+.summary-title{font-family:'DM Serif Display',serif;font-size:1.8rem;
+  font-weight:300;margin-bottom:8px;letter-spacing:-.01em}
+.summary-sub{font-size:.9rem;color:var(--ink3);font-weight:300;
+  margin-bottom:28px;line-height:1.6}
+
+.btn-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn-primary{padding:13px 28px;border-radius:980px;background:var(--ink);
+  color:#fff;font-size:.9rem;font-weight:500;text-decoration:none;
+  border:none;cursor:pointer;transition:all .2s;letter-spacing:-.01em}
+.btn-primary:hover{background:#333}
+.btn-secondary{padding:13px 28px;border-radius:980px;background:transparent;
+  color:var(--blue);font-size:.9rem;font-weight:400;text-decoration:none;
+  border:1.5px solid rgba(0,113,227,.3);cursor:pointer;transition:all .2s}
+.btn-secondary:hover{background:rgba(0,113,227,.05)}
+
+.refresh-note{font-size:.75rem;color:var(--ink3);margin-top:20px;text-align:center}
+.dot-pulse{display:inline-flex;gap:4px;align-items:center;margin-left:6px}
+.dot-pulse span{width:4px;height:4px;border-radius:50%;background:var(--ink3);
+  animation:dp 1.2s ease-in-out infinite}
+.dot-pulse span:nth-child(2){animation-delay:.2s}
+.dot-pulse span:nth-child(3){animation-delay:.4s}
+@keyframes dp{0%,80%,100%{opacity:.2}40%{opacity:1}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">Zyrcon<span>.</span></div>
+  <h1 class="headline">Setting up your<br><em>AI work system</em></h1>
+  <p class="sub">Checking all components — this takes a few seconds</p>
+</div>
+
+<div id="summary-card" class="summary-card"></div>
+<div id="checks-container"></div>
+<p class="refresh-note" id="refresh-note">
+  Checking<span class="dot-pulse"><span></span><span></span><span></span></span>
+</p>
+
+<script>
+const GROUPS = ['Infrastructure','Kernel','Foundation','Runtime','Dashboard'];
+
+const GROUP_INFO = {
+  'Infrastructure': 'Required software and AI model',
+  'Kernel':         'Core process supervisor',
+  'Foundation':     'Security, memory, and encryption',
+  'Runtime':        'Routing, workflows, and communication',
+  'Dashboard':      'PRISM control panel',
+};
+
+let lastData = null;
+let allOk = false;
+
+function icon(status) {
+  if (status === 'loading') return '<div class="check-icon icon-loading"></div>';
+  if (status === 'ok') return `<div class="check-icon icon-ok">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg></div>`;
+  if (status === 'warning') return `<div class="check-icon icon-warn">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round">
+      <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+    </svg></div>`;
+  return `<div class="check-icon icon-error">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="15" y1="9" x2="9" y2="15"/>
+      <line x1="9" y1="9" x2="15" y2="15"/>
+    </svg></div>`;
+}
+
+function badge(status) {
+  const labels = {ok:'Ready', warning:'Warning', error:'Failed', loading:'Checking'};
+  const cls = {ok:'badge-ok', warning:'badge-warn', error:'badge-error', loading:'badge-loading'};
+  return `<span class="check-badge ${cls[status]||'badge-loading'}">${labels[status]||'Checking'}</span>`;
+}
+
+function renderLoading() {
+  const LOADING_CHECKS = [
+    {label:'Python',group:'Infrastructure'},
+    {label:'llama.cpp',group:'Infrastructure'},
+    {label:'AI Model',group:'Infrastructure'},
+    {label:'AI Inference',group:'Infrastructure'},
+    {label:'SwiftBar Menu Bar',group:'Infrastructure'},
+    {label:'FLINT',group:'Kernel'},
+    {label:'CREW',group:'Foundation'},
+    {label:'VAULT',group:'Foundation'},
+    {label:'SENTINEL',group:'Foundation'},
+    {label:'CURTAIN',group:'Foundation'},
+    {label:'BEACON',group:'Runtime'},
+    {label:'STITCH',group:'Runtime'},
+    {label:'VANGUARD',group:'Runtime'},
+    {label:'HANDSHAKE',group:'Runtime'},
+    {label:'BELL',group:'Runtime'},
+    {label:'ALMANAC',group:'Runtime'},
+    {label:'PRISM',group:'Dashboard'},
+  ];
+  renderChecks(LOADING_CHECKS.map(c => ({...c, status:'loading', detail:'Checking...'})));
+}
+
+function renderChecks(checks) {
+  const container = document.getElementById('checks-container');
+  const byGroup = {};
+  checks.forEach(c => {
+    if (!byGroup[c.group]) byGroup[c.group] = [];
+    byGroup[c.group].push(c);
+  });
+
+  container.innerHTML = GROUPS.filter(g => byGroup[g]).map(group => `
+    <div class="card">
+      <div class="group-label">${group} — ${GROUP_INFO[group]||''}</div>
+      ${byGroup[group].map(c => `
+        <div class="check-row">
+          ${icon(c.status)}
+          <div class="check-body">
+            <div class="check-label">${c.label}</div>
+            <div class="check-detail">${c.detail||''}</div>
+          </div>
+          ${badge(c.status)}
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+function renderSummary(summary) {
+  const card = document.getElementById('summary-card');
+  if (!summary) { card.className = 'summary-card'; return; }
+
+  const allReady = summary.ready;
+  const hasErrors = summary.errors > 0;
+  const hasWarnings = summary.warnings > 0;
+
+  let iconClass = allReady ? (hasWarnings ? 'has-warnings' : 'all-ok') : 'has-errors';
+  let iconSvg = allReady
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="${hasWarnings?'#ba7517':'#1d9e75'}" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="#e24b4a" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+
+  let title = allReady ? "You're ready." : "Some components need attention.";
+  let sub = allReady
+    ? `${summary.ok} components healthy${hasWarnings ? `, ${summary.warnings} warning${summary.warnings>1?'s':''}` : ''}. Cascadia OS is running.`
+    : `${summary.ok} of ${summary.total} checks passed. Fix the issues above and refresh.`;
+
+  let buttons = allReady
+    ? `<div class="btn-row">
+        <a href="/" class="btn-primary">Open PRISM Dashboard →</a>
+        <a href="/api/prism/health-check" class="btn-secondary" onclick="this.textContent='Refreshing...';poll()">Refresh Status</a>
+       </div>`
+    : `<div class="btn-row">
+        <button class="btn-secondary" onclick="this.textContent='Checking...';poll()">Re-check</button>
+        <a href="https://github.com/zyrconlabs/cascadia-os#troubleshooting" target="_blank" class="btn-secondary">Troubleshooting →</a>
+       </div>`;
+
+  card.innerHTML = `
+    <div class="summary-icon ${iconClass}">${iconSvg}</div>
+    <div class="summary-title">${title}</div>
+    <div class="summary-sub">${sub}</div>
+    ${buttons}
+  `;
+  card.className = 'summary-card visible';
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/api/prism/health-check');
+    const d = await r.json();
+    lastData = d;
+
+    const checks = Object.values(d.checks).map(c => ({
+      label:  c.label,
+      status: c.status,
+      detail: c.detail,
+      group:  c.group,
+    }));
+
+    renderChecks(checks);
+    renderSummary(d.summary);
+
+    const note = document.getElementById('refresh-note');
+    if (d.summary.ready) {
+      note.textContent = `Last checked ${new Date().toLocaleTimeString()} — all systems ready`;
+      allOk = true;
+      // Auto-redirect to PRISM after 3s if everything is green
+      setTimeout(() => {
+        if (allOk) window.location.href = '/';
+      }, 4000);
+    } else {
+      note.innerHTML = `Refreshing in 3s<span class="dot-pulse"><span></span><span></span><span></span></span>`;
+      setTimeout(poll, 3000);
+    }
+  } catch(e) {
+    // PRISM not yet responding — try again
+    const note = document.getElementById('refresh-note');
+    note.innerHTML = `Waiting for Cascadia<span class="dot-pulse"><span></span><span></span><span></span></span>`;
+    setTimeout(poll, 2000);
+  }
+}
+
+// Start
+renderLoading();
+poll();
+</script>
+</body>
+</html>
