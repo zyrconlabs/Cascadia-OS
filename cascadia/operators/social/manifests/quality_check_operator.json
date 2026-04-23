@@ -1,0 +1,16 @@
+{
+  "id": "quality_check_operator",
+  "version": "1.0.0",
+  "name": "Quality Check Operator",
+  "type": "skill",
+  "capabilities": [
+    "content.quality_check"
+  ],
+  "required_dependencies": [
+    "content_composer_operator"
+  ],
+  "requested_permissions": [],
+  "autonomy_level": "assistive",
+  "health_hook": "/health",
+  "description": "Scores every platform draft across 8 signals (hook strength, specificity, CTA clarity, value, platform fit, viral potential, brand consistency, no filler). Produces per-post scores and a campaign score. Fails back to content engine if any post or the campaign average is below 80%. Hard fails after 3 iterations."
+}

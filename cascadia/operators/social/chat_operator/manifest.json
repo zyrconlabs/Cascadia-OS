@@ -1,0 +1,22 @@
+{
+  "id": "social_chat_operator",
+  "version": "1.0.0",
+  "name": "Social Chat Operator",
+  "type": "service",
+  "port": 8011,
+  "start_cmd": "server.py",
+  "health_path": "/api/health",
+  "autostart": true,
+  "capabilities": [
+    "campaign.chat",
+    "campaign.approve",
+    "campaign.decline",
+    "campaign.edit"
+  ],
+  "required_dependencies": [],
+  "requested_permissions": [],
+  "autonomy_level": "assistive",
+  "health_hook": "/api/health",
+  "description": "Conversational campaign review interface. Generates campaign posts, presents them as approval cards in the chat feed, handles inline edits and decline-with-note, re-runs QC on changes, and resubmits the full package for approval. Pushes state to PRISM approval tab simultaneously.",
+  "author": "Zyrcon Labs"
+}

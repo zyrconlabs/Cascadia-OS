@@ -17,7 +17,7 @@
       "id": "scout",
       "name": "SCOUT",
       "category": "inbound",
-      "description": "Inbound lead capture and qualification engine. Embeds a chat widget on any webpage. Qualifies leads via conversation and routes them into the Cascadia workflow engine.",
+      "description": "Inbound lead capture and qualification engine. Embeds a chat widget on any webpage. Qualifies leads via conversation and routes them into the Zyrcon workflow engine.",
       "status": "production",
       "port": 7002,
       "autonomy": "semi-autonomous",
@@ -32,7 +32,8 @@
       "status": "production",
       "port": 8007,
       "autonomy": "assistive",
-      "sample_output": "samples/proposal-Gulf-Coast-Logistics-2026-04-18.md"
+      "sample_output": "samples/proposal-Gulf-Coast-Logistics-2026-04-18.md",
+      "health_path": "/api/health"
     },
     {
       "id": "chief",
@@ -42,7 +43,8 @@
       "status": "production",
       "port": 8006,
       "autonomy": "autonomous",
-      "sample_output": "samples/chief-brief-2026-04-18.md"
+      "sample_output": "samples/chief-brief-2026-04-18.md",
+      "health_path": "/api/health"
     },
     {
       "id": "aurelia",
@@ -52,7 +54,8 @@
       "status": "beta",
       "port": 8009,
       "autonomy": "assistive",
-      "sample_output": null
+      "sample_output": null,
+      "health_path": "/api/health"
     },
     {
       "id": "debrief",
@@ -62,7 +65,8 @@
       "status": "beta",
       "port": 8008,
       "autonomy": "assistive",
-      "sample_output": null
+      "sample_output": null,
+      "health_path": "/api/health"
     },
     {
       "id": "competition-researcher",
@@ -72,7 +76,8 @@
       "status": "beta",
       "port": 8005,
       "autonomy": "autonomous",
-      "sample_output": null
+      "sample_output": null,
+      "health_path": "/api/health"
     },
     {
       "id": "jr-programmer",
@@ -82,7 +87,18 @@
       "status": "beta",
       "port": 8004,
       "autonomy": "assistive",
-      "sample_output": null
+      "sample_output": null,
+      "health_path": "/api/health"
+    },
+    {
+      "id": "social_chat_operator",
+      "name": "Social",
+      "category": "sales",
+      "description": "Conversational campaign review interface. Generates posts, presents approval cards, handles edits and QC.",
+      "status": "beta",
+      "port": 8011,
+      "autonomy": "assistive",
+      "health_path": "/api/health"
     }
   ]
 }

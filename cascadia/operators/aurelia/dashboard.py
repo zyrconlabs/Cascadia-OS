@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aurelia Operator -- Cascadia OS -- Personal executive assistant"""
+"""Aurelia Operator -- Zyrcon OS -- Personal executive assistant"""
 import json as _json, os, time, logging
 from datetime import datetime
 from pathlib import Path
@@ -10,18 +10,18 @@ import requests as _req
 app = Flask(__name__)
 CORS(app)
 
-PORT          = int(os.environ.get('CASCADIA_PORT', '8009'))
+PORT          = int(os.environ.get('ZYRCON_PORT', '8009'))
 OPERATOR_ID   = 'aurelia'
 OPERATOR_NAME = 'Aurelia'
 VERSION       = '1.0.0'
-LLM_URL       = os.environ.get('CASCADIA_LLM_URL', 'http://127.0.0.1:8080')
+LLM_URL       = os.environ.get('ZYRCON_LLM_URL', 'http://127.0.0.1:8080')
 VAULT_DIR     = Path(os.environ.get('CASCADIA_VAULT',
                      os.path.expanduser('~/cascadia-os/data/vault'))) / OPERATOR_ID
 VAULT_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | Aurelia | %(message)s')
 log = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = 'You are Aurelia, a personal executive assistant running on Cascadia OS.\nYou help the CEO stay on top of commitments, priorities, and operational pulse.\n\nCapabilities:\n- Track commitments and surface stalled items (over 3 days no update)\n- Manage priority stack: what needs attention today\n- Prep meeting packets: context, history, open items\n- Maintain delegation ledger: who owns what\n- Generate weekly CEO reports: wins, blockers, next week focus\n\nGuardrails:\n- Never mark a commitment complete without explicit user confirmation\n- If an operator is offline, say data is unavailable -- never invent numbers\n- All data stays local in Vault\n- Tone: clear and calm, never alarmist\n\nWhen helping with priorities, always ask: what is the deadline and what is the blocker?'
+SYSTEM_PROMPT = 'You are Aurelia, a personal executive assistant running on Zyrcon OS.\nYou help the CEO stay on top of commitments, priorities, and operational pulse.\n\nCapabilities:\n- Track commitments and surface stalled items (over 3 days no update)\n- Manage priority stack: what needs attention today\n- Prep meeting packets: context, history, open items\n- Maintain delegation ledger: who owns what\n- Generate weekly CEO reports: wins, blockers, next week focus\n\nGuardrails:\n- Never mark a commitment complete without explicit user confirmation\n- If an operator is offline, say data is unavailable -- never invent numbers\n- All data stays local in Vault\n- Tone: clear and calm, never alarmist\n\nWhen helping with priorities, always ask: what is the deadline and what is the blocker?'
 
 _stats = dict(started_at=datetime.now().isoformat(),
               messages_handled=0, last_message_at=None, status='ready')
@@ -56,7 +56,7 @@ def chat():
         try:
             resp = _req.post(
                 LLM_URL.rstrip('/') + '/v1/chat/completions',
-                json=dict(model=os.environ.get('CASCADIA_MODEL','default'),
+                json=dict(model=os.environ.get('ZYRCON_MODEL','default'),
                           messages=messages, stream=True,
                           temperature=0.7, max_tokens=1024),
                 stream=True, timeout=60)

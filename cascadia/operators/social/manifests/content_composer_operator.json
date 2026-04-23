@@ -1,0 +1,15 @@
+{
+  "id": "content_composer_operator",
+  "version": "1.0.0",
+  "name": "Content Composer Operator",
+  "type": "skill",
+  "capabilities": [
+    "content.compose",
+    "vault.read"
+  ],
+  "required_dependencies": [],
+  "requested_permissions": [],
+  "autonomy_level": "assistive",
+  "health_hook": "/health",
+  "description": "Builds a master social content package that downstream platform renderers can adapt."
+}

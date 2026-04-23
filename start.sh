@@ -87,6 +87,41 @@ start_operator "aurelia"                "8009" "dashboard.py"
 start_operator "debrief"               "8008" "dashboard.py"
 start_operator "competition-researcher" "8005" "dashboard.py"
 start_operator "jr-programmer"          "8004" "dashboard.py"
+start_operator "email"                  "8010" "server.py"
+start_operator_social() {
+    local port="8011"
+    local op_path="$REPO/cascadia/operators/social/chat_operator/server.py"
+    if curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null 2>&1; then
+        echo "✓ social already running"
+    elif [[ -f "$op_path" ]]; then
+        "$PYTHON" "$op_path" >> "data/logs/social.log" 2>&1 &
+        sleep 1
+        curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null \
+            && echo "✓ social started" \
+            || echo "✗ social failed — check data/logs/social.log"
+    fi
+}
+start_operator_social
+
+# u2500u2500 4. Register operators with CREW u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500
+register_operator() {
+    local op_id="$1" caps="$2"
+    curl -sf -X POST http://127.0.0.1:5100/register \
+        -H "Content-Type: application/json" \
+        -d "{\"operator_id\":\"${op_id}\",\"capabilities\":${caps}}" > /dev/null 2>&1
+}
+register_operator "main_operator"          '["vault.read","vault.write","task.route"]'
+register_operator "bell"                   '["vault.read","vault.write"]'
+register_operator "email_operator"         '["email.send","email.report"]'
+register_operator "recon"                  '["vault.read","vault.write"]'
+register_operator "scout"                  '["vault.read","vault.write"]'
+register_operator "chief"                  '["vault.read"]'
+register_operator "quote"                  '["vault.read","vault.write"]'
+register_operator "aurelia"                '["vault.read","vault.write"]'
+register_operator "debrief"                '["vault.read"]'
+register_operator "competition-researcher" '["vault.read"]'
+register_operator "jr-programmer"          '["vault.read","vault.write"]'
+register_operator "social_chat_operator"   '["campaign.chat","campaign.approve"]'
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"

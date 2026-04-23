@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CHIEF Operator -- Cascadia OS -- Executive intelligence briefing agent"""
+"""CHIEF Operator -- Zyrcon OS -- Executive intelligence briefing agent"""
 import json as _json, os, time, logging
 from datetime import datetime
 from pathlib import Path
@@ -10,18 +10,18 @@ import requests as _req
 app = Flask(__name__)
 CORS(app)
 
-PORT          = int(os.environ.get('CASCADIA_PORT', '8006'))
+PORT          = int(os.environ.get('ZYRCON_PORT', '8006'))
 OPERATOR_ID   = 'chief'
 OPERATOR_NAME = 'CHIEF'
 VERSION       = '1.0.0'
-LLM_URL       = os.environ.get('CASCADIA_LLM_URL', 'http://127.0.0.1:8080')
+LLM_URL       = os.environ.get('ZYRCON_LLM_URL', 'http://127.0.0.1:8080')
 VAULT_DIR     = Path(os.environ.get('CASCADIA_VAULT',
                      os.path.expanduser('~/cascadia-os/data/vault'))) / OPERATOR_ID
 VAULT_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | CHIEF | %(message)s')
 log = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = 'You are CHIEF, an executive intelligence briefing agent for Cascadia OS.\nYou deliver concise accurate morning briefs synthesizing data from all active operators.\n\nCapabilities:\n- Aggregate status from RECON, SCOUT, QUOTE, and other operators\n- Identify anomalies, urgent items, and recommended actions\n- Deliver 90-second executive summaries with no fluff\n- Flag: hot leads uncalled over 2hrs, no leads over 24hrs, proposals pending over 48hrs\n\nGuardrails:\n- Only report data actually collected -- never fabricate numbers\n- If an operator is offline, say so clearly\n- Distinguish confirmed data from estimates\n\nFormat: Status snapshot, Anomalies, Priority actions, Operator health.'
+SYSTEM_PROMPT = 'You are CHIEF, an executive intelligence briefing agent for Zyrcon OS.\nYou deliver concise accurate morning briefs synthesizing data from all active operators.\n\nCapabilities:\n- Aggregate status from RECON, SCOUT, QUOTE, and other operators\n- Identify anomalies, urgent items, and recommended actions\n- Deliver 90-second executive summaries with no fluff\n- Flag: hot leads uncalled over 2hrs, no leads over 24hrs, proposals pending over 48hrs\n\nGuardrails:\n- Only report data actually collected -- never fabricate numbers\n- If an operator is offline, say so clearly\n- Distinguish confirmed data from estimates\n\nFormat: Status snapshot, Anomalies, Priority actions, Operator health.'
 
 _stats = dict(started_at=datetime.now().isoformat(),
               messages_handled=0, last_message_at=None, status='ready')
@@ -56,7 +56,7 @@ def chat():
         try:
             resp = _req.post(
                 LLM_URL.rstrip('/') + '/v1/chat/completions',
-                json=dict(model=os.environ.get('CASCADIA_MODEL','default'),
+                json=dict(model=os.environ.get('ZYRCON_MODEL','default'),
                           messages=messages, stream=True,
                           temperature=0.7, max_tokens=1024),
                 stream=True, timeout=60)

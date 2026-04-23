@@ -1,0 +1,16 @@
+{
+  "id": "renderer_facebook_operator",
+  "version": "1.0.0",
+  "name": "Facebook Renderer Operator",
+  "type": "skill",
+  "capabilities": [
+    "content.render"
+  ],
+  "required_dependencies": [
+    "content_composer_operator"
+  ],
+  "requested_permissions": [],
+  "autonomy_level": "assistive",
+  "health_hook": "/health",
+  "description": "Turns a master content package into a Facebook-ready draft."
+}

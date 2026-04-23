@@ -1,7 +1,7 @@
 [project]
-name = "cascadia-os"
+name = "zyrcon-x"
 version = "0.43.0"
-description = "Cascadia OS — local-first single-node operator platform"
+description = "Zyrcon-X — local-first single-node operator platform"
 requires-python = ">=3.11"
 dependencies = [
     "cryptography>=42.0.0",
@@ -17,6 +17,7 @@ operators = [
     "flask-cors>=4.0.0",
     "requests>=2.31.0",
     "ddgs>=4.0.0",
+    "tweepy>=4.14.0",
 ]
 
 tray = [
@@ -25,16 +26,16 @@ tray = [
 ]
 
 [project.scripts]
-cascadia-watchdog = "cascadia.kernel.watchdog:main"
-cascadia-flint    = "cascadia.kernel.flint:main"
-cascadia-once     = "cascadia.installer.once:main"
-cascadia          = "cascadia.kernel.watchdog:main"
+zyrcon-watchdog = "zyrcon.kernel.watchdog:main"
+zyrcon-flint    = "zyrcon.kernel.flint:main"
+zyrcon-once     = "tools.installer.once:main"
+zyrcon          = "zyrcon.kernel.watchdog:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cascadia*"]
+include = ["zyrcon*", "operators*", "dashboard*", "tools*"]
 
-[tool.cascadia]
+[tool.zyrcon]
 version = "0.43"
-control_plane = "cascadia.kernel.flint"
-entrypoint    = "cascadia.kernel.watchdog"
+control_plane = "zyrcon.kernel.flint"
+entrypoint    = "zyrcon.kernel.watchdog"

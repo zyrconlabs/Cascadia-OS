@@ -103,12 +103,8 @@ class ServiceRuntime:
                     self._send_json(code, payload)
 
             def do_POST(self) -> None:  # noqa: N802
-                try:
-                    code, payload = runtime.route_request('POST', self.path, self._read_payload())
-                    self._send_json(code, payload)
-                except Exception as exc:
-                    runtime.logger.error('POST %s error: %s', self.path, exc, exc_info=True)
-                    self._send_json(500, {'error': str(exc)})
+                code, payload = runtime.route_request('POST', self.path, self._read_payload())
+                self._send_json(code, payload)
 
             def log_message(self, format: str, *args: Any) -> None:
                 runtime.logger.info(format, *args)

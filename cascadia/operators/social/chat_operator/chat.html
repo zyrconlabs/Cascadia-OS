@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Social — Zyrcon-X</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f4f0;color:#1a1a18;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Header ── */
+.hdr{background:#1a1a18;color:#f5f4f0;padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.hdr-brand{font-size:14px;font-weight:500;letter-spacing:.02em}
+.hdr-nav{display:flex;gap:20px}
+.hdr-nav a{color:#888780;text-decoration:none;font-size:12px}
+.hdr-nav a:hover{color:#f5f4f0}
+
+/* ── Layout ── */
+.layout{display:flex;flex:1;overflow:hidden}
+
+/* ── Sidebar ── */
+.sidebar{width:260px;background:white;border-right:.5px solid #e0ddd6;display:flex;flex-direction:column;flex-shrink:0}
+.sidebar-hdr{padding:14px 16px;border-bottom:.5px solid #e0ddd6;display:flex;align-items:center;justify-content:space-between}
+.sidebar-title{font-size:13px;font-weight:500}
+.sidebar-list{flex:1;overflow-y:auto;padding:8px}
+.session-item{padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:2px;border:.5px solid transparent}
+.session-item:hover{background:#f5f4f0}
+.session-item.active{background:#f0eefb;border-color:#c4b8f5}
+.session-topic{font-size:13px;font-weight:500;color:#1a1a18;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session-meta{font-size:11px;color:#888780;display:flex;gap:6px;align-items:center}
+.s-badge{font-size:10px;font-weight:500;padding:1px 6px;border-radius:4px}
+.s-pending{background:#FAEEDA;color:#854F0B}
+.s-approved{background:#EAF3DE;color:#3B6D11}
+.new-btn{margin:12px;padding:8px;border-radius:8px;border:.5px solid #ddd;background:white;font-size:12px;font-weight:500;cursor:pointer;text-align:center;color:#534AB7}
+.new-btn:hover{background:#f0eefb;border-color:#c4b8f5}
+
+/* ── Chat area ── */
+.chat{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.chat-feed{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}
+.chat-input-area{padding:12px 20px;border-top:.5px solid #e0ddd6;background:white;flex-shrink:0}
+
+/* ── Brief form ── */
+.brief-card{background:white;border:.5px solid #e0ddd6;border-radius:12px;padding:20px;max-width:640px;margin:0 auto;width:100%}
+.brief-title{font-size:15px;font-weight:500;margin-bottom:16px}
+.brief-field{margin-bottom:12px}
+.brief-field label{display:block;font-size:12px;color:#888780;margin-bottom:4px}
+.brief-field input,.brief-field textarea,.brief-field select{width:100%;padding:8px 10px;border:.5px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;background:white;color:#1a1a18;outline:none}
+.brief-field input:focus,.brief-field textarea:focus{border-color:#7F77DD}
+.brief-field textarea{resize:vertical;min-height:64px}
+.brief-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.platform-checks{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.platform-check{display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;padding:5px 10px;border:.5px solid #ddd;border-radius:6px;background:white}
+.platform-check input{width:auto;padding:0;border:none}
+.platform-check.checked{background:#f0eefb;border-color:#c4b8f5;color:#534AB7}
+.brief-submit{width:100%;padding:10px;border-radius:8px;background:#534AB7;color:white;border:none;font-size:13px;font-weight:500;cursor:pointer;margin-top:4px}
+.brief-submit:hover{background:#3C3489}
+.brief-submit:disabled{background:#b0aad5;cursor:not-allowed}
+
+/* ── Message bubbles ── */
+.msg{display:flex;flex-direction:column;gap:4px;max-width:680px;width:100%}
+.msg.user{align-self:flex-end;align-items:flex-end}
+.msg.operator{align-self:flex-start;align-items:flex-start}
+.msg-label{font-size:11px;color:#888780}
+.msg-bubble{padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.6;max-width:100%}
+.msg.user .msg-bubble{background:#534AB7;color:white;border-radius:10px 10px 2px 10px}
+.msg.operator .msg-bubble{background:white;border:.5px solid #e0ddd6;border-radius:10px 10px 10px 2px;color:#1a1a18}
+
+/* ── Approval package card ── */
+.approval-pkg{background:white;border:.5px solid #e0ddd6;border-radius:12px;overflow:hidden;width:100%;max-width:680px}
+.pkg-header{padding:14px 16px;border-bottom:.5px solid #e0ddd6;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.pkg-title{font-size:14px;font-weight:500}
+.pkg-meta{font-size:12px;color:#888780;display:flex;gap:12px;align-items:center}
+.pkg-score{font-size:12px;font-weight:500}
+.pkg-score.pass{color:#3B6D11}
+.pkg-score.fail{color:#A32D2D}
+.revision-badge{font-size:11px;font-weight:500;padding:2px 8px;border-radius:4px;background:#f0eefb;color:#534AB7}
+
+/* ── Post card inside package ── */
+.post-cards{display:flex;flex-direction:column}
+.post-card{border-bottom:.5px solid #f0eee8;padding:14px 16px}
+.post-card:last-child{border-bottom:none}
+.post-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.plat-badge{font-size:11px;font-weight:500;padding:2px 8px;border-radius:5px}
+.plat-x{background:#1a1a18;color:white}
+.plat-facebook{background:#E6F1FB;color:#0C447C}
+.plat-instagram{background:#FBEAF0;color:#72243E}
+.plat-linkedin{background:#E6F1FB;color:#0C447C}
+.post-score-pill{font-size:11px;font-weight:500;padding:2px 8px;border-radius:5px}
+.score-pass{background:#EAF3DE;color:#3B6D11}
+.score-fail{background:#FCEBEB;color:#A32D2D}
+
+.post-body-wrap{position:relative;margin-bottom:8px}
+.post-body{font-size:13px;line-height:1.6;color:#2c2c2a;white-space:pre-wrap;word-break:break-word}
+.post-edit-area{width:100%;min-height:100px;padding:8px;border:.5px solid #7F77DD;border-radius:8px;font-size:13px;font-family:inherit;line-height:1.6;resize:vertical;display:none;background:white;color:#1a1a18;outline:none}
+.post-hashtags{font-size:11px;color:#185FA5;margin-bottom:10px}
+
+/* ── Signal bars ── */
+.signals{margin-bottom:10px}
+.sig-row{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.sig-name{font-size:10px;color:#888780;width:100px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sig-bar{flex:1;height:3px;background:#eee;border-radius:2px;overflow:hidden}
+.sig-fill{height:100%;border-radius:2px}
+.sig-high{background:#639922}
+.sig-med{background:#BA7517}
+.sig-low{background:#E24B4A}
+.sig-pct{font-size:10px;color:#888780;width:26px;text-align:right;flex-shrink:0}
+
+/* ── Post action buttons ── */
+.post-actions{display:flex;gap:6px;flex-wrap:wrap}
+.post-btn{padding:5px 12px;border-radius:6px;border:.5px solid #ddd;background:white;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s}
+.post-btn:hover{background:#f5f4f0}
+.btn-edit{color:#534AB7;border-color:#c4b8f5}
+.btn-edit:hover{background:#f0eefb}
+.btn-save{color:#3B6D11;border-color:#97C459;display:none}
+.btn-save:hover{background:#EAF3DE}
+.btn-cancel-edit{color:#888780;display:none}
+
+/* ── Package actions ── */
+.pkg-actions{padding:12px 16px;border-top:.5px solid #e0ddd6;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pkg-approve-btn{padding:8px 20px;border-radius:8px;background:#3B6D11;color:white;border:none;font-size:13px;font-weight:500;cursor:pointer}
+.pkg-approve-btn:hover{background:#27500A}
+.pkg-approve-btn:disabled{background:#9EC97E;cursor:not-allowed}
+
+/* ── Decline with note ── */
+.decline-area{display:none;flex:1;gap:6px;align-items:flex-start;flex-direction:column}
+.decline-area.open{display:flex}
+.decline-note-wrap{display:flex;gap:6px;width:100%;align-items:flex-start}
+.decline-note{flex:1;padding:6px 10px;border:.5px solid #F09595;border-radius:6px;font-size:12px;font-family:inherit;resize:none;min-height:32px;outline:none;background:white}
+.decline-note:focus{border-color:#E24B4A}
+.decline-submit{padding:6px 12px;border-radius:6px;background:#E24B4A;color:white;border:none;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;align-self:flex-end}
+.decline-submit:hover{background:#A32D2D}
+.decline-trigger{padding:5px 12px;border-radius:6px;border:.5px solid #F09595;background:white;font-size:11px;font-weight:500;color:#A32D2D;cursor:pointer}
+.decline-trigger:hover{background:#FCEBEB}
+
+/* ── Typing indicator ── */
+.typing{display:flex;align-items:center;gap:6px;padding:10px 14px;background:white;border:.5px solid #e0ddd6;border-radius:10px;font-size:12px;color:#888780;width:fit-content}
+.typing-dots{display:flex;gap:3px}
+.typing-dot{width:5px;height:5px;border-radius:50%;background:#bbb;animation:bounce .8s infinite}
+.typing-dot:nth-child(2){animation-delay:.15s}
+.typing-dot:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
+
+/* ── Input bar ── */
+.input-row{display:flex;gap:8px;align-items:flex-end}
+.chat-textarea{flex:1;padding:10px 12px;border:.5px solid #ddd;border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:40px;max-height:100px;outline:none;background:white;line-height:1.5}
+.chat-textarea:focus{border-color:#7F77DD}
+.send-btn{padding:10px 16px;border-radius:10px;background:#534AB7;color:white;border:none;font-size:13px;font-weight:500;cursor:pointer;flex-shrink:0}
+.send-btn:hover{background:#3C3489}
+.send-btn:disabled{background:#b0aad5;cursor:not-allowed}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:20px;right:20px;background:#1a1a18;color:white;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transform:translateY(6px);transition:all .2s;pointer-events:none;z-index:999}
+.toast.show{opacity:1;transform:translateY(0)}
+
+.empty-chat{flex:1;display:flex;align-items:center;justify-content:center;color:#888780;font-size:13px;flex-direction:column;gap:8px}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-brand">Social — Zyrcon-X</div>
+  <nav class="hdr-nav">
+    <a href="http://localhost:6300">PRISM</a>
+    <a href="http://localhost:6300/campaigns">Campaigns</a>
+  </nav>
+</div>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-hdr">
+      <div class="sidebar-title">Campaigns</div>
+    </div>
+    <button class="new-btn" onclick="newCampaign()">+ New campaign</button>
+    <div class="sidebar-list" id="sessionList"></div>
+  </div>
+
+  <!-- Chat -->
+  <div class="chat">
+    <div class="chat-feed" id="chatFeed">
+      <div class="empty-chat" id="emptyState">
+        <div style="font-size:22px">&#9632;</div>
+        <div>Start a new campaign or select one from the list</div>
+      </div>
+    </div>
+    <div class="chat-input-area" id="inputArea" style="display:none">
+      <div class="input-row">
+        <textarea class="chat-textarea" id="chatInput" placeholder="Chat with the operator about this campaign..." rows="1" onkeydown="handleKey(event)"></textarea>
+        <button class="send-btn" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = 'http://localhost:8011';
+const PRISM = 'http://localhost:6300';
+let currentSession = null;
+let showingBrief = false;
+
+function showToast(msg, ok=true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = ok ? '#27500A' : '#A32D2D';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function sigClass(score) {
+  if (score >= 0.8) return 'sig-high';
+  if (score >= 0.5) return 'sig-med';
+  return 'sig-low';
+}
+
+function renderSignals(signals) {
+  if (!signals || !Object.keys(signals).length) return '';
+  return '<div class="signals">' +
+    Object.entries(signals).map(([name, data]) => {
+      const pct = Math.round((data.score||0)*100);
+      return `<div class="sig-row">
+        <div class="sig-name" title="${name.replace(/_/g,' ')}">${name.replace(/_/g,' ')}</div>
+        <div class="sig-bar"><div class="sig-fill ${sigClass(data.score||0)}" style="width:${pct}%"></div></div>
+        <div class="sig-pct">${pct}%</div>
+      </div>`;
+    }).join('') + '</div>';
+}
+
+function renderPackage(data, sessionId) {
+  const revision = data.revision || 1;
+  const qcPct = data.qc_score != null ? Math.round(data.qc_score*100) : 0;
+  const qcPass = data.qc_passed;
+  const posts = data.posts || [];
+
+  const postsHtml = posts.map(post => {
+    const scorePct = Math.round((post.score||0)*100);
+    const platClass = {x:'plat-x',facebook:'plat-facebook',instagram:'plat-instagram',linkedin:'plat-linkedin'}[post.platform]||'plat-x';
+    const hashtags = (post.hashtags||[]).join(' ');
+
+    return `<div class="post-card" id="postcard-${sessionId}-${post.platform}">
+      <div class="post-top">
+        <span class="plat-badge ${platClass}">${post.platform.toUpperCase()}</span>
+        <span class="post-score-pill ${post.passed?'score-pass':'score-fail'}" id="score-${sessionId}-${post.platform}">${scorePct}%</span>
+      </div>
+      <div class="post-body-wrap">
+        <div class="post-body" id="body-${sessionId}-${post.platform}">${esc(post.body)}</div>
+        <textarea class="post-edit-area" id="edit-${sessionId}-${post.platform}">${esc(post.body)}</textarea>
+      </div>
+      ${hashtags ? `<div class="post-hashtags">${esc(hashtags)}</div>` : ''}
+      ${renderSignals(post.signals)}
+      <div class="post-actions">
+        <button class="post-btn btn-edit" id="editbtn-${sessionId}-${post.platform}" onclick="startEdit('${sessionId}','${post.platform}')">Edit</button>
+        <button class="post-btn btn-save" id="savebtn-${sessionId}-${post.platform}" onclick="saveEdit('${sessionId}','${post.platform}')">Save &amp; re-score</button>
+        <button class="post-btn btn-cancel-edit" id="cancelbtn-${sessionId}-${post.platform}" onclick="cancelEdit('${sessionId}','${post.platform}')">Cancel</button>
+        <button class="decline-trigger" onclick="toggleDecline('${sessionId}','${post.platform}')">Decline with note</button>
+      </div>
+      <div class="decline-area" id="decline-${sessionId}-${post.platform}">
+        <div class="decline-note-wrap">
+          <textarea class="decline-note" id="note-${sessionId}-${post.platform}" placeholder="What needs to change? e.g. 'Add a specific number — how many runs recovered?'" rows="2"></textarea>
+          <button class="decline-submit" onclick="submitDecline('${sessionId}','${post.platform}')">Send back</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="approval-pkg" id="pkg-${sessionId}-${revision}">
+    <div class="pkg-header">
+      <div class="pkg-title">Campaign package</div>
+      <div class="pkg-meta">
+        <span class="revision-badge">Revision ${revision}</span>
+        <span class="pkg-score ${qcPass?'pass':'fail'}">QC ${qcPct}%</span>
+      </div>
+    </div>
+    <div class="post-cards">${postsHtml}</div>
+    <div class="pkg-actions">
+      <button class="pkg-approve-btn" id="approvebtn-${sessionId}-${revision}" onclick="approvePackage('${sessionId}','${revision}')">Approve all &amp; publish</button>
+      <div class="decline-area" style="display:none"></div>
+    </div>
+  </div>`;
+}
+
+function addMessage(role, content, sessionId=null, isPackage=false) {
+  const feed = document.getElementById('chatFeed');
+  const empty = document.getElementById('emptyState');
+  if (empty) empty.style.display = 'none';
+
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+
+  if (isPackage) {
+    div.innerHTML = `<div class="msg-label">${role === 'operator' ? 'Social operator' : 'You'}</div>${content}`;
+  } else {
+    div.innerHTML = `
+      <div class="msg-label">${role === 'operator' ? 'Social operator' : 'You'}</div>
+      <div class="msg-bubble">${esc(content)}</div>`;
+  }
+
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+  return div;
+}
+
+function addTyping() {
+  const feed = document.getElementById('chatFeed');
+  const div = document.createElement('div');
+  div.className = 'msg operator';
+  div.id = 'typing-indicator';
+  div.innerHTML = `<div class="msg-label">Social operator</div>
+    <div class="typing"><div class="typing-dots">
+      <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+    </div>Preparing your campaign...</div>`;
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing-indicator');
+  if (t) t.remove();
+}
+
+// ── Edit functions ──
+
+function startEdit(sessionId, platform) {
+  const body = document.getElementById(`body-${sessionId}-${platform}`);
+  const edit = document.getElementById(`edit-${sessionId}-${platform}`);
+  const editBtn = document.getElementById(`editbtn-${sessionId}-${platform}`);
+  const saveBtn = document.getElementById(`savebtn-${sessionId}-${platform}`);
+  const cancelBtn = document.getElementById(`cancelbtn-${sessionId}-${platform}`);
+  body.style.display = 'none';
+  edit.style.display = 'block';
+  edit.value = body.textContent;
+  edit.focus();
+  editBtn.style.display = 'none';
+  saveBtn.style.display = 'inline-block';
+  cancelBtn.style.display = 'inline-block';
+}
+
+function cancelEdit(sessionId, platform) {
+  const body = document.getElementById(`body-${sessionId}-${platform}`);
+  const edit = document.getElementById(`edit-${sessionId}-${platform}`);
+  const editBtn = document.getElementById(`editbtn-${sessionId}-${platform}`);
+  const saveBtn = document.getElementById(`savebtn-${sessionId}-${platform}`);
+  const cancelBtn = document.getElementById(`cancelbtn-${sessionId}-${platform}`);
+  body.style.display = 'block';
+  edit.style.display = 'none';
+  editBtn.style.display = 'inline-block';
+  saveBtn.style.display = 'none';
+  cancelBtn.style.display = 'none';
+}
+
+async function saveEdit(sessionId, platform) {
+  const edit = document.getElementById(`edit-${sessionId}-${platform}`);
+  const newText = edit.value.trim();
+  if (!newText) return;
+
+  const saveBtn = document.getElementById(`savebtn-${sessionId}-${platform}`);
+  saveBtn.textContent = 'Scoring...';
+  saveBtn.disabled = true;
+
+  try {
+    const r = await fetch(`${API}/edit`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({session_id: sessionId, platform, text: newText}),
+    });
+    const data = await r.json();
+
+    const body = document.getElementById(`body-${sessionId}-${platform}`);
+    const score = document.getElementById(`score-${sessionId}-${platform}`);
+    const scorePct = Math.round((data.posts?.find(p=>p.platform===platform)?.score||0)*100);
+    const passed = (data.posts?.find(p=>p.platform===platform)?.passed);
+
+    body.textContent = newText;
+    score.textContent = scorePct + '%';
+    score.className = `post-score-pill ${passed?'score-pass':'score-fail'}`;
+
+    cancelEdit(sessionId, platform);
+    saveBtn.textContent = 'Save & re-score';
+    saveBtn.disabled = false;
+
+    if (data.qc_passed) {
+      showToast('Edit saved — QC passed. Ready to approve.');
+    } else {
+      showToast('Edit saved — QC score: ' + Math.round((data.qc_score||0)*100) + '%', false);
+    }
+
+    currentSession = sessionId;
+    loadSessions();
+  } catch(e) {
+    showToast('Save failed', false);
+    saveBtn.textContent = 'Save & re-score';
+    saveBtn.disabled = false;
+  }
+}
+
+function toggleDecline(sessionId, platform) {
+  const area = document.getElementById(`decline-${sessionId}-${platform}`);
+  area.classList.toggle('open');
+  if (area.classList.contains('open')) {
+    document.getElementById(`note-${sessionId}-${platform}`).focus();
+  }
+}
+
+async function submitDecline(sessionId, platform) {
+  const noteEl = document.getElementById(`note-${sessionId}-${platform}`);
+  const note = noteEl.value.trim();
+  if (!note) { noteEl.focus(); return; }
+
+  addMessage('user', `Declined ${platform.toUpperCase()}: "${note}"`);
+  addTyping();
+
+  try {
+    const r = await fetch(`${API}/decline`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({session_id: sessionId, platform, note}),
+    });
+    const data = await r.json();
+    removeTyping();
+
+    if (data.error) {
+      addMessage('operator', `Could not process decline: ${data.error}`);
+      return;
+    }
+
+    addMessage('operator', data.message || `Revision ${data.revision} ready — full package resubmitted.`);
+    addMessage('operator', '', sessionId, true);
+    const pkgEl = document.querySelector(`[id^="pkg-${sessionId}"]`);
+    if (pkgEl) {
+      const container = pkgEl.closest('.msg');
+      if (container) {
+        container.querySelector('.approval-pkg').outerHTML = renderPackage(data, sessionId);
+      } else {
+        pkgEl.outerHTML = renderPackage(data, sessionId);
+      }
+    } else {
+      const div = document.createElement('div');
+      div.className = 'msg operator';
+      div.innerHTML = `<div class="msg-label">Social operator</div>${renderPackage(data, sessionId)}`;
+      document.getElementById('chatFeed').appendChild(div);
+    }
+
+    document.getElementById('chatFeed').scrollTop = 999999;
+    currentSession = sessionId;
+    loadSessions();
+  } catch(e) {
+    removeTyping();
+    addMessage('operator', 'Something went wrong. Please try again.');
+  }
+}
+
+async function approvePackage(sessionId, revision) {
+  const btn = document.getElementById(`approvebtn-${sessionId}-${revision}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Publishing...'; }
+
+  try {
+    const r = await fetch(`${API}/approve`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({session_id: sessionId, actor: 'operator'}),
+    });
+    const data = await r.json();
+
+    if (btn) { btn.textContent = 'Published'; }
+    addMessage('operator', `All posts approved and published. Campaign day complete.`);
+    showToast('Campaign approved and published');
+    loadSessions();
+  } catch(e) {
+    showToast('Approval failed', false);
+    if (btn) { btn.disabled = false; btn.textContent = 'Approve all & publish'; }
+  }
+}
+
+// ── New campaign brief form ──
+
+function newCampaign() {
+  currentSession = null;
+  showingBrief = true;
+  document.getElementById('inputArea').style.display = 'none';
+  const feed = document.getElementById('chatFeed');
+  feed.innerHTML = '';
+
+  const div = document.createElement('div');
+  div.className = 'msg operator';
+  div.innerHTML = `<div class="msg-label">Social operator</div>
+  <div class="brief-card">
+    <div class="brief-title">New campaign brief</div>
+    <div class="brief-field">
+      <label>Topic</label>
+      <input id="bf-topic" placeholder="e.g. Zyrcon-X v2 launch" />
+    </div>
+    <div class="brief-row">
+      <div class="brief-field">
+        <label>Objective</label>
+        <input id="bf-objective" placeholder="announce release" />
+      </div>
+      <div class="brief-field">
+        <label>Tone</label>
+        <input id="bf-tone" placeholder="bold, technical, founder" />
+      </div>
+    </div>
+    <div class="brief-field">
+      <label>CTA</label>
+      <input id="bf-cta" placeholder="Reply if you want early access." />
+    </div>
+    <div class="brief-field">
+      <label>Audience</label>
+      <input id="bf-audience" placeholder="developers, founders, AI builders" />
+    </div>
+    <div class="brief-field">
+      <label>Proof points (comma separated)</label>
+      <input id="bf-proofs" placeholder="durable execution, crash recovery, approval gates" />
+    </div>
+    <div class="brief-field">
+      <label>Platforms</label>
+      <div class="platform-checks">
+        <label class="platform-check checked" id="plat-x"><input type="checkbox" checked onchange="togglePlat('x')"> X</label>
+        <label class="platform-check" id="plat-facebook"><input type="checkbox" onchange="togglePlat('facebook')"> Facebook</label>
+        <label class="platform-check" id="plat-instagram"><input type="checkbox" onchange="togglePlat('instagram')"> Instagram</label>
+      </div>
+    </div>
+    <button class="brief-submit" onclick="submitBrief()">Generate campaign</button>
+  </div>`;
+  feed.appendChild(div);
+  feed.scrollTop = 0;
+}
+
+function togglePlat(platform) {
+  const el = document.getElementById('plat-' + platform);
+  const cb = el.querySelector('input');
+  el.classList.toggle('checked', cb.checked);
+}
+
+async function submitBrief() {
+  const topic    = document.getElementById('bf-topic')?.value.trim();
+  const objective= document.getElementById('bf-objective')?.value.trim() || 'share an update';
+  const tone     = document.getElementById('bf-tone')?.value.trim() || 'founder-built, direct';
+  const cta      = document.getElementById('bf-cta')?.value.trim() || 'Reply if you want details.';
+  const audience = document.getElementById('bf-audience')?.value.trim() || 'builders and developers';
+  const proofsRaw= document.getElementById('bf-proofs')?.value.trim() || '';
+  const proofs   = proofsRaw ? proofsRaw.split(',').map(s=>s.trim()).filter(Boolean) : ['durable execution'];
+
+  const platforms = [];
+  ['x','facebook','instagram'].forEach(p => {
+    const el = document.getElementById('plat-'+p);
+    if (el && el.classList.contains('checked')) platforms.push(p);
+  });
+  if (!platforms.length) platforms.push('x');
+
+  if (!topic) { showToast('Topic is required', false); return; }
+
+  const btn = document.querySelector('.brief-submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
+
+  addMessage('user', `Campaign: ${topic} — ${platforms.join(', ')}`);
+  addTyping();
+
+  try {
+    const r = await fetch(`${API}/start`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({topic, objective, tone, cta, audience, proof_points: proofs, platforms}),
+    });
+    const data = await r.json();
+    removeTyping();
+    showingBrief = false;
+
+    const qcPct = Math.round((data.qc_score||0)*100);
+    addMessage('operator', `Campaign generated — QC score ${qcPct}%. ${data.qc_passed ? 'All posts passed.' : 'Some posts need attention.'} Review below.`);
+
+    const feed = document.getElementById('chatFeed');
+    const div = document.createElement('div');
+    div.className = 'msg operator';
+    div.innerHTML = `<div class="msg-label">Social operator</div>${renderPackage(data, data.session_id)}`;
+    feed.appendChild(div);
+    feed.scrollTop = 999999;
+
+    document.getElementById('inputArea').style.display = 'block';
+    currentSession = data.session_id;
+    loadSessions();
+  } catch(e) {
+    removeTyping();
+    addMessage('operator', 'Could not connect to the social operator. Is it running on port 8011?');
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate campaign'; }
+  }
+}
+
+// ── Chat input ──
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  addMessage('user', msg);
+  addMessage('operator', 'Got it — if you want to change specific posts, use the Decline or Edit buttons on each card.');
+}
+
+// ── Session list ──
+
+async function loadSessions() {
+  try {
+    const r = await fetch(`${API}/sessions`);
+    const data = await r.json();
+    const list = document.getElementById('sessionList');
+    const sessions = data.sessions || [];
+
+    if (!sessions.length) {
+      list.innerHTML = '<div style="padding:12px;font-size:12px;color:#888780;text-align:center">No campaigns yet</div>';
+      return;
+    }
+
+    list.innerHTML = sessions.map(s => {
+      const scorePct = s.qc_score != null ? Math.round(s.qc_score*100)+'%' : '—';
+      const badgeCls = s.status === 'approved' ? 's-approved' : 's-pending';
+      const badgeLabel = s.status === 'approved' ? 'Published' : 'Pending';
+      return `<div class="session-item${s.session_id===currentSession?' active':''}" onclick="loadSession('${s.session_id}')">
+        <div class="session-topic">${esc(s.topic||'Campaign')}</div>
+        <div class="session-meta">
+          <span class="s-badge ${badgeCls}">${badgeLabel}</span>
+          <span>Rev ${s.revision}</span>
+          <span>QC ${scorePct}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+async function loadSession(sessionId) {
+  currentSession = sessionId;
+  try {
+    const r = await fetch(`${API}/session/${sessionId}`);
+    const data = await r.json();
+
+    const feed = document.getElementById('chatFeed');
+    const empty = document.getElementById('emptyState');
+    if (empty) empty.style.display = 'none';
+    feed.innerHTML = '';
+
+    addMessage('operator', `Campaign loaded — Revision ${data.revision} · QC ${Math.round((data.qc_score||0)*100)}%`);
+
+    const div = document.createElement('div');
+    div.className = 'msg operator';
+    div.innerHTML = `<div class="msg-label">Social operator</div>${renderPackage(data, sessionId)}`;
+    feed.appendChild(div);
+    feed.scrollTop = 999999;
+
+    document.getElementById('inputArea').style.display = 'block';
+    loadSessions();
+  } catch(e) {
+    showToast('Could not load session', false);
+  }
+}
+
+// ── Init ──
+loadSessions();
+setInterval(loadSessions, 15000);
+</script>
+</body>
+</html>

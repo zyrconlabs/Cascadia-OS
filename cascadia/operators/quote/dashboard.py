@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QUOTE Operator -- Cascadia OS -- AI proposal and RFQ generator"""
+"""QUOTE Operator -- Zyrcon OS -- AI proposal and RFQ generator"""
 import json as _json, os, time, logging
 from datetime import datetime
 from pathlib import Path
@@ -10,11 +10,11 @@ import requests as _req
 app = Flask(__name__)
 CORS(app)
 
-PORT          = int(os.environ.get('CASCADIA_PORT', '8007'))
+PORT          = int(os.environ.get('ZYRCON_PORT', '8007'))
 OPERATOR_ID   = 'quote'
 OPERATOR_NAME = 'QUOTE'
 VERSION       = '1.0.0'
-LLM_URL       = os.environ.get('CASCADIA_LLM_URL', 'http://127.0.0.1:8080')
+LLM_URL       = os.environ.get('ZYRCON_LLM_URL', 'http://127.0.0.1:8080')
 VAULT_DIR     = Path(os.environ.get('CASCADIA_VAULT',
                      os.path.expanduser('~/cascadia-os/data/vault'))) / OPERATOR_ID
 VAULT_DIR.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ def chat():
         try:
             resp = _req.post(
                 LLM_URL.rstrip('/') + '/v1/chat/completions',
-                json=dict(model=os.environ.get('CASCADIA_MODEL','default'),
+                json=dict(model=os.environ.get('ZYRCON_MODEL','default'),
                           messages=messages, stream=True,
                           temperature=0.7, max_tokens=1024),
                 stream=True, timeout=60)

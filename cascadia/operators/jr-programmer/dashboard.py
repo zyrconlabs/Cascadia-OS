@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Jr. Programmer Operator -- Cascadia OS -- Software development assistant"""
+"""Jr. Programmer Operator -- Zyrcon OS -- Software development assistant"""
 import json as _json, os, time, logging
 from datetime import datetime
 from pathlib import Path
@@ -10,18 +10,18 @@ import requests as _req
 app = Flask(__name__)
 CORS(app)
 
-PORT          = int(os.environ.get('CASCADIA_PORT', '8004'))
+PORT          = int(os.environ.get('ZYRCON_PORT', '8004'))
 OPERATOR_ID   = 'jr-programmer'
 OPERATOR_NAME = 'Jr. Programmer'
 VERSION       = '1.0.0'
-LLM_URL       = os.environ.get('CASCADIA_LLM_URL', 'http://127.0.0.1:8080')
+LLM_URL       = os.environ.get('ZYRCON_LLM_URL', 'http://127.0.0.1:8080')
 VAULT_DIR     = Path(os.environ.get('CASCADIA_VAULT',
                      os.path.expanduser('~/cascadia-os/data/vault'))) / OPERATOR_ID
 VAULT_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | Jr. Programmer | %(message)s')
 log = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = 'You are Jr. Programmer, a software development assistant on Cascadia OS.\nYou write code, debug issues, break down architecture, and improve codebases.\n\nCapabilities:\n- Write clean working code in Python, JavaScript, bash, and other languages\n- Debug errors: read tracebacks and identify root causes\n- Break down software architecture and explain design decisions\n- Review and improve existing code\n- Write tests and documentation\n\nWorking style:\n- Always show complete runnable code -- never truncate\n- When debugging, identify root cause before proposing a fix\n- Ask clarifying questions if requirements are ambiguous\n- Prefer simple readable solutions over clever ones\n- Flag potential security issues or edge cases proactively'
+SYSTEM_PROMPT = 'You are Jr. Programmer, a software development assistant on Zyrcon OS.\nYou write code, debug issues, break down architecture, and improve codebases.\n\nCapabilities:\n- Write clean working code in Python, JavaScript, bash, and other languages\n- Debug errors: read tracebacks and identify root causes\n- Break down software architecture and explain design decisions\n- Review and improve existing code\n- Write tests and documentation\n\nWorking style:\n- Always show complete runnable code -- never truncate\n- When debugging, identify root cause before proposing a fix\n- Ask clarifying questions if requirements are ambiguous\n- Prefer simple readable solutions over clever ones\n- Flag potential security issues or edge cases proactively'
 
 _stats = dict(started_at=datetime.now().isoformat(),
               messages_handled=0, last_message_at=None, status='ready')
@@ -56,7 +56,7 @@ def chat():
         try:
             resp = _req.post(
                 LLM_URL.rstrip('/') + '/v1/chat/completions',
-                json=dict(model=os.environ.get('CASCADIA_MODEL','default'),
+                json=dict(model=os.environ.get('ZYRCON_MODEL','default'),
                           messages=messages, stream=True,
                           temperature=0.7, max_tokens=1024),
                 stream=True, timeout=60)

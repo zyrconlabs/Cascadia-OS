@@ -96,8 +96,6 @@ class VaultService:
             log_dir=self.config['log_dir'],
         )
         self.store = VaultStore(self.config['database_path'].replace('.db', '_vault.db'))
-        crew = next((x for x in self.config.get('components', []) if x['name'] == 'crew'), None)
-        self._crew_port = crew['port'] if crew else None
         self.runtime.register_route('POST', '/read', self.read)
         self.runtime.register_route('POST', '/write', self.write)
         self.runtime.register_route('POST', '/delete', self.delete)

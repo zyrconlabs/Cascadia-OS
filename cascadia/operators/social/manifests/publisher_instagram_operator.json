@@ -1,0 +1,18 @@
+{
+  "id": "publisher_instagram_operator",
+  "version": "1.0.0",
+  "name": "Instagram Publisher Operator",
+  "type": "service",
+  "capabilities": [
+    "instagram.post"
+  ],
+  "required_dependencies": [
+    "renderer_instagram_operator"
+  ],
+  "requested_permissions": [
+    "social.instagram.post"
+  ],
+  "autonomy_level": "semi_autonomous",
+  "health_hook": "/health",
+  "description": "Publishes approved Instagram drafts. v1 uses simulated side effects."
+}

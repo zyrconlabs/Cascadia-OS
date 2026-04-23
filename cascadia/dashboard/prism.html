@@ -1217,10 +1217,17 @@ async function refreshOperators() {
     S.connected = false;
     if (connDot) connDot.style.background = 'var(--red)';
     if (!S.operators.length) { S.operators = demoDB(); ensureBeacon(); }
-    S.operators.forEach(c => { if (!c.isBeacon) c.status = 'offline'; });
+    // Don't overwrite operator statuses — managed by /api/prism/operators poll
   }
+  const _ci = document.getElementById('chat-input');
+  const _cv = _ci ? _ci.value : '';
+  const _cf = _ci && document.activeElement === _ci;
   renderSidebar();
   if (S.selected && S.surface === 'ops') renderMain();
+  const _ci2 = document.getElementById('chat-input');
+  if (_ci2 && _cf) { _ci2.value = _cv; _ci2.focus(); _ci2.setSelectionRange(_cv.length, _cv.length); }
+  const _newInp = document.getElementById('chat-input');
+  if (_newInp && typeof _focused !== 'undefined' && _focused) { _newInp.value = _val || ''; _newInp.focus(); }
   updateNavBadges();
 }
 
@@ -1266,6 +1273,27 @@ function renderSidebar() {
 /* ═══ OPS RENDER ═══ */
 function renderMain() {
   if (S.surface!=='ops') return;
+  // Don't rebuild the panel while user is typing — just update messages and activity
+  const _inp = document.getElementById('chat-input');
+  const _typing = _inp && document.activeElement === _inp && _inp.value.length > 0;
+  if (_typing) {
+    // Only update chat log and activity bar without destroying the textarea
+    const c2 = S.operators.find(x => x.id === S.selected); if (!c2) return;
+    const msgs = S.messages[c2.id] || [];
+    const log = document.getElementById('chat-log');
+    if (log) {
+      let mHTML = '';
+      msgs.forEach(m => {
+        if (m.type==='system'||m.type==='thought') return;
+        const isU=m.type==='user', avC=isU?'msg-av--user':c2.isBeacon?'msg-av--beacon':c2.isWorker?'msg-av--worker':'msg-av--operator';
+        const nm=isU?'You':c2.name, i2=isU?'AP':c2.isBeacon?'⬡':initials(c2.name);
+        const ct=m.html||`<div class="msg-text">${esc(m.text)}</div>`;
+        mHTML+=`<div class="chat-msg"><div class="msg-av ${avC}">${i2}</div><div class="msg-body"><div class="msg-header"><span class="msg-name">${esc(nm)}</span><span class="msg-time">${esc(m.time)}</span></div>${ct}</div></div>`;
+      });
+      log.innerHTML = mHTML;
+    }
+    return;
+  }
   const panel=document.getElementById('main-panel');
   if (!S.selected) { panel.innerHTML=`<div class="main__empty"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg><p>Select an operator to begin</p><span>Choose from the left panel to start a conversation</span></div>`; return; }
   const c=S.operators.find(x=>x.id===S.selected); if(!c)return;
@@ -1856,7 +1884,7 @@ async function pollLiveRuns() {
 
 
 /* ═══ OPERATOR CARDS ═══ */
-async function refreshOperators() {
+async function refreshOpCards() {
   const d = await prismFetch('/api/prism/operators');
   if (!d) return;
   const container = document.getElementById('op-cards-list');
@@ -1900,7 +1928,7 @@ async function refreshOperators() {
 
 function startLivePoll() {
   pollLiveRuns();
-  setInterval(pollLiveRuns, 3000);
+  // pollLiveRuns only triggered on demand — not on timer
 }
 
 function runStateBadge(state) {
@@ -1941,7 +1969,7 @@ async function approveFromPrism(approvalId, decision) {
   if (sa) sa.status = decision;
   updateNavBadges();
   renderApprovalsSurface();
-  setTimeout(pollLiveRuns, 800);
+  // setTimeout(pollLiveRuns, 800); — triggered on demand only
 }
 
 /* ═══ SURFACE SWITCHER ═══ */
@@ -2753,13 +2781,14 @@ renderSidebar(); renderMain(); updateNavBadges(); maybeOpenHealth();
 
 (async()=>{
   await refreshOperators();
-  setInterval(refreshOperators, POLL);
+  // refreshOperators sidebar — reduced to 30s to avoid cursor/copy disruption
+  setInterval(refreshOperators, 30000);
   startLivePoll();
   loadModelsFromPRISM();
   refreshOperators();
-  setInterval(refreshOperators, 10000);
+  setInterval(refreshOpCards, 10000);
   maybeOpenHealth();
-  setInterval(()=>{ if(S.surface==='health') refreshHealth(); }, 8000);
+  setInterval(()=>{ if(S.surface==='health') refreshHealth(); }, 30000);
 })();
 </script>
 <!-- ALMANAC OVERLAY -->
