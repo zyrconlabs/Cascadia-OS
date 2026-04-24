@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════
 # Cascadia OS — full stack startup
-# Starts: llama.cpp + Cascadia OS (11 components) + all 8 operators
+# Starts: llama.cpp + Cascadia OS (11 components)
 # ═══════════════════════════════════════════════════════════════════════════
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
@@ -61,67 +61,14 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
 fi
 
 # ── 3. Operators ──────────────────────────────────────────────────────────
+# First-party operators are maintained in cascadia-os-operators (private).
+# Start operators from that repo before running this script.
+# See: https://github.com/zyrconlabs/cascadia-os-operators
 
+# ── 4. Register operators with CREW ──────────────────────────────────────
+# Core components (bell, main_operator) register automatically on startup.
+# Commercial operators self-register when started from cascadia-os-operators.
 
-# ── 3. Operators ──────────────────────────────────────────────────────────
-PYTHON="${REPO}/.venv/bin/python3"
-[[ ! -f "$PYTHON" ]] && PYTHON="python3"
-
-start_operator() {
-    local op="$1" port="$2" entry="$3"
-    local op_path="$REPO/cascadia/operators/$op/$entry"
-    if curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null 2>&1; then
-        echo "✓ $op already running"
-    elif [[ -f "$op_path" ]]; then
-        "$PYTHON" "$op_path" >> "data/logs/${op}.log" 2>&1 &
-        sleep 1
-        curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null             && echo "✓ $op started"             || echo "✗ $op failed — check data/logs/${op}.log"
-    fi
-}
-
-start_operator "recon"                  "8002" "dashboard.py"
-start_operator "scout"                  "7002" "scout_server.py"
-start_operator "quote"                  "8007" "dashboard.py"
-start_operator "chief"                  "8006" "dashboard.py"
-start_operator "aurelia"                "8009" "dashboard.py"
-start_operator "debrief"               "8008" "dashboard.py"
-start_operator "competition-researcher" "8005" "dashboard.py"
-start_operator "jr-programmer"          "8004" "dashboard.py"
-start_operator "email"                  "8010" "server.py"
-start_operator_social() {
-    local port="8011"
-    local op_path="$REPO/cascadia/operators/social/chat_operator/server.py"
-    if curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null 2>&1; then
-        echo "✓ social already running"
-    elif [[ -f "$op_path" ]]; then
-        "$PYTHON" "$op_path" >> "data/logs/social.log" 2>&1 &
-        sleep 1
-        curl -sf "http://127.0.0.1:${port}/api/health" > /dev/null \
-            && echo "✓ social started" \
-            || echo "✗ social failed — check data/logs/social.log"
-    fi
-}
-start_operator_social
-
-# u2500u2500 4. Register operators with CREW u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500
-register_operator() {
-    local op_id="$1" caps="$2"
-    curl -sf -X POST http://127.0.0.1:5100/register \
-        -H "Content-Type: application/json" \
-        -d "{\"operator_id\":\"${op_id}\",\"capabilities\":${caps}}" > /dev/null 2>&1
-}
-register_operator "main_operator"          '["vault.read","vault.write","task.route"]'
-register_operator "bell"                   '["vault.read","vault.write"]'
-register_operator "email_operator"         '["email.send","email.report"]'
-register_operator "recon"                  '["vault.read","vault.write"]'
-register_operator "scout"                  '["vault.read","vault.write"]'
-register_operator "chief"                  '["vault.read"]'
-register_operator "quote"                  '["vault.read","vault.write"]'
-register_operator "aurelia"                '["vault.read","vault.write"]'
-register_operator "debrief"                '["vault.read"]'
-register_operator "competition-researcher" '["vault.read"]'
-register_operator "jr-programmer"          '["vault.read","vault.write"]'
-register_operator "social_chat_operator"   '["campaign.chat","campaign.approve"]'
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
@@ -129,10 +76,6 @@ echo " Cascadia OS stack is up."
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 echo "  PRISM dashboard  →  http://localhost:6300/"
-echo "  RECON            →  http://localhost:8002/"
-echo "  SCOUT            →  http://localhost:7002/"
-echo "  CHIEF            →  http://localhost:8006/"
-echo "  QUOTE            →  http://localhost:8007/"
 echo ""
 echo "  Run demo:  bash demo.sh"
 echo ""
