@@ -1,5 +1,5 @@
 """
-stitch/stitch.py - Cascadia OS v0.43
+stitch/stitch.py - Cascadia OS v0.44
 STITCH: Workflow automation engine.
 
 Owns: workflow definition loading, step sequencing, operator assignment,

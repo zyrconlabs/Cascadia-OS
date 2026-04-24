@@ -201,7 +201,7 @@ class Flint:
     def _serve_status(self) -> None:
         """PRISM reads from /api/flint/status. All operators use /v1/chat/completions."""
         llm_cfg = self.config.get('llm', {})
-        llm_url   = llm_cfg.get('url', 'http://127.0.0.1:8080')
+        llm_url   = llm_cfg.get('base_url', 'http://127.0.0.1:8080')
         llm_model = llm_cfg.get('model', 'qwen2.5-3b-instruct-q4_k_m.gguf')
         llm_completions_url = llm_url.rstrip('/') + '/v1/chat/completions'
         flint = self

@@ -1,5 +1,5 @@
 """
-curtain/curtain.py - Cascadia OS v0.43
+curtain/curtain.py - Cascadia OS v0.44
 CURTAIN: Encryption layer for Cascadia OS.
 
 Owns: transport encryption, at-rest data protection, key derivation,

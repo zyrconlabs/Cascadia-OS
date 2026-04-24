@@ -1,5 +1,5 @@
 """
-workflow_runtime.py - Cascadia OS v0.43
+workflow_runtime.py - Cascadia OS v0.44
 Owns one durable, executable workflow runtime for the built-in lead follow-up path.
 Does not own HTTP transport, UI collection, or external provider auth.
 

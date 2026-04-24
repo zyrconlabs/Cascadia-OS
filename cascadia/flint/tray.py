@@ -21,21 +21,39 @@ PYTHON = sys.executable
 LOG_DIR = REPO / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-PORTS = {
-    "FLINT":     (4011, "/health"),
-    "CREW":      (5100, "/health"),
-    "VAULT":     (5101, "/health"),
-    "SENTINEL":  (5102, "/health"),
-    "CURTAIN":   (5103, "/health"),
-    "BEACON":    (6200, "/health"),
-    "STITCH":    (6201, "/health"),
-    "VANGUARD":  (6202, "/health"),
-    "HANDSHAKE": (6203, "/health"),
-    "BELL":      (6204, "/health"),
-    "ALMANAC":   (6205, "/health"),
-    "PRISM":     (6300, "/health"),
-    "SCOUT":     (7002, "/api/health"),
-    "RECON":     (8002, "/api/health"),
+
+def _load_ports() -> dict[str, tuple[int, str]]:
+    """Build port map from config.json; fall back to hardcoded defaults."""
+    try:
+        cfg = json.loads((REPO / "config.json").read_text())
+        ports: dict[str, tuple[int, str]] = {
+            "FLINT": (cfg["flint"]["status_port"], "/health"),
+        }
+        for comp in cfg.get("components", []):
+            ports[comp["name"].upper()] = (comp["port"], "/health")
+        return ports
+    except Exception:
+        return {
+            "FLINT":     (4011, "/health"),
+            "CREW":      (5100, "/health"),
+            "VAULT":     (5101, "/health"),
+            "SENTINEL":  (5102, "/health"),
+            "CURTAIN":   (5103, "/health"),
+            "BEACON":    (6200, "/health"),
+            "STITCH":    (6201, "/health"),
+            "VANGUARD":  (6202, "/health"),
+            "HANDSHAKE": (6203, "/health"),
+            "BELL":      (6204, "/health"),
+            "ALMANAC":   (6205, "/health"),
+            "PRISM":     (6300, "/health"),
+        }
+
+
+PORTS = _load_ports()
+# Operator agents use non-standard health paths; keep separate from core ports.
+OPERATOR_PORTS: dict[str, tuple[int, str]] = {
+    "SCOUT": (7002, "/api/health"),
+    "RECON": (8002, "/api/health"),
 }
 
 def check(port: int, path: str) -> bool:
@@ -46,7 +64,7 @@ def check(port: int, path: str) -> bool:
         return False
 
 def online_count() -> int:
-    return sum(check(p, h) for p, h in PORTS.values())
+    return sum(check(p, h) for p, h in {**PORTS, **OPERATOR_PORTS}.values())
 
 def make_icon(online: int, total: int) -> Image.Image:
     size = 64
@@ -92,8 +110,8 @@ def open_url(url: str) -> None:
     import webbrowser
     webbrowser.open(url)
 
-def open_prism(_=None) -> None: open_url("http://localhost:6300/")
-def open_bell(_=None) -> None:  open_url("http://localhost:7002/bell")
+def open_prism(_=None) -> None: open_url(f"http://localhost:{PORTS.get('PRISM', (6300,))[0]}/")
+def open_bell(_=None) -> None:  open_url(f"http://localhost:{OPERATOR_PORTS.get('SCOUT', (7002,))[0]}/bell")
 def open_logs(_=None) -> None:
     import os
     if sys.platform == "darwin": os.system(f"open {LOG_DIR}")
@@ -101,12 +119,12 @@ def open_logs(_=None) -> None:
     else: os.startfile(LOG_DIR)
 
 def build_menu(icon: pystray.Icon) -> pystray.Menu:
-    total = len(PORTS)
+    total = len(PORTS) + len(OPERATOR_PORTS)
     online = online_count()
-    flint_up = check(4011, "/health")
-    scout_up = check(7002, "/api/health")
-    recon_up = check(8002, "/api/health")
-    prism_up = check(6300, "/health")
+    flint_up = check(*PORTS["FLINT"])
+    scout_up = check(*OPERATOR_PORTS.get("SCOUT", (7002, "/api/health")))
+    recon_up = check(*OPERATOR_PORTS.get("RECON", (8002, "/api/health")))
+    prism_up = check(*PORTS.get("PRISM", (6300, "/health")))
 
     items = [
         pystray.MenuItem(f"Cascadia OS  {online}/{total} online", None, enabled=False),
@@ -139,7 +157,7 @@ def build_menu(icon: pystray.Icon) -> pystray.Menu:
     return pystray.Menu(*items)
 
 def update_loop(icon: pystray.Icon) -> None:
-    total = len(PORTS)
+    total = len(PORTS) + len(OPERATOR_PORTS)
     while True:
         online = online_count()
         icon.icon  = make_icon(online, total)
@@ -148,7 +166,7 @@ def update_loop(icon: pystray.Icon) -> None:
         time.sleep(5)
 
 def main() -> None:
-    total = len(PORTS)
+    total = len(PORTS) + len(OPERATOR_PORTS)
     online = online_count()
     icon = pystray.Icon(
         "cascadia",

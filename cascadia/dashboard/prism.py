@@ -1,5 +1,5 @@
 """
-prism/prism.py - Cascadia OS v0.43
+prism/prism.py - Cascadia OS v0.44
 PRISM: Command center and dashboard aggregation layer.
 
 Owns: aggregating status from all Cascadia OS components,
@@ -278,13 +278,17 @@ class PrismService:
                     _gpu = _llm.get('n_gpu_layers', 99)
                     _model_path = f'{_models_dir}/{_model}'
                     if _bin and _os.path.isfile(_bin) and _os.path.isfile(_model_path):
+                        import urllib.parse as _up
+                        _base = _llm.get('base_url', 'http://127.0.0.1:8080')
+                        _port = str(_up.urlparse(_base).port or 8080)
+                        _ctx  = str(_llm.get('ctx_size', 4096))
                         # Kill any stale instance first
                         _sp.run(['pkill', '-f', 'llama-server'], capture_output=True)
                         import time as _time; _time.sleep(1)
                         _sp.Popen(
                             [_bin, '--model', _model_path,
-                             '--host', '127.0.0.1', '--port', '8080',
-                             '--ctx-size', '4096',
+                             '--host', '127.0.0.1', '--port', _port,
+                             '--ctx-size', _ctx,
                              '--n-gpu-layers', str(_gpu)],
                             cwd=install_dir,
                             stdout=open(f'{install_dir}/data/logs/llamacpp.log', 'a'),
@@ -374,12 +378,7 @@ class PrismService:
         if not query:
             return 400, {'error': 'query required'}
 
-        # Find ALMANAC port from config
-        almanac_port = 6205
-        for comp in self.config.get('components', []):
-            if comp.get('name', '').lower() == 'almanac':
-                almanac_port = comp.get('port', 6205)
-                break
+        almanac_port = self._ports.get('almanac', 6205)
 
         try:
             import json as _json
@@ -520,21 +519,19 @@ class PrismService:
             'group': 'Infrastructure',
         }
 
-        # ── Cascadia components ───────────────────────────────────────────────
-        COMPONENTS = [
-            ('flint',     4011, 'Kernel'),
-            ('crew',      5100, 'Foundation'),
-            ('vault',     5101, 'Foundation'),
-            ('sentinel',  5102, 'Foundation'),
-            ('curtain',   5103, 'Foundation'),
-            ('beacon',    6200, 'Runtime'),
-            ('stitch',    6201, 'Runtime'),
-            ('vanguard',  6202, 'Runtime'),
-            ('handshake', 6203, 'Runtime'),
-            ('bell',      6204, 'Runtime'),
-            ('almanac',   6205, 'Runtime'),
-            ('prism',     6300, 'Dashboard'),
-        ]
+        # ── Cascadia components — port list built from config ─────────────────
+        _groups = {
+            'crew': 'Foundation', 'vault': 'Foundation',
+            'sentinel': 'Foundation', 'curtain': 'Foundation',
+            'beacon': 'Runtime', 'stitch': 'Runtime', 'vanguard': 'Runtime',
+            'handshake': 'Runtime', 'bell': 'Runtime', 'almanac': 'Runtime',
+            'prism': 'Dashboard',
+        }
+        COMPONENTS = (
+            [('flint', self._flint_port, 'Kernel')] +
+            [(c['name'], c['port'], _groups.get(c['name'], 'Runtime'))
+             for c in self.config.get('components', [])]
+        )
         # ── Operator agents — loaded from registry.json ──────────────────────
         try:
             registry_path = Path(__file__).parent.parent / 'operators' / 'registry.json'

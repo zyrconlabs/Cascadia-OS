@@ -1,1 +1,1 @@
-# VANGUARD - Cascadia OS v0.43 communication gateway
+# VANGUARD - Cascadia OS v0.44 communication gateway

@@ -1,5 +1,5 @@
 """
-bell/bell.py - Cascadia OS v0.43
+bell/bell.py - Cascadia OS v0.44
 BELL: Inbound chat interface and human-in-the-loop handler.
 
 Owns: message ingestion from humans, chat session management,

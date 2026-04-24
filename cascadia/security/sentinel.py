@@ -1,4 +1,4 @@
-"""sentinel.py - Cascadia OS v0.43 | SENTINEL: Security, compliance, data governance."""
+"""sentinel.py - Cascadia OS v0.44 | SENTINEL: Security, compliance, data governance."""
 from __future__ import annotations
 import argparse
 from typing import Any, Dict, List

@@ -1,5 +1,5 @@
 """
-vanguard/vanguard.py - Cascadia OS v0.43
+vanguard/vanguard.py - Cascadia OS v0.44
 ZYRCON VANGUARD: Communication gateway.
 
 Owns: inbound channel routing (email, webhook, SMS, API calls),
