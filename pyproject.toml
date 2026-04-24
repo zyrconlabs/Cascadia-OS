@@ -1,9 +1,9 @@
 [project]
-name = "zyrcon-x"
+name = "cascadia-os"
 version = "0.44.0"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-description = "Zyrcon-X — local-first single-node operator platform"
+description = "Cascadia OS — local-first single-node operator platform"
 requires-python = ">=3.11"
 dependencies = [
     "cryptography>=42.0.0",
@@ -28,16 +28,16 @@ tray = [
 ]
 
 [project.scripts]
-zyrcon-watchdog = "zyrcon.kernel.watchdog:main"
-zyrcon-flint    = "zyrcon.kernel.flint:main"
-zyrcon-once     = "tools.installer.once:main"
-zyrcon          = "zyrcon.kernel.watchdog:main"
+cascadia-watchdog = "cascadia.kernel.watchdog:main"
+cascadia-flint    = "cascadia.kernel.flint:main"
+cascadia-once     = "cascadia.installer.once:main"
+cascadia          = "cascadia.kernel.watchdog:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["zyrcon*", "operators*", "dashboard*", "tools*"]
+include = ["cascadia*"]
 
-[tool.zyrcon]
+[tool.cascadia]
 version = "0.44"
-control_plane = "zyrcon.kernel.flint"
-entrypoint    = "zyrcon.kernel.watchdog"
+control_plane = "cascadia.kernel.flint"
+entrypoint    = "cascadia.kernel.watchdog"

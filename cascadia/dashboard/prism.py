@@ -632,7 +632,7 @@ class PrismService:
         total_count = len(component_states)
 
         return 200, {
-            'cascadia_os': 'v0.43',
+            'cascadia_os': 'v0.44',
             'generated_at': _now(),
             'system': {
                 'flint_state': flint.get('state', 'unknown'),
