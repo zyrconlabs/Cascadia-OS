@@ -533,14 +533,16 @@ class PrismService:
              for c in self.config.get('components', [])]
         )
         # ── Operator agents — loaded from registry.json ──────────────────────
+        _configured_reg = self.config.get('operators_registry_path', '')
+        _reg_path = (Path(_configured_reg).expanduser() if _configured_reg
+                     else Path(__file__).parent.parent / 'operators' / 'registry.json')
         try:
-            registry_path = Path(__file__).parent.parent / 'operators' / 'registry.json'
-            registry = json.loads(registry_path.read_text())
+            registry = json.loads(_reg_path.read_text())
             for op in registry.get('operators', []):
                 port = op.get('port')
                 if not port:
                     continue
-                health_path = op.get('health_path', '/health')
+                health_path = op.get('health_path', '/api/health')
                 op_status = 'error'
                 op_detail = f'Port {port} — not running'
                 try:
@@ -775,9 +777,17 @@ class PrismService:
 
 
     def operator_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """Live status of all registered operators from registry.json."""
+        """Live status of all registered operators from registry.json.
+
+        Checks config operators_registry_path first; falls back to the
+        inline cascadia/operators/registry.json in the install directory.
+        """
         import urllib.request as _ur
-        registry_path = Path(__file__).parent.parent / "operators" / "registry.json"
+        configured = self.config.get('operators_registry_path', '')
+        if configured:
+            registry_path = Path(configured).expanduser()
+        else:
+            registry_path = Path(__file__).parent.parent / "operators" / "registry.json"
         try:
             registry = json.loads(registry_path.read_text())
             operators = registry.get("operators", [])
