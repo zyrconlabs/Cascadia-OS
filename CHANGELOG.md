@@ -3,6 +3,22 @@
 ---
 
 
+## [0.44.0] — 2026-04-23
+
+### Changed
+- Relicenced core from MIT to Apache License 2.0. The Apache 2.0
+  licence applies from this version forward. Code in repository
+  history prior to this tag remains available under the original
+  MIT terms.
+- First-party commercial operators moved to a private repository
+  prior to this release. The public repo now contains the open
+  core only.
+- Added LICENSING.md documenting the Apache 2.0 core.
+- Added COMMERCIAL.md describing the commercial product structure.
+- Added license and license-files fields to pyproject.toml (PEP 639).
+- Bumped version to 0.44.0.
+- Added licensing-of-contributions clause to CONTRIBUTING.md.
+
 ## v0.43.0 — 2026-04-18
 
 ### Summary
