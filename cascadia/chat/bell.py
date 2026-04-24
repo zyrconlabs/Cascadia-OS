@@ -270,7 +270,38 @@ class BellService:
             return 404, {'error': 'session not found'}
         return 200, {'session_id': session_id, 'messages': session.messages}
 
+    def _try_register_with_crew(self, crew_port: int, retries: int = 6) -> None:
+        """Register BELL with CREW as a built-in component — retries until CREW is up."""
+        import urllib.request as _ur
+        import json as _json
+        payload = _json.dumps({
+            'operator_id': 'bell',
+            'type': 'system',
+            'autonomy_level': 'assistive',
+            'capabilities': ['chat.receive', 'chat.respond', 'workflow.trigger', 'approval.collect'],
+            'health_hook': '/health',
+        }).encode()
+        for _ in range(retries):
+            try:
+                req = _ur.Request(
+                    f'http://127.0.0.1:{crew_port}/register',
+                    data=payload,
+                    headers={'Content-Type': 'application/json'},
+                    method='POST',
+                )
+                _ur.urlopen(req, timeout=3)
+                self.runtime.logger.info('BELL registered with CREW')
+                return
+            except Exception:
+                time.sleep(5)
+        self.runtime.logger.warning('BELL: CREW registration failed after %d attempts', retries)
+
     def start(self) -> None:
+        crew_port = next(
+            (c['port'] for c in self.config.get('components', []) if c['name'] == 'crew'),
+            5100,
+        )
+        threading.Thread(target=self._try_register_with_crew, args=(crew_port,), daemon=True).start()
         self.runtime.start()
 
 

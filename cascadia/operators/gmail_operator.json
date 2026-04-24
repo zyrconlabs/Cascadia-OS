@@ -1,0 +1,12 @@
+{
+  "id": "gmail_operator",
+  "name": "Gmail Operator",
+  "version": "0.1.0",
+  "type": "service",
+  "capabilities": ["email.send"],
+  "required_dependencies": [],
+  "requested_permissions": ["gmail.send"],
+  "autonomy_level": "semi_autonomous",
+  "health_hook": "/health",
+  "description": "Gmail integration operator for sending emails on behalf of the business. Replace with your own email operator implementation."
+}

@@ -1,0 +1,17 @@
+{
+  "version": "0.44",
+  "description": "Operator registry for Cascadia OS. Copy to registry.json and add your operator entries. See docs/operators.md for the full operator development guide.",
+  "operators": [
+    {
+      "id": "my_operator",
+      "name": "My Operator",
+      "category": "automation",
+      "description": "Example operator that processes tasks.",
+      "status": "production",
+      "port": 7100,
+      "health_path": "/health",
+      "autonomy": "semi-autonomous",
+      "sample_output": null
+    }
+  ]
+}

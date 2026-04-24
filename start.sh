@@ -66,8 +66,9 @@ fi
 # See: https://github.com/zyrconlabs/cascadia-os-operators
 
 # ── 4. Register operators with CREW ──────────────────────────────────────
-# Core components (bell, main_operator) register automatically on startup.
-# Commercial operators self-register when started from cascadia-os-operators.
+# BELL self-registers with CREW automatically after startup.
+# Commercial operators (cascadia-os-operators) self-register when started.
+# Custom operators: POST http://127.0.0.1:5100/register with your operator_id.
 
 
 echo ""

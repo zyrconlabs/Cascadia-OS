@@ -430,6 +430,24 @@ input[type="file"]{display:none}
 /* ── SETTINGS SURFACE ── */
 .settings-wrap{max-width:640px;margin:0 auto;padding:24px 20px}
 
+/* ── WELCOME MODAL ── */
+.welcome-backdrop{position:fixed;inset:0;background:rgba(10,14,26,.55);backdrop-filter:blur(3px);z-index:10000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s ease}
+.welcome-backdrop.open{opacity:1;pointer-events:all}
+.welcome-card{background:var(--white);border-radius:20px;box-shadow:0 24px 80px rgba(0,0,0,.22);width:min(520px,92vw);padding:36px 36px 28px;transform:translateY(16px) scale(.97);transition:transform .25s ease}
+.welcome-backdrop.open .welcome-card{transform:translateY(0) scale(1)}
+.welcome-logo{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--accent);margin-bottom:8px}
+.welcome-title{font-size:22px;font-weight:800;color:var(--navy-800);margin-bottom:6px}
+.welcome-sub{font-size:14px;color:var(--gray-500);margin-bottom:24px;line-height:1.5}
+.welcome-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px}
+.welcome-item{background:var(--gray-50);border:1px solid var(--gray-150);border-radius:12px;padding:14px 15px}
+.welcome-item-title{font-size:12px;font-weight:700;color:var(--navy-800);margin-bottom:3px}
+.welcome-item-desc{font-size:11px;color:var(--gray-500);line-height:1.45}
+.welcome-actions{display:flex;gap:10px;justify-content:flex-end;align-items:center}
+.welcome-skip{font-size:13px;color:var(--gray-400);cursor:pointer;background:none;border:none;padding:8px 4px}
+.welcome-skip:hover{color:var(--gray-600)}
+.welcome-start{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;transition:background .15s}
+.welcome-start:hover{background:#2a5cff}
+
 /* ── ALMANAC OVERLAY ── */
 .alm-overlay{position:fixed;bottom:20px;right:20px;width:360px;max-height:520px;
   background:var(--white);border:1px solid var(--gray-200);border-radius:16px;
@@ -564,7 +582,7 @@ input[type="file"]{display:none}
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__header">
-      <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v0.43</div></div>
+      <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v0.44</div></div>
       <div id="conn-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gray-300);flex-shrink:0" title="Gateway status"></div>
     </div>
     <div class="sidebar__search"><input type="text" placeholder="Search operators…" oninput="filterOperators(this.value)"></div>
@@ -1066,7 +1084,7 @@ async function handleCommand(id, cmd) {
       return `<div class="status-card" style="animation-delay:${i*.04}s"><div class="sc-dot ${dc}"></div><div class="sc-info"><div class="sc-name">${name.toUpperCase()}</div><div class="sc-task">${state}</div></div><div class="sc-pct">${ok?'●':state==='starting'?'◑':'◯'}</div></div>`;
     }).join('');
     S.messages[id].push({time:t,type:'agent',html:`
-      <div class="msg-text" style="margin-bottom:10px">Cascadia OS v0.43 — System Overview</div>
+      <div class="msg-text" style="margin-bottom:10px">Cascadia OS v0.44 — System Overview</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">
         <div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:8px;padding:9px 11px">
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--navy-800)">${healthy}</div>
@@ -2178,6 +2196,20 @@ async function refreshHealth() {
   } catch(e) { console.error('refreshHealth error:', e); }
 }
 
+/* ═══ WELCOME MODAL ═══ */
+(function showWelcomeIfFirstVisit() {
+  if (!localStorage.getItem('cascadia_prism_welcomed')) {
+    const bd = document.getElementById('welcome-backdrop');
+    if (bd) requestAnimationFrame(() => bd.classList.add('open'));
+  }
+})();
+
+function dismissWelcome() {
+  localStorage.setItem('cascadia_prism_welcomed', '1');
+  const bd = document.getElementById('welcome-backdrop');
+  if (bd) { bd.classList.remove('open'); bd.addEventListener('transitionend', () => bd.remove(), {once:true}); }
+}
+
 /* ═══ ALMANAC CHAT ═══ */
 function toggleAlmanac() {
   const ov = document.getElementById('alm-overlay');
@@ -2792,6 +2824,36 @@ renderSidebar(); renderMain(); updateNavBadges(); maybeOpenHealth();
 })();
 </script>
 <!-- ALMANAC OVERLAY -->
+<div class="welcome-backdrop" id="welcome-backdrop">
+  <div class="welcome-card">
+    <div class="welcome-logo">CASCADIA OS · v0.44</div>
+    <div class="welcome-title">Welcome to PRISM</div>
+    <div class="welcome-sub">Your command center for the Cascadia OS operator platform. Here's what you're looking at:</div>
+    <div class="welcome-grid">
+      <div class="welcome-item">
+        <div class="welcome-item-title">System Health</div>
+        <div class="welcome-item-desc">Real-time status of all 11 components — FLINT, CREW, VAULT, and more. Green means running.</div>
+      </div>
+      <div class="welcome-item">
+        <div class="welcome-item-title">Runs</div>
+        <div class="welcome-item-desc">Every workflow execution — live state, step history, crash recovery status, and completion logs.</div>
+      </div>
+      <div class="welcome-item">
+        <div class="welcome-item-title">Approvals</div>
+        <div class="welcome-item-desc">Workflows waiting on a human decision. Click Approve or Deny to resume the run from exactly where it paused.</div>
+      </div>
+      <div class="welcome-item">
+        <div class="welcome-item-title">Crew</div>
+        <div class="welcome-item-desc">Operators registered with CREW — their capabilities, autonomy level, and active status.</div>
+      </div>
+    </div>
+    <div class="welcome-actions">
+      <button class="welcome-skip" onclick="dismissWelcome()">Skip</button>
+      <button class="welcome-start" onclick="dismissWelcome()">Get Started</button>
+    </div>
+  </div>
+</div>
+
 <div class="alm-overlay" id="alm-overlay">
   <div class="alm-header">
     <div class="alm-title">⬡ Almanac · AI Help</div>

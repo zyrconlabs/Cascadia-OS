@@ -1,0 +1,12 @@
+{
+  "id": "calendar_operator",
+  "name": "Calendar Operator",
+  "version": "0.1.0",
+  "type": "service",
+  "capabilities": ["calendar.read", "calendar.write"],
+  "required_dependencies": [],
+  "requested_permissions": ["calendar.write"],
+  "autonomy_level": "semi_autonomous",
+  "health_hook": "/health",
+  "description": "Calendar integration operator for scheduling and meeting management. Replace with your own calendar operator implementation."
+}
