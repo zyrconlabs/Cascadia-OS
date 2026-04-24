@@ -65,4 +65,14 @@ Open an Issue first for:
 - focused feature requests
 - concrete tasks
 
+
+## Licensing of contributions
+
+By submitting a contribution (pull request, patch, or issue with
+code) to this repository, you agree that your contribution is
+licensed under the Apache License 2.0, the same licence that
+covers the Cascadia OS core. See [LICENSING.md](./LICENSING.md)
+for details on which components are covered by Apache 2.0 and
+which are offered under separate commercial terms.
+
 Thanks for helping build something useful.

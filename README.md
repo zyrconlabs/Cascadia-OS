@@ -249,4 +249,24 @@ Operator registry: [cascadia/operators/registry.json](./cascadia/operators/regis
 
 ---
 
+
+---
+
+## Licence
+
+Cascadia OS core is licensed under the **Apache License 2.0**.
+See [LICENSE](./LICENSE) for full terms.
+
+Certain components — including first-party pre-built business
+operators, hardware appliance images, Cascadia Pro, managed cloud
+services, marketplace infrastructure, and enterprise support —
+are offered under separate commercial terms. See
+[LICENSING.md](./LICENSING.md) and [COMMERCIAL.md](./COMMERCIAL.md)
+for the full breakdown, or contact zyrconlabs@gmail.com for
+commercial inquiries.
+
+**Dependencies:** llama.cpp (MIT) · Qwen3 (Apache 2.0)
+
+---
+
 *Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs)*

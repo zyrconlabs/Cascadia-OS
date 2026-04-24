@@ -1,6 +1,8 @@
 [project]
 name = "zyrcon-x"
-version = "0.43.0"
+version = "0.44.0"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 description = "Zyrcon-X — local-first single-node operator platform"
 requires-python = ">=3.11"
 dependencies = [
@@ -36,6 +38,6 @@ where = ["."]
 include = ["zyrcon*", "operators*", "dashboard*", "tools*"]
 
 [tool.zyrcon]
-version = "0.43"
+version = "0.44"
 control_plane = "zyrcon.kernel.flint"
 entrypoint    = "zyrcon.kernel.watchdog"
