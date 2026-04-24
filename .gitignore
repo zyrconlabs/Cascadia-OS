@@ -10,6 +10,7 @@ config.json
 data/
 *.heartbeat
 *.log
+*.log.*
 
 # OS
 .DS_Store
