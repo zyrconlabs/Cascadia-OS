@@ -37,6 +37,13 @@ Installs Homebrew (if needed), SwiftBar, Cascadia OS, registers a login agent, a
 
 → [Full quickstart guide](./QUICKSTART.md)
 
+**Windows:**
+
+    git clone https://github.com/zyrconlabs/cascadia-os.git
+    powershell -ExecutionPolicy Bypass -File cascadia-os\windows\install.ps1
+
+→ [Windows installation guide](./windows/README.md)
+
 ---
 
 ## 🎬 Run the Demo
@@ -241,6 +248,7 @@ Operator registry: [cascadia/operators/registry.json](./cascadia/operators/regis
 ## Docs
 
 - [Quickstart](./QUICKSTART.md)
+- [Windows Installation](./windows/README.md)
 - [Manual](./MANUAL.md)
 - [PRISM Manual](./PRISM_MANUAL.md)
 - [Contributing](./CONTRIBUTING.md)
