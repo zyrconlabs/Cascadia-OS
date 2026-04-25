@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Cascadia OS startup wrapper — used by launchd
 # Starts llama.cpp then hands off to the watchdog
-cd "/Users/andy/cascadia-os"
+cd "/Users/andy/Zyrcon/cascadia-os"
 
-INSTALL_DIR="/Users/andy/cascadia-os"
+INSTALL_DIR="/Users/andy/Zyrcon/cascadia-os"
 VENV_PYTHON="$INSTALL_DIR/.venv/bin/python3"
 CONFIG="$INSTALL_DIR/config.json"
 LOG_DIR="$INSTALL_DIR/data/logs"
