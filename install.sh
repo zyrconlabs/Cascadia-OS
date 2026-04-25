@@ -9,6 +9,7 @@ set -euo pipefail
 REPO="zyrconlabs/cascadia-os"   # ← replace with your GitHub username/repo
 BRANCH="main"
 INSTALL_DIR="$HOME/cascadia-os"
+VERSION=$(grep -m1 '^version' "$(dirname "$0")/pyproject.toml" 2>/dev/null | cut -d'"' -f2 || echo "0.44.0")
 VENV_DIR="$INSTALL_DIR/.venv"
 MIN_PYTHON="3.11"
 
@@ -33,7 +34,7 @@ echo ""
 
 echo ""
 echo "  ╔══════════════════════════════════════╗"
-echo "  ║       Cascadia OS v0.43 Installer    ║"
+echo "  ║       Cascadia OS v${VERSION} Installer    ║"
 echo "  ╚══════════════════════════════════════╝"
 echo ""
 
