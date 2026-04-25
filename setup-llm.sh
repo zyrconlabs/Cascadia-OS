@@ -335,7 +335,7 @@ if [[ "$MODE_CHOICE" == "1" ]]; then
             echo ""
             if command -v curl &>/dev/null; then
                 curl -L --progress-bar --continue-at - \
-                    -H "User-Agent: Cascadia-OS/0.43" \
+                    -H "User-Agent: Cascadia-OS/$(grep -m1 '^version' "$INSTALL_DIR/pyproject.toml" | cut -d'"' -f2)" \
                     -o "$MODEL_PATH" "$MODEL_URL" \
                     || { rm -f "$MODEL_PATH"; die "Download failed. Re-run to resume."; }
             else
