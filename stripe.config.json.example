@@ -1,0 +1,16 @@
+{
+  "price_ids": {
+    "lite":       "",
+    "pro":        "",
+    "business":   "",
+    "enterprise": ""
+  },
+  "webhook_secret": "",
+  "checkout_links": {
+    "lite":       "",
+    "pro":        "",
+    "business":   "",
+    "enterprise": ""
+  },
+  "mode": "test"
+}

@@ -20,6 +20,7 @@ from typing import Any, Dict
 
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
+from cascadia.core.watchdog import OperatorWatchdog
 
 _REQUIRED_MANIFEST_FIELDS = {'operator_id', 'name', 'version', 'capabilities'}
 _OPERATORS_DIR = Path(__file__).parent.parent.parent / 'operators'
@@ -39,12 +40,15 @@ class CrewService:
             heartbeat_file=component['heartbeat_file'],
             log_dir=config['log_dir'],
         )
+        self._config = config
         self.registry: Dict[str, Dict[str, Any]] = {}
-        self.runtime.register_route('POST', '/register',         self.register)
-        self.runtime.register_route('POST', '/validate',         self.validate)
-        self.runtime.register_route('GET',  '/crew',             self.list_crew)
-        self.runtime.register_route('POST', '/deregister',       self.deregister)
-        self.runtime.register_route('POST', '/install_operator', self.install_operator)
+        self._watchdog = OperatorWatchdog(config, self.runtime.logger)
+        self.runtime.register_route('POST', '/register',              self.register)
+        self.runtime.register_route('POST', '/validate',              self.validate)
+        self.runtime.register_route('GET',  '/crew',                  self.list_crew)
+        self.runtime.register_route('POST', '/deregister',            self.deregister)
+        self.runtime.register_route('POST', '/install_operator',      self.install_operator)
+        self.runtime.register_route('GET',  '/api/watchdog/status',   self.watchdog_status)
 
     def register(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Register an operator into the Crew."""
@@ -155,7 +159,12 @@ class CrewService:
             return {}, 'capabilities must be a list'
         return manifest, ''
 
+    def watchdog_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/watchdog/status — operator health and restart counts."""
+        return 200, self._watchdog.get_status()
+
     def start(self) -> None:
+        self._watchdog.start()
         self.runtime.start()
 
 

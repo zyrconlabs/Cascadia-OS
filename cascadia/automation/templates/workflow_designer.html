@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workflow Designer — Cascadia OS</title>
+<style>
+:root{
+  --bg:#f5f7fa;--white:#fff;--border:rgba(0,0,0,.08);
+  --navy:#111827;--navy-dim:#374151;--gray:#94a3b8;--gray-lt:#e8edf4;
+  --accent:#4facfe;--green:#34d399;--red:#f87171;--yellow:#fbbf24;--purple:#a78bfa;
+  --font:'Inter',-apple-system,sans-serif;--mono:'JetBrains Mono','SF Mono',monospace;
+  --node-w:148px;--hist-w:300px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--bg);color:var(--navy)}
+button{cursor:pointer;font-family:var(--font)}
+
+/* ── LAYOUT ── */
+.app{display:flex;flex-direction:column;height:100vh}
+.toolbar{display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--white);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+.tbar-title{font-size:13px;font-weight:700;color:var(--navy);flex:1}
+.tbtn{height:28px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:0 10px;border-radius:7px;border:1px solid var(--gray-lt);background:var(--white);color:var(--navy-dim);transition:all .12s}
+.tbtn:hover{background:var(--bg);border-color:var(--gray)}
+.tbtn--primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.tbtn--primary:hover{opacity:.88}
+.tbtn--danger{color:var(--red);border-color:rgba(248,113,113,.3)}
+.tbtn--danger:hover{background:rgba(248,113,113,.08)}
+.tbar-sep{width:1px;height:20px;background:var(--border);margin:0 2px}
+.kbd{font-family:var(--mono);font-size:9px;padding:1px 4px;border-radius:3px;background:var(--bg);border:1px solid var(--gray-lt);color:var(--gray);margin-left:2px}
+
+/* ── CANVAS AREA ── */
+.canvas-wrap{flex:1;display:flex;position:relative;overflow:hidden}
+.palette{width:190px;min-width:190px;background:var(--white);border-right:1px solid var(--border);overflow-y:auto;padding:8px;flex-shrink:0}
+.pal-sec{font-size:9px;font-weight:600;color:var(--gray);letter-spacing:.1em;text-transform:uppercase;padding:8px 6px 5px}
+.pal-node{display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid var(--border);border-radius:8px;background:var(--white);cursor:grab;transition:all .12s;margin-bottom:5px;font-size:12px;color:var(--navy-dim);font-weight:500;user-select:none}
+.pal-node:hover{border-color:var(--accent);background:rgba(79,172,254,.04)}
+.pal-node:active{cursor:grabbing}
+.pal-icon{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;color:#fff}
+.pi--worker{background:#4a5568}.pi--model{background:#7c3aed}.pi--tool{background:#0d9488}.pi--control{background:#b45309}.pi--output{background:#059669}
+
+/* ── FLOW CANVAS ── */
+.flow-canvas{flex:1;position:relative;overflow:hidden;background:var(--bg);cursor:default}
+.canvas-grid{position:absolute;inset:0;background-image:radial-gradient(circle,rgba(0,0,0,.15) 1px,transparent 1px);background-size:24px 24px;pointer-events:none}
+.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:1}
+.flow-node{position:absolute;background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;min-width:var(--node-w);cursor:pointer;transition:border-color .15s,box-shadow .15s;user-select:none;z-index:2}
+.flow-node:hover{border-color:rgba(79,172,254,.4);box-shadow:0 2px 10px rgba(0,0,0,.08)}
+.flow-node--selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,172,254,.15)}
+.flow-node--dragging{box-shadow:0 4px 20px rgba(0,0,0,.12);z-index:100;transition:none}
+.fn-header{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.fn-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;flex-shrink:0}
+.fn-name{font-size:12px;font-weight:600;color:var(--navy)}
+.fn-role{font-size:10px;color:var(--gray)}
+.fn-status{position:absolute;top:6px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--gray-lt)}
+.fn-status--online{background:var(--green);box-shadow:0 0 4px rgba(52,211,153,.4)}
+.fn-status--offline{background:rgba(148,163,184,.4)}
+.fn-port{width:12px;height:12px;border-radius:50%;background:var(--gray-lt);border:1.5px solid var(--gray);position:absolute;transition:all .15s;cursor:crosshair}
+.fn-port:hover{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,172,254,.2)}
+.fn-port--in{left:-7px;top:50%;transform:translateY(-50%)}
+.fn-port--out{right:-7px;top:50%;transform:translateY(-50%)}
+.fn-port--flash-err{animation:portErr .5s ease}
+@keyframes portErr{0%,100%{background:var(--gray-lt)}50%{background:var(--red);border-color:var(--red);box-shadow:0 0 0 3px rgba(248,113,113,.3)}}
+
+/* ── EMPTY CANVAS ── */
+.canvas-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none}
+.canvas-empty.hidden{display:none}
+.canvas-empty p{font-size:14px;font-weight:600;color:var(--navy-dim)}
+.canvas-empty span{font-size:12px;color:var(--gray)}
+.tmpl-cards{display:flex;gap:8px;pointer-events:all}
+.tmpl-card{background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all .15s;min-width:140px;text-align:center}
+.tmpl-card:hover{border-color:var(--accent);box-shadow:0 4px 16px rgba(79,172,254,.12)}
+.tmpl-card__icon{font-size:24px;margin-bottom:6px}
+.tmpl-card__name{font-size:12px;font-weight:700;color:var(--navy)}
+.tmpl-card__desc{font-size:10px;color:var(--gray);margin-top:2px}
+
+/* ── INSPECTOR ── */
+.inspector{width:220px;min-width:220px;background:var(--white);border-left:1px solid var(--border);padding:14px;overflow-y:auto;flex-shrink:0}
+.ins-title{font-size:9.5px;font-weight:600;color:var(--gray);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
+.ins-field{margin-bottom:10px}
+.ins-label{font-size:11px;font-weight:500;color:var(--navy-dim);margin-bottom:4px}
+.ins-input{width:100%;height:30px;border:1px solid var(--border);border-radius:7px;padding:0 9px;font-size:12px;outline:none;transition:border-color .15s;background:var(--white);color:var(--navy)}
+.ins-input:focus{border-color:var(--accent)}
+.ins-select{width:100%;height:30px;border:1px solid var(--border);border-radius:7px;padding:0 9px;font-size:12px;outline:none;background:var(--white);color:var(--navy)}
+.ins-empty{font-size:12px;color:var(--gray);text-align:center;padding:20px 0;line-height:1.6}
+.ins-btn{width:100%;height:32px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s;margin-top:4px}
+.ins-btn:hover{opacity:.88}
+.ins-del{width:100%;height:32px;border-radius:8px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.06);color:var(--red);font-size:12px;font-weight:600;cursor:pointer;margin-top:6px}
+.ins-del:hover{background:rgba(248,113,113,.12)}
+
+/* ── RUN HISTORY PANEL ── */
+.hist-panel{position:absolute;top:0;right:0;bottom:0;width:var(--hist-w);background:var(--white);border-left:1px solid var(--border);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s cubic-bezier(.25,1,.5,1);z-index:50}
+.hist-panel.open{transform:translateX(0)}
+.hist-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.hist-title{font-size:13px;font-weight:700;color:var(--navy);flex:1}
+.hist-close{background:none;border:none;font-size:16px;color:var(--gray);cursor:pointer;padding:2px 6px;border-radius:6px}
+.hist-close:hover{background:var(--bg)}
+.hist-list{flex:1;overflow-y:auto;padding:10px}
+.hist-run{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px}
+.hist-run__id{font-family:var(--mono);font-size:10px;color:var(--gray);margin-bottom:4px}
+.hist-run__state{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px}
+.hs-running{background:rgba(79,172,254,.12);color:var(--accent)}
+.hs-complete{background:rgba(52,211,153,.12);color:#059669}
+.hs-failed{background:rgba(248,113,113,.1);color:var(--red)}
+.hs-pending,.hs-paused{background:var(--gray-lt);color:var(--gray)}
+.hist-run__meta{font-size:10px;color:var(--gray);margin-top:5px;font-family:var(--mono)}
+.hist-empty{padding:30px;text-align:center;color:var(--gray);font-size:12px}
+
+/* ── HINT BAR ── */
+.hint-bar{position:absolute;bottom:0;left:0;right:0;height:28px;background:rgba(255,255,255,.9);backdrop-filter:blur(4px);border-top:1px solid var(--border);display:flex;align-items:center;gap:16px;padding:0 14px;font-family:var(--mono);font-size:9.5px;color:var(--gray);z-index:10;pointer-events:none}
+.hint-item{display:flex;align-items:center;gap:4px}
+
+/* ── TOAST ── */
+.toast{position:fixed;top:52px;left:50%;transform:translateX(-50%) translateY(-4px);background:var(--navy);color:#fff;font-size:12px;padding:7px 16px;border-radius:8px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:9999;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast--err{background:#b91c1c}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="toolbar">
+    <span class="tbar-title" id="wf-name">Untitled Workflow</span>
+    <button class="tbtn" onclick="toggleHistory()" title="Run History">History<span class="kbd">H</span></button>
+    <div class="tbar-sep"></div>
+    <button class="tbtn" onclick="addNodeFromPalette('worker')" title="Add Worker">+ Worker</button>
+    <button class="tbtn" onclick="clearCanvas()" class="tbtn--danger">Clear</button>
+    <div class="tbar-sep"></div>
+    <button class="tbtn tbtn--primary" onclick="saveWorkflow()" title="Save (⌘S)">Save<span class="kbd">⌘S</span></button>
+    <button class="tbtn tbtn--primary" style="background:#059669;border-color:#059669" onclick="runWorkflow()" title="Run (⌘R)">▶ Run<span class="kbd">⌘R</span></button>
+  </div>
+
+  <div class="canvas-wrap">
+    <!-- Palette -->
+    <div class="palette">
+      <div class="pal-sec">Steps</div>
+      <div class="pal-node" draggable="true" ondragstart="startDrag(event,'worker','⚙','pi--worker')" data-type="worker">
+        <div class="pal-icon pi--worker">⚙</div>Worker
+      </div>
+      <div class="pal-node" draggable="true" ondragstart="startDrag(event,'model','🧠','pi--model')" data-type="model">
+        <div class="pal-icon pi--model">🧠</div>AI Model
+      </div>
+      <div class="pal-node" draggable="true" ondragstart="startDrag(event,'tool','🔧','pi--tool')" data-type="tool">
+        <div class="pal-icon pi--tool">🔧</div>Tool Call
+      </div>
+      <div class="pal-sec">Control</div>
+      <div class="pal-node" draggable="true" ondragstart="startDrag(event,'condition','◈','pi--control')" data-type="condition">
+        <div class="pal-icon pi--control">◈</div>Condition
+      </div>
+      <div class="pal-node" draggable="true" ondragstart="startDrag(event,'trigger','⚡','pi--control')" data-type="trigger">
+        <div class="pal-icon pi--control">⚡</div>Trigger
+      </div>
+      <div class="pal-sec">Output</div>
+      <div class="pal-node" draggable="true" ondragstart="startDrag(event,'email','✉','pi--output')" data-type="email">
+        <div class="pal-icon pi--output">✉</div>Send Email
+      </div>
+      <div class="pal-node" draggable="true" ondragstart="startDrag(event,'crm','📋','pi--output')" data-type="crm">
+        <div class="pal-icon pi--output">📋</div>CRM Write
+      </div>
+    </div>
+
+    <!-- Flow Canvas -->
+    <div class="flow-canvas" id="flow-canvas"
+         ondragover="event.preventDefault()"
+         ondrop="dropNode(event)"
+         onclick="canvasClick(event)">
+      <div class="canvas-grid"></div>
+      <svg class="flow-svg" id="flow-svg"></svg>
+
+      <!-- Empty state with template cards -->
+      <div class="canvas-empty" id="canvas-empty">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <p>Drag steps onto the canvas</p>
+        <span>Or start from a template below</span>
+        <div class="tmpl-cards">
+          <div class="tmpl-card" onclick="loadTemplate('lead_followup')">
+            <div class="tmpl-card__icon">🎯</div>
+            <div class="tmpl-card__name">Lead Follow-Up</div>
+            <div class="tmpl-card__desc">Parse → Enrich → Email → CRM</div>
+          </div>
+          <div class="tmpl-card" onclick="loadTemplate('briefing')">
+            <div class="tmpl-card__icon">📋</div>
+            <div class="tmpl-card__name">Daily Briefing</div>
+            <div class="tmpl-card__desc">Trigger → Model → Send</div>
+          </div>
+          <div class="tmpl-card" onclick="loadTemplate('qualification')">
+            <div class="tmpl-card__icon">🔍</div>
+            <div class="tmpl-card__name">Lead Qualification</div>
+            <div class="tmpl-card__desc">Inbound → Score → Route</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hint bar -->
+      <div class="hint-bar">
+        <span class="hint-item"><kbd class="kbd">⌘S</kbd> Save</span>
+        <span class="hint-item"><kbd class="kbd">⌘R</kbd> Run</span>
+        <span class="hint-item"><kbd class="kbd">Del</kbd> Remove node</span>
+        <span class="hint-item"><kbd class="kbd">Esc</kbd> Deselect</span>
+        <span class="hint-item"><kbd class="kbd">H</kbd> History</span>
+        <span id="hint-status" style="margin-left:auto;color:var(--accent)"></span>
+      </div>
+    </div>
+
+    <!-- Inspector -->
+    <div class="inspector" id="inspector">
+      <div class="ins-title">Inspector</div>
+      <div id="ins-body">
+        <div class="ins-empty">Select a node<br>to edit its properties</div>
+      </div>
+    </div>
+
+    <!-- Run History Panel -->
+    <div class="hist-panel" id="hist-panel">
+      <div class="hist-header">
+        <span class="hist-title">Run History</span>
+        <button class="hist-close" onclick="toggleHistory()">✕</button>
+      </div>
+      <div class="hist-list" id="hist-list">
+        <div class="hist-empty">No runs yet. Click ▶ Run to start.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+const STITCH = window.location.origin; // same-origin — STITCH serves this page on :6201
+const WORKFLOW_ID = new URLSearchParams(window.location.search).get('id') || 'lead_follow_up';
+
+/* ── STATE ── */
+let nodes = [], edges = [], selected = null;
+let _dragType = null, _dragIcon = null, _dragCls = null;
+let _draggingNode = null, _dragOffX = 0, _dragOffY = 0;
+let _connectingFrom = null;
+let _histOpen = false;
+let _statusPollTimer = null;
+
+const NODE_COLORS = {
+  worker:'#4a5568', model:'#7c3aed', tool:'#0d9488',
+  condition:'#b45309', trigger:'#b45309', email:'#059669', crm:'#059669'
+};
+
+/* ── TEMPLATES ── */
+const TEMPLATES = {
+  lead_followup: [
+    {id:'t1', type:'trigger', name:'New Lead',    action:'lead.inbound',    x:60,  y:120},
+    {id:'t2', type:'worker',  name:'Parse Lead',  action:'parse_lead',      x:260, y:120},
+    {id:'t3', type:'model',   name:'Enrich',      action:'enrich_company',  x:460, y:120},
+    {id:'t4', type:'email',   name:'Send Email',  action:'email.send',      x:460, y:260},
+    {id:'t5', type:'crm',     name:'Log to CRM',  action:'crm.write',       x:660, y:260},
+  ],
+  briefing: [
+    {id:'t1', type:'trigger', name:'Morning',     action:'schedule.daily',  x:60,  y:120},
+    {id:'t2', type:'model',   name:'Brief Gen',   action:'draft_briefing',  x:260, y:120},
+    {id:'t3', type:'email',   name:'Deliver',     action:'email.send',      x:460, y:120},
+  ],
+  qualification: [
+    {id:'t1', type:'trigger', name:'Inbound',     action:'lead.inbound',    x:60,  y:120},
+    {id:'t2', type:'model',   name:'Score Lead',  action:'score_lead',      x:260, y:120},
+    {id:'t3', type:'condition',name:'High Score?',action:'condition.check', x:460, y:120},
+    {id:'t4', type:'worker',  name:'Route Hot',   action:'notify_sales',    x:620, y:60},
+    {id:'t5', type:'crm',     name:'Log All',     action:'crm.write',       x:620, y:200},
+  ],
+};
+const TMPL_EDGES = {
+  lead_followup: [['t1','t2'],['t2','t3'],['t3','t4'],['t4','t5']],
+  briefing: [['t1','t2'],['t2','t3']],
+  qualification: [['t1','t2'],['t2','t3'],['t3','t4'],['t3','t5']],
+};
+
+/* ── UTILITIES ── */
+function uid(){ return 'n_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
+function esc(s){ const d=document.createElement('div');d.textContent=String(s||'');return d.innerHTML; }
+function toast(msg, err){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast'+(err?' toast--err':'');
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200);
+}
+function setHintStatus(s){ const el=document.getElementById('hint-status'); if(el) el.textContent=s; }
+
+/* ── RENDER ── */
+function render(){
+  const canvas=document.getElementById('flow-canvas');
+  const emptyEl=document.getElementById('canvas-empty');
+  if(emptyEl) emptyEl.classList.toggle('hidden', nodes.length > 0);
+
+  // Remove old nodes
+  canvas.querySelectorAll('.flow-node').forEach(el=>el.remove());
+
+  // Draw edges
+  const svg=document.getElementById('flow-svg');
+  svg.innerHTML='';
+  for(const e of edges){
+    const src=nodes.find(n=>n.id===e.from), dst=nodes.find(n=>n.id===e.to);
+    if(!src||!dst) continue;
+    const x1=src.x+148, y1=src.y+36, x2=dst.x, y2=dst.y+36;
+    const cx=x1+(x2-x1)*0.6;
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`);
+    path.setAttribute('fill','none');
+    path.setAttribute('stroke','rgba(79,172,254,.5)');
+    path.setAttribute('stroke-width','2');
+    path.setAttribute('stroke-dasharray','');
+    path.setAttribute('marker-end','url(#arrow)');
+    svg.appendChild(path);
+  }
+  // Arrow marker
+  const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+  const marker=document.createElementNS('http://www.w3.org/2000/svg','marker');
+  marker.setAttribute('id','arrow');marker.setAttribute('markerWidth','8');marker.setAttribute('markerHeight','8');
+  marker.setAttribute('refX','6');marker.setAttribute('refY','3');marker.setAttribute('orient','auto');
+  const poly=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+  poly.setAttribute('points','0 0, 8 3, 0 6');poly.setAttribute('fill','rgba(79,172,254,.7)');
+  marker.appendChild(poly);defs.appendChild(marker);svg.insertBefore(defs,svg.firstChild);
+
+  // Draw nodes
+  for(const n of nodes){
+    const el=document.createElement('div');
+    el.className='flow-node'+(selected===n.id?' flow-node--selected':'');
+    el.id='fn-'+n.id;
+    el.style.cssText=`left:${n.x}px;top:${n.y}px`;
+    const col=NODE_COLORS[n.type]||'#4a5568';
+    const dotCls=n.status==='online'?'fn-status--online':'fn-status--offline';
+    el.innerHTML=`
+      <div class="fn-status ${dotCls}"></div>
+      <div class="fn-header">
+        <div class="fn-icon" style="background:${col}">${n.icon||'⚙'}</div>
+        <div>
+          <div class="fn-name">${esc(n.name)}</div>
+          <div class="fn-role">${esc(n.type)}</div>
+        </div>
+      </div>
+      <div class="fn-port fn-port--in" id="pin-${n.id}" onmousedown="startConnect(event,'${n.id}','in')"></div>
+      <div class="fn-port fn-port--out" id="pout-${n.id}" onmousedown="startConnect(event,'${n.id}','out')"></div>`;
+    el.addEventListener('mousedown', e=>startDragNode(e, n.id));
+    el.addEventListener('click', e=>{e.stopPropagation(); selectNode(n.id);});
+    canvas.appendChild(el);
+  }
+}
+
+/* ── NODE SELECTION ── */
+function selectNode(id){
+  selected=id; render(); renderInspector();
+}
+function deselect(){
+  selected=null; render(); renderInspector();
+}
+function canvasClick(e){
+  if(e.target===document.getElementById('flow-canvas')||e.target.classList.contains('canvas-grid'))
+    deselect();
+}
+
+/* ── INSPECTOR ── */
+function renderInspector(){
+  const body=document.getElementById('ins-body'); if(!body) return;
+  const n=nodes.find(x=>x.id===selected);
+  if(!n){ body.innerHTML='<div class="ins-empty">Select a node<br>to edit its properties</div>'; return; }
+  body.innerHTML=`
+    <div class="ins-field"><div class="ins-label">Name</div>
+      <input class="ins-input" value="${esc(n.name)}" oninput="updateNode('${n.id}','name',this.value)"></div>
+    <div class="ins-field"><div class="ins-label">Action</div>
+      <input class="ins-input" value="${esc(n.action||'')}" oninput="updateNode('${n.id}','action',this.value)"></div>
+    <div class="ins-field"><div class="ins-label">Operator</div>
+      <input class="ins-input" value="${esc(n.operator||'')}" placeholder="e.g. main_operator" oninput="updateNode('${n.id}','operator',this.value)"></div>
+    <div class="ins-field"><div class="ins-label">On Failure</div>
+      <select class="ins-select" onchange="updateNode('${n.id}','on_failure',this.value)">
+        <option value="stop"${(n.on_failure||'stop')==='stop'?' selected':''}>Stop</option>
+        <option value="skip"${n.on_failure==='skip'?' selected':''}>Skip</option>
+        <option value="retry"${n.on_failure==='retry'?' selected':''}>Retry</option>
+      </select></div>
+    <button class="ins-btn" onclick="saveWorkflow()">Save Workflow</button>
+    <button class="ins-del" onclick="removeSelected()">Remove Node</button>`;
+}
+function updateNode(id, key, val){
+  const n=nodes.find(x=>x.id===id); if(n) n[key]=val;
+}
+
+/* ── DRAG FROM PALETTE ── */
+function startDrag(e, type, icon, cls){
+  _dragType=type; _dragIcon=icon; _dragCls=cls;
+  e.dataTransfer.effectAllowed='copy';
+  e.dataTransfer.setData('text/plain', type);
+}
+function dropNode(e){
+  if(!_dragType) return;
+  const canvas=document.getElementById('flow-canvas');
+  const rect=canvas.getBoundingClientRect();
+  const x=Math.round((e.clientX-rect.left-74)/24)*24;
+  const y=Math.round((e.clientY-rect.top-36)/24)*24;
+  const id=uid();
+  const typeNames={worker:'Worker',model:'AI Model',tool:'Tool Call',condition:'Condition',trigger:'Trigger',email:'Send Email',crm:'CRM Write'};
+  nodes.push({id, type:_dragType, name:typeNames[_dragType]||_dragType, icon:_dragIcon, action:'', operator:'', on_failure:'stop', x:Math.max(0,x), y:Math.max(0,y), status:'offline'});
+  _dragType=null; render(); selectNode(id);
+}
+
+/* ── DRAG NODES ── */
+function startDragNode(e, id){
+  if(e.target.classList.contains('fn-port')) return;
+  _draggingNode=id;
+  const el=document.getElementById('fn-'+id);
+  const rect=el.getBoundingClientRect();
+  _dragOffX=e.clientX-rect.left; _dragOffY=e.clientY-rect.top;
+  el.classList.add('flow-node--dragging');
+  window.addEventListener('mousemove', onDragNode);
+  window.addEventListener('mouseup', stopDragNode);
+  e.preventDefault();
+}
+function onDragNode(e){
+  if(!_draggingNode) return;
+  const canvas=document.getElementById('flow-canvas');
+  const rect=canvas.getBoundingClientRect();
+  const n=nodes.find(x=>x.id===_draggingNode); if(!n) return;
+  n.x=Math.max(0, Math.round((e.clientX-rect.left-_dragOffX)/12)*12);
+  n.y=Math.max(0, Math.round((e.clientY-rect.top-_dragOffY)/12)*12);
+  const el=document.getElementById('fn-'+_draggingNode); if(el){el.style.left=n.x+'px';el.style.top=n.y+'px';}
+  render();
+}
+function stopDragNode(e){
+  if(!_draggingNode) return;
+  const el=document.getElementById('fn-'+_draggingNode);
+  if(el) el.classList.remove('flow-node--dragging');
+  _draggingNode=null;
+  window.removeEventListener('mousemove', onDragNode);
+  window.removeEventListener('mouseup', stopDragNode);
+}
+
+/* ── CONNECT NODES ── */
+function startConnect(e, nodeId, side){
+  if(side!=='out') return;
+  _connectingFrom=nodeId;
+  window.addEventListener('mouseup', finishConnect, {once:true});
+  e.stopPropagation();
+}
+function finishConnect(e){
+  if(!_connectingFrom) return;
+  const target=e.target.closest('.flow-node');
+  if(target){
+    const toId=target.id.replace('fn-','');
+    if(toId!==_connectingFrom) addEdge(_connectingFrom, toId);
+  }
+  _connectingFrom=null;
+}
+function addEdge(from, to){
+  if(edges.find(e=>e.from===from&&e.to===to)){
+    flashPortError(from,'out'); toast('Connection already exists', true); return;
+  }
+  if(from===to){
+    flashPortError(from,'out'); toast('Self-loops are not allowed', true); return;
+  }
+  edges.push({from, to}); render();
+}
+function flashPortError(nodeId, side){
+  const el=document.getElementById((side==='out'?'pout-':'pin-')+nodeId);
+  if(!el) return;
+  el.classList.remove('fn-port--flash-err');
+  void el.offsetWidth;
+  el.classList.add('fn-port--flash-err');
+  setTimeout(()=>el.classList.remove('fn-port--flash-err'), 600);
+}
+
+/* ── KEYBOARD SHORTCUTS ── */
+document.addEventListener('keydown', e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  if((e.metaKey||e.ctrlKey)&&e.key==='s'){ e.preventDefault(); saveWorkflow(); }
+  else if((e.metaKey||e.ctrlKey)&&e.key==='r'){ e.preventDefault(); runWorkflow(); }
+  else if(e.key==='Escape'){ deselect(); }
+  else if((e.key==='Delete'||e.key==='Backspace')&&selected){ removeSelected(); }
+  else if(e.key==='h'||e.key==='H'){ toggleHistory(); }
+});
+
+/* ── NODE OPERATIONS ── */
+function addNodeFromPalette(type){
+  const icons={worker:'⚙',model:'🧠',tool:'🔧',condition:'◈',trigger:'⚡',email:'✉',crm:'📋'};
+  const names={worker:'Worker',model:'AI Model',tool:'Tool Call',condition:'Condition',trigger:'Trigger',email:'Send Email',crm:'CRM Write'};
+  const id=uid();
+  const x=60+(nodes.length%5)*24*7;
+  const y=60+Math.floor(nodes.length/5)*100;
+  nodes.push({id, type, name:names[type]||type, icon:icons[type]||'⚙', action:'', operator:'', on_failure:'stop', x, y, status:'offline'});
+  render(); selectNode(id);
+}
+function removeSelected(){
+  if(!selected) return;
+  nodes=nodes.filter(n=>n.id!==selected);
+  edges=edges.filter(e=>e.from!==selected&&e.to!==selected);
+  selected=null; render(); renderInspector();
+  toast('Node removed');
+}
+function clearCanvas(){
+  nodes=[]; edges=[]; selected=null; render(); renderInspector();
+}
+
+/* ── TEMPLATES ── */
+function loadTemplate(name){
+  const tmpl=TEMPLATES[name]; if(!tmpl) return;
+  nodes=tmpl.map(t=>({...t, status:'offline', icon:getIcon(t.type), operator:'main_operator', on_failure:'stop'}));
+  edges=(TMPL_EDGES[name]||[]).map(([f,t])=>({from:f,to:t}));
+  selected=null; render(); renderInspector();
+  toast('Template loaded: '+name.replace(/_/g,' '));
+}
+function getIcon(type){
+  return{worker:'⚙',model:'🧠',tool:'🔧',condition:'◈',trigger:'⚡',email:'✉',crm:'📋'}[type]||'⚙';
+}
+
+/* ── SAVE ── */
+async function saveWorkflow(){
+  const name=document.getElementById('wf-name').textContent;
+  const steps=nodes.map((n,i)=>({name:n.name||n.id, operator:n.operator||'main_operator', action:n.action||n.type, on_failure:n.on_failure||'stop'}));
+  const payload={workflow_id:WORKFLOW_ID, name, steps, description:'Designed in STITCH designer'};
+  try{
+    const r=await fetch(STITCH+'/workflow/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(r.ok){ toast('Saved — '+d.step_count+' steps'); setHintStatus('Saved ✓'); setTimeout(()=>setHintStatus(''),2000); }
+    else toast(d.error||'Save failed', true);
+  }catch(e){ toast('Save failed: '+e.message, true); }
+}
+
+/* ── RUN ── */
+async function runWorkflow(){
+  try{
+    const r=await fetch(STITCH+'/api/workflows/'+WORKFLOW_ID+'/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal:'Designer run'})});
+    const d=await r.json();
+    if(r.ok){ toast('Run started: '+d.run_id); loadHistory(); }
+    else toast(d.error||'Run failed', true);
+  }catch(e){ toast('Run failed: '+e.message, true); }
+}
+
+/* ── HISTORY PANEL ── */
+function toggleHistory(){
+  _histOpen=!_histOpen;
+  document.getElementById('hist-panel').classList.toggle('open', _histOpen);
+  if(_histOpen) loadHistory();
+}
+async function loadHistory(){
+  const list=document.getElementById('hist-list'); if(!list) return;
+  list.innerHTML='<div class="hist-empty" style="color:var(--gray)">Loading…</div>';
+  try{
+    const r=await fetch(STITCH+'/api/workflows/'+WORKFLOW_ID+'/runs');
+    const d=await r.json();
+    const runs=d.runs||[];
+    if(!runs.length){ list.innerHTML='<div class="hist-empty">No runs yet. Click ▶ Run to start.</div>'; return; }
+    list.innerHTML=runs.map(run=>{
+      const stateCls='hs-'+(run.run_state||run.state||'pending').replace(/[^a-z]/g,'');
+      const stateLabel=(run.run_state||run.state||'pending').replace(/_/g,' ');
+      const pct=run.progress_pct!=null?run.progress_pct+' %':'—';
+      const ts=run.created_at?new Date(run.created_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'';
+      return`<div class="hist-run">
+        <div class="hist-run__id">${esc(run.run_id)}</div>
+        <span class="hist-run__state ${stateCls}">${stateLabel}</span>
+        <div class="hist-run__meta">${ts} · step ${run.current_step||0}/${run.total_steps||'?'} · ${pct}</div>
+      </div>`;
+    }).join('');
+  }catch(e){ list.innerHTML='<div class="hist-empty">Could not load history — STITCH offline?</div>'; }
+}
+
+/* ── LIVE STATUS POLLING (15s) ── */
+async function pollNodeStatus(){
+  for(const n of nodes){
+    if(!n.action) continue;
+    try{
+      const r=await fetch(STITCH+'/api/health',{signal:AbortSignal.timeout(1500)});
+      n.status=r.ok?'online':'offline';
+    }catch(){ n.status='offline'; }
+  }
+  render();
+}
+function startStatusPoll(){
+  pollNodeStatus();
+  _statusPollTimer=setInterval(pollNodeStatus, 15000);
+}
+
+/* ── LOAD EXISTING WORKFLOW ── */
+async function loadExistingWorkflow(){
+  try{
+    const r=await fetch(STITCH+'/api/workflows/'+WORKFLOW_ID);
+    if(!r.ok) return;
+    const d=await r.json();
+    const el=document.getElementById('wf-name'); if(el) el.textContent=d.name||WORKFLOW_ID;
+    if(d.steps&&d.steps.length){
+      nodes=d.steps.map((s,i)=>({
+        id:'s'+i, type:s.action?.split('.')[0]||'worker',
+        name:s.name, action:s.action||'', operator:s.operator||'', on_failure:s.on_failure||'stop',
+        icon:getIcon(s.action?.split('.')[0]||'worker'),
+        x:60+i*180, y:120, status:'offline',
+      }));
+      edges=nodes.slice(0,-1).map((n,i)=>({from:n.id,to:nodes[i+1].id}));
+      render();
+    }
+  }catch(_){}
+}
+
+/* ── INIT ── */
+render();
+loadExistingWorkflow();
+startStatusPoll();
+</script>
+</body>
+</html>

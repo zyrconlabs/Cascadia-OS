@@ -35,7 +35,7 @@ button{cursor:pointer;font-family:var(--font)}input,textarea,select{font-family:
 
 /* ── LAYOUT ── */
 .app{display:flex;height:100vh;width:100%}
-.nav-rail{width:var(--nav-w);min-width:var(--nav-w);background:#a78bfa;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:2px;z-index:10}
+.nav-rail{width:var(--nav-w);min-width:var(--nav-w);background:#9970f8;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:2px;z-index:10}
 .nav-logo{width:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-bottom:12px;gap:0}.nav-logo-text{font-size:9px;font-weight:800;letter-spacing:.18em;color:#fff;text-transform:uppercase;line-height:1}.nav-logo-bar{width:24px;height:2px;background:linear-gradient(90deg,var(--prism-a),var(--prism-b),var(--prism-c),var(--prism-d));border-radius:2px;margin-top:3px}
 .nav-btn{width:36px;height:36px;border-radius:9px;border:none;background:transparent;color:rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;transition:all .15s;position:relative;flex-shrink:0}
 .nav-btn:hover{background:rgba(255,255,255,.2);color:#fff}
@@ -49,8 +49,8 @@ button{cursor:pointer;font-family:var(--font)}input,textarea,select{font-family:
 /* ── SIDEBAR ── */
 .sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);border-right:1px solid var(--gray-200);display:flex;flex-direction:column;background:var(--gray-50);height:100vh}
 .sidebar__header{height:var(--topbar-h);min-height:var(--topbar-h);display:flex;align-items:center;padding:0 16px;border-bottom:1px solid var(--gray-200);gap:10px;background:#ffffff}
-.sidebar__title{font-size:13px;font-weight:700;color:var(--navy-800)}
-.sidebar__sub{font-family:var(--mono);font-size:9px;font-weight:500;color:var(--gray-400);letter-spacing:.06em;margin-top:1px}
+.sidebar__title{font-size:14px;font-weight:700;color:var(--navy-800)}
+.sidebar__sub{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--gray-400);letter-spacing:.06em;margin-top:1px}
 .sidebar__search{padding:10px 12px;border-bottom:1px solid var(--gray-150);background:#f5f7fa}
 .sidebar__search input{width:100%;height:32px;border:1px solid var(--gray-200);border-radius:8px;padding:0 10px;font-size:12px;color:var(--navy-900);background:#fff;outline:none;transition:border-color .15s}
 .sidebar__search input:focus{border-color:var(--navy-300)}
@@ -560,6 +560,24 @@ input[type="file"]{display:none}
   font-size:11px;font-weight:500;cursor:pointer;background:var(--white);
   color:var(--text-dim);transition:all .15s;font-family:var(--font)}
 .ptab.on{background:var(--prism-a);color:#fff;border-color:var(--prism-a)}
+/* ── OVERVIEW SURFACE ── */
+.roi-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.roi-tile{background:var(--white);border:1px solid var(--gray-150);border-radius:12px;padding:16px 14px}
+.roi-tile__val{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--navy-800);line-height:1}
+.roi-tile__val--green{color:#059669}
+.roi-tile__label{font-size:10px;color:var(--gray-500);margin-top:4px}
+.ov-ops{display:flex;flex-direction:column;gap:6px}
+.ov-op{display:flex;align-items:center;gap:10px;background:var(--white);border:1px solid var(--gray-150);border-radius:10px;padding:10px 12px}
+.ov-op__dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ov-op__dot--online{background:var(--green);box-shadow:0 0 4px var(--green-glow)}
+.ov-op__dot--offline{background:var(--gray-300)}
+.ov-op__name{font-size:12px;font-weight:600;color:var(--navy-800);flex:1}
+.ov-op__stat{font-family:var(--mono);font-size:11px;color:var(--gray-500)}
+.ov-op__extra{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--navy-600)}
+.sys-health-pill{font-family:var(--mono);font-size:9.5px;font-weight:600;padding:2px 7px;border-radius:10px;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.shp--healthy{background:rgba(52,211,153,.12);color:#059669}
+.shp--degraded{background:rgba(212,175,55,.14);color:#b45309}
+.shp--critical{background:rgba(248,113,113,.12);color:#dc2626}
 /* ── HEALTH SURFACE — functions moved to script block below ── */
 </style>
 </head>
@@ -568,7 +586,7 @@ input[type="file"]{display:none}
   <nav class="nav-rail" id="nav-rail">
     <div class="nav-logo"><span class="nav-logo-text">PRISM</span><div class="nav-logo-bar"></div></div>
     <button class="nav-btn nav-btn--active" onclick="switchSurface('ops')" id="nav-ops"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="nav-tooltip">Ops</span></button>
-    <button class="nav-btn" onclick="switchSurface('runs')" id="nav-runs"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span class="nav-tooltip">Runs</span></button>
+    <button class="nav-btn" onclick="switchSurface('runs')" id="nav-runs"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg><span class="nav-tooltip">Runs</span></button>
     <button class="nav-btn" onclick="switchSurface('approvals')" id="nav-approvals"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-tooltip">Approvals</span></button>
     <div class="nav-divider"></div>
     <button class="nav-btn" onclick="switchSurface('studio')" id="nav-studio"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><span class="nav-tooltip">Studio</span></button>
@@ -577,17 +595,19 @@ input[type="file"]{display:none}
     <button class="nav-btn" onclick="switchSurface('health')" id="nav-health"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span class="nav-tooltip">Health & Observability</span></button>
     <button class="nav-btn" onclick="switchSurface('terminal')" id="nav-terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="nav-tooltip">Terminal</span></button>
     <div class="nav-divider"></div>
-    <button class="nav-btn" onclick="toggleAlmanac()" id="nav-almanac" style="margin-top:auto"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01"/></svg><span class="nav-tooltip">Almanac — AI Help</span></button>
+    <button class="nav-btn" onclick="toggleAlmanac()" id="nav-almanac" style="margin-top:auto"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="17" x2="12" y2="17" stroke-linecap="round" stroke-width="2.5"/></svg><span class="nav-tooltip">Almanac — AI Help</span></button>
   </nav>
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__header">
       <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v0.44</div></div>
       <div id="conn-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gray-300);flex-shrink:0" title="Gateway status"></div>
+      <div id="sys-health-pill" class="sys-health-pill" style="display:none"></div>
     </div>
     <div class="sidebar__search"><input type="text" placeholder="Search operators…" oninput="filterOperators(this.value)"></div>
     <div class="sidebar__list" id="op-list"></div>
     <div class="sidebar__footer">
+      <div id="watchdog-status" style="font-family:var(--mono);font-size:9px;color:var(--gray-400);margin-bottom:6px;display:none"></div>
       <button class="sidebar__add" onclick="showAddWorker()">
         <svg style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
         Add worker
@@ -775,6 +795,7 @@ const S = {
   selectedNode:null, studioNodes:null,
   runsFilterStatus:'', runsFilterWorker:'',
   auditLog:[], apiKeys:[],
+  overview: null,
 };
 
 /* ═══ VAULT (IndexedDB — v3 schema) ═══ */
@@ -1292,7 +1313,10 @@ function renderSidebar() {
     const avCls=c.isWorker?'op-avatar--worker':'op-avatar--operator';
     const pend=S.approvals.filter(ap=>ap.workerId===c.id&&ap.status==='pending').length;
     const runCount=(S.runs[c.id]||[]).length;
-    html+=`<div class="op-item${a}" onclick="selectOperator('${c.id}')"><div class="op-avatar ${avCls}">${initials(c.name)}<div class="op-dot ${d}"></div></div><div class="op-body"><div class="op-name">${esc(c.name)}</div><div class="op-role">${esc(c.role)}</div><div class="op-meta"><span class="tag ${tg}">${lb}</span><span class="tag ${c.isWorker?'tag--worker':'tag--neutral'}">${c.isWorker?'Worker':'Operator'}</span>${pend?`<span class="tag tag--approval">⚠${pend}</span>`:''}${runCount?`<span class="tag tag--neutral">${runCount} runs</span>`:''}</div></div></div>`;
+    const ovOp=S.overview?.operators?.find(o=>o.id===c.id);
+    const runsToday=ovOp?.runs_today||0;
+    const lastRunRel=ovOp?.last_run?relativeTime(new Date(ovOp.last_run)):'';
+    html+=`<div class="op-item${a}" onclick="selectOperator('${c.id}')"><div class="op-avatar ${avCls}">${initials(c.name)}<div class="op-dot ${d}"></div></div><div class="op-body"><div class="op-name">${esc(c.name)}</div><div class="op-role">${esc(c.role)}</div><div class="op-meta"><span class="tag ${tg}">${lb}</span><span class="tag ${c.isWorker?'tag--worker':'tag--neutral'}">${c.isWorker?'Worker':'Operator'}</span>${pend?`<span class="tag tag--approval">⚠${pend}</span>`:''}${runsToday?`<span class="tag tag--neutral">${runsToday} today</span>`:''}${lastRunRel?`<span class="tag tag--neutral">${lastRunRel}</span>`:runCount?`<span class="tag tag--neutral">${runCount} runs</span>`:''}</div></div></div>`;
   });
   list.innerHTML=html;
 }
@@ -1322,7 +1346,7 @@ function renderMain() {
     return;
   }
   const panel=document.getElementById('main-panel');
-  if (!S.selected) { panel.innerHTML=`<div class="main__empty"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg><p>Select an operator to begin</p><span>Choose from the left panel to start a conversation</span></div>`; return; }
+  if (!S.selected) { renderOverviewPanel(panel); return; }
   const c=S.operators.find(x=>x.id===S.selected); if(!c)return;
   const msgs=S.messages[c.id]||[], d=SD[c.status]||'dot--offline';
   const av=c.isBeacon?'topbar__avatar--beacon':c.isWorker?'topbar__avatar--worker':'topbar__avatar--operator';
@@ -2928,6 +2952,107 @@ function esc(s){const d=document.createElement('div');d.textContent=String(s||''
 function initials(n){return String(n||'').split(/[\s\-]+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();}
 function timeNow(){return new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});}
 function scrollChat(){requestAnimationFrame(()=>{const e=document.getElementById('chat-log');if(e)e.scrollTop=e.scrollHeight;});}
+function relativeTime(date){
+  if (!date||isNaN(date)) return '';
+  const diff=Math.round((Date.now()-date.getTime())/60000);
+  if (diff<1) return 'just now';
+  if (diff<60) return diff+'m ago';
+  if (diff<1440) return Math.round(diff/60)+'h ago';
+  return Math.round(diff/1440)+'d ago';
+}
+
+/* ═══ OVERVIEW PANEL ═══ */
+function updateHealthIndicator(health) {
+  const pill = document.getElementById('sys-health-pill');
+  if (!pill) return;
+  const clsMap = {healthy:'shp--healthy', degraded:'shp--degraded', critical:'shp--critical'};
+  const dotCol = {healthy:'var(--green)', degraded:'var(--yellow)', critical:'var(--red)'};
+  const label  = health ? health.charAt(0).toUpperCase()+health.slice(1) : '—';
+  pill.className = 'sys-health-pill ' + (clsMap[health]||'shp--degraded');
+  pill.innerHTML = `<span style="width:5px;height:5px;border-radius:50%;background:${dotCol[health]||'var(--yellow)'};display:inline-block"></span>${label}`;
+  pill.style.display = '';
+}
+
+function renderOverviewPanel(panel) {
+  const ov = S.overview;
+  if (!ov) {
+    panel.innerHTML = `<div class="main__empty"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg><p>Select an operator to begin</p><span>Choose from the left panel to start a conversation</span></div>`;
+    return;
+  }
+  const roi = ov.roi || {};
+  const fmtRev = v => v >= 1000 ? '$'+(v/1000).toFixed(1)+'k' : '$'+v;
+  const tiles = [
+    { val: fmtRev(roi.revenue_30d||0), label: 'Revenue 30d',       cls: 'roi-tile__val--green' },
+    { val: roi.leads_this_week||0,      label: 'Leads This Week',   cls: '' },
+    { val: roi.workflows_run||0,        label: 'Workflows Run',     cls: '' },
+    { val: (roi.time_saved_hours||0)+'h', label: 'Time Saved',     cls: 'roi-tile__val--green' },
+  ];
+  const roiHTML = tiles.map(t =>
+    `<div class="roi-tile"><div class="roi-tile__val ${t.cls}">${t.val}</div><div class="roi-tile__label">${t.label}</div></div>`
+  ).join('');
+
+  const ops = ov.operators || [];
+  const CATINIT = {intelligence:'RI',sales:'QT',executive:'AU',inbound:'SC',engineering:'JP'};
+  const opsHTML = ops.length ? ops.map(op => {
+    const online = op.status === 'online';
+    const dotCls = online ? 'ov-op__dot--online' : 'ov-op__dot--offline';
+    const ini = CATINIT[op.category] || (op.name||'').slice(0,2).toUpperCase();
+    const lastRel = op.last_run ? relativeTime(new Date(op.last_run)) : '';
+    return `<div class="ov-op">
+      <div class="ov-op__dot ${dotCls}"></div>
+      <div style="width:28px;height:28px;border-radius:7px;background:${online?'linear-gradient(135deg,var(--prism-a),var(--prism-b))':'var(--gray-200)'};color:${online?'#fff':'var(--gray-400)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${ini}</div>
+      <div class="ov-op__name">${esc(op.name)}</div>
+      ${op.runs_today ? `<span class="ov-op__stat">${op.runs_today} runs today</span>` : ''}
+      ${op.extra_stat && op.extra_stat !== '—' ? `<span class="ov-op__extra">${esc(op.extra_stat)}</span>` : ''}
+      ${lastRel ? `<span class="ov-op__stat">${lastRel}</span>` : ''}
+    </div>`;
+  }).join('') : `<div style="font-size:12px;color:var(--gray-400);padding:16px 0">No autostart operators configured — add operators to registry.json</div>`;
+
+  const healthCls = {healthy:'shp--healthy',degraded:'shp--degraded',critical:'shp--critical'}[ov.system_health]||'shp--degraded';
+  const healthLabel = ov.system_health ? ov.system_health.charAt(0).toUpperCase()+ov.system_health.slice(1) : '—';
+
+  panel.innerHTML = `
+    <div class="topbar">
+      <div class="topbar__left"><div style="font-size:15px;font-weight:700;color:var(--navy-800)">Overview</div></div>
+      <div class="topbar__right">
+        <span class="sys-health-pill ${healthCls}">${healthLabel}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">auto-refresh 60s</span>
+      </div>
+    </div>
+    <div class="surface">
+      <div class="roi-bar">${roiHTML}</div>
+      <div style="font-family:var(--mono);font-size:9.5px;font-weight:500;color:var(--gray-400);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">Active Operators</div>
+      <div class="ov-ops">${opsHTML}</div>
+      <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--gray-400)">Last updated: ${new Date(ov.generated_at).toLocaleTimeString()}</div>
+    </div>`;
+}
+
+async function loadOverview() {
+  const d = await prismFetch('/api/overview');
+  if (d) {
+    S.overview = d;
+    updateHealthIndicator(d.system_health);
+    if (S.surface === 'ops' && !S.selected) renderMain();
+    renderSidebar();
+  }
+}
+
+async function refreshWatchdogStatus() {
+  const el = document.getElementById('watchdog-status');
+  if (!el) return;
+  try {
+    const r = await fetch('http://127.0.0.1:5100/api/watchdog/status', {signal: AbortSignal.timeout(2000)});
+    if (!r.ok) return;
+    const d = await r.json();
+    const ops = Object.values(d.operators || {});
+    if (!ops.length) { el.style.display = 'none'; return; }
+    const restarts = ops.reduce((s, o) => s + (o.restart_count || 0), 0);
+    const offline = ops.filter(o => o.status === 'offline' || o.status === 'restarting').length;
+    el.style.display = '';
+    el.textContent = `watchdog · ${ops.length} ops${offline ? ' · ⚠ '+offline+' offline' : ''}${restarts ? ' · ↺ '+restarts+' restarts' : ''}`;
+    el.style.color = offline ? 'var(--yellow)' : 'var(--gray-400)';
+  } catch(_) {}
+}
 
 /* ═══ DEMO DATA ═══ */
 function demoDB() {
@@ -2994,6 +3119,10 @@ renderSidebar(); renderMain(); updateNavBadges(); maybeOpenHealth();
   maybeOpenHealth();
   setInterval(()=>{ if(S.surface==='health') refreshHealth(); }, 30000);
   connectWS();
+  loadOverview();
+  setInterval(loadOverview, 60000);
+  refreshWatchdogStatus();
+  setInterval(refreshWatchdogStatus, 60000);
 })();
 </script>
 <!-- ALMANAC OVERLAY -->

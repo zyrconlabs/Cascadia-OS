@@ -10,11 +10,26 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from .logger import configure_logging
 
 _WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+
+
+def _match_path(pattern: str, path: str) -> Optional[Dict[str, str]]:
+    """Match URL path against a pattern with {param} segments. Returns params dict or None."""
+    pp = pattern.split('/')
+    rp = path.split('/')
+    if len(pp) != len(rp):
+        return None
+    params: Dict[str, str] = {}
+    for a, b in zip(pp, rp):
+        if a.startswith('{') and a.endswith('}'):
+            params[a[1:-1]] = b
+        elif a != b:
+            return None
+    return params
 
 
 def _ws_accept_key(key: str) -> str:
@@ -97,11 +112,20 @@ class ServiceRuntime:
 
     def route_request(self, method: str, path: str, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Owns HTTP route dispatch. Does not own unknown-route recovery beyond 404."""
-        if (method, path) in self._routes:
-            return self._routes[(method, path)](payload)
-        if method == 'GET' and path == '/health':
+        clean = path.split('?')[0]
+        # Exact match (highest priority)
+        if (method, clean) in self._routes:
+            return self._routes[(method, clean)](payload)
+        # Path-param pattern match (e.g. /api/workflows/{id}/runs)
+        for (m, pattern), handler in self._routes.items():
+            if m != method or '{' not in pattern:
+                continue
+            params = _match_path(pattern, clean)
+            if params is not None:
+                return handler({**payload, **params})
+        if method == 'GET' and clean == '/health':
             return 200, {'component': self.name, 'state': self.state, 'ok': self.state in {'ready', 'degraded', 'draining'}}
-        if method == 'POST' and path == '/drain':
+        if method == 'POST' and clean == '/drain':
             self.state = 'draining'
             self._shutdown.set()
             return 202, {'component': self.name, 'state': self.state}

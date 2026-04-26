@@ -150,6 +150,12 @@ class StitchService:
         self.runtime.register_route('POST', '/run/resume',   self.resume_run)
         self.runtime.register_route('GET',  '/scheduler/jobs', self.scheduler_list)
         self.runtime.register_route('POST', '/scheduler/enable', self.scheduler_enable)
+        # REST API (iOS + designer)
+        self.runtime.register_route('GET',  '/api/workflows',             self.api_list_workflows)
+        self.runtime.register_route('GET',  '/api/workflows/{id}',        self.api_get_workflow)
+        self.runtime.register_route('POST', '/api/workflows/{id}/run',    self.api_run_workflow)
+        self.runtime.register_route('GET',  '/api/workflows/{id}/runs',   self.api_list_runs)
+        self.runtime.register_route('GET',  '/designer',                  self.serve_designer)
 
     def _register_builtins(self) -> None:
         """Register built-in workflow templates."""
@@ -303,6 +309,64 @@ class StitchService:
             return 200, result.to_dict()
         except Exception as exc:
             return 500, {'error': str(exc)}
+
+    # ------------------------------------------------------------------
+    # REST API handlers (iOS app + designer)
+    # ------------------------------------------------------------------
+
+    def api_list_workflows(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/workflows — list workflows in mobile-friendly format."""
+        with self._lock:
+            workflows = [wf.to_dict() for wf in self._workflows.values()]
+        return 200, {'workflows': workflows, 'count': len(workflows)}
+
+    def api_get_workflow(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/workflows/{id}"""
+        wf_id = payload.get('id', '')
+        with self._lock:
+            wf = self._workflows.get(wf_id)
+        if wf is None:
+            return 404, {'error': f'workflow not found: {wf_id}'}
+        return 200, wf.to_dict()
+
+    def api_run_workflow(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/workflows/{id}/run — start a run for a specific workflow."""
+        wf_id = payload.get('id', '')
+        with self._lock:
+            wf = self._workflows.get(wf_id)
+        if wf is None:
+            return 404, {'error': f'workflow not found: {wf_id}'}
+        run_id = f'stitch_{uuid.uuid4().hex[:10]}'
+        run = WorkflowRun(
+            run_id=run_id,
+            workflow_id=wf_id,
+            tenant_id=payload.get('tenant_id', 'default'),
+            goal=payload.get('goal', wf.name),
+            total_steps=len(wf.steps),
+        )
+        run.state = 'running'
+        run.updated_at = _now()
+        with self._lock:
+            self._runs[run_id] = run
+        self.runtime.logger.info('STITCH api run: %s (%s)', run_id, wf_id)
+        return 202, run.to_dict()
+
+    def api_list_runs(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/workflows/{id}/runs — list runs for a specific workflow."""
+        wf_id = payload.get('id', '')
+        with self._lock:
+            runs = [r.to_dict() for r in self._runs.values() if r.workflow_id == wf_id]
+        runs.sort(key=lambda r: r.get('created_at', ''), reverse=True)
+        return 200, {'runs': runs, 'count': len(runs), 'workflow_id': wf_id}
+
+    def serve_designer(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /designer — serve the workflow designer HTML."""
+        from pathlib import Path as _Path
+        html_path = _Path(__file__).parent / 'templates' / 'workflow_designer.html'
+        try:
+            return 200, {'__html__': html_path.read_bytes()}
+        except FileNotFoundError:
+            return 404, {'error': 'designer template not found'}
 
     def _register_scheduled_jobs(self) -> None:
         """Register default recurring jobs. Config overrides can be added externally."""

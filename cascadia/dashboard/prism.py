@@ -143,6 +143,8 @@ class PrismService:
         # Production hardening
         self.runtime.register_route('GET',  '/api/prism/config/payment',       self.config_payment)
         self.runtime.register_route('GET',  '/api/prism/production',           self.production_status)
+        # Sprint 3
+        self.runtime.register_route('GET',  '/api/overview',                   self.operator_overview)
 
     # ------------------------------------------------------------------
     # Aggregated views
@@ -1377,6 +1379,90 @@ class PrismService:
     def _check_rate_limit(self, remote_addr: str, limit: int = 30, window: int = 60) -> bool:
         """Return True if request is within rate limit, False if exceeded."""
         return self._rate_limiter.check(remote_addr, limit=limit, window=window)
+
+    def operator_overview(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/overview — operator-centric dashboard snapshot with ROI + secondary stats."""
+        configured = self.config.get('operators_registry_path', '')
+        registry_path = (Path(configured).expanduser() if configured
+                         else Path(__file__).parent.parent / 'operators' / 'registry.json')
+        try:
+            registry = json.loads(registry_path.read_text())
+            all_ops = registry.get('operators', [])
+            ops_to_check = [op for op in all_ops if op.get('autostart')]
+        except Exception:
+            ops_to_check = []
+
+        _SECONDARY: Dict[str, tuple] = {
+            'scout':  (7002, '/api/leads/stats',  'leads_today',    'Leads Today'),
+            'chief':  (8006, '/api/roi',           'revenue_30d',   'Rev 30d'),
+            'social': (0,    '/api/social/stats',  'posts_today',   'Posts Today'),
+        }
+
+        result_ops: List[Dict[str, Any]] = []
+        offline_count = 0
+
+        for op in ops_to_check:
+            port = op.get('port')
+            op_id = op.get('id', '')
+            health_path = op.get('health_path', '/api/health')
+
+            health = _http_get(port, health_path, timeout=2.0) if port else None
+            status = 'online' if health else 'offline'
+            if not health:
+                offline_count += 1
+
+            runs_today = 0
+            extra_stat = '—'
+            extra_label = 'Stat'
+            last_run = None
+
+            s_port, s_path, s_key, s_label = _SECONDARY.get(op_id, (port, '/api/stats', 'runs_today', 'Runs'))
+            effective_port = s_port or port
+            if effective_port:
+                stats = _http_get(effective_port, s_path, timeout=2.0) or {}
+                runs_today = stats.get('runs_today', 0)
+                raw = stats.get(s_key, 0)
+                if op_id == 'chief' and isinstance(raw, (int, float)):
+                    extra_stat = f'${raw:,.0f}'
+                else:
+                    extra_stat = str(raw) if raw else '—'
+                extra_label = s_label
+                last_run = stats.get('last_run')
+
+            result_ops.append({
+                'id':          op_id,
+                'name':        op.get('name', op_id),
+                'category':    op.get('category', ''),
+                'status':      status,
+                'port':        port,
+                'runs_today':  runs_today,
+                'extra_stat':  extra_stat,
+                'extra_label': extra_label,
+                'last_run':    last_run,
+            })
+
+        if offline_count == 0:
+            system_health = 'healthy'
+        elif offline_count <= 3:
+            system_health = 'degraded'
+        else:
+            system_health = 'critical'
+
+        chief_port = self._ports.get('chief', 8006)
+        roi_raw = _http_get(chief_port, '/api/roi', timeout=2.0) or {}
+        roi = {
+            'revenue_30d':      roi_raw.get('revenue_30d', 0),
+            'leads_this_week':  roi_raw.get('leads_this_week', 0),
+            'workflows_run':    roi_raw.get('workflows_run', 0),
+            'time_saved_hours': roi_raw.get('time_saved_hours', 0),
+        }
+
+        return 200, {
+            'generated_at':  _now(),
+            'system_health': system_health,
+            'operators':     result_ops,
+            'roi':           roi,
+        }
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')
