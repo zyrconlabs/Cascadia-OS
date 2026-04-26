@@ -239,8 +239,8 @@ class ServiceRuntime:
             def log_message(self, format: str, *args: Any) -> None:
                 runtime.logger.info(format, *args)
 
-        self._httpd = ReusableHTTPServer(('127.0.0.1', self.port), Handler)
-        self.logger.info('Starting service HTTP server on 127.0.0.1:%s', self.port)
+        self._httpd = ReusableHTTPServer(('0.0.0.0', self.port), Handler)
+        self.logger.info('Starting service HTTP server on 0.0.0.0:%s', self.port)
         try:
             self._httpd.serve_forever(poll_interval=0.5)
         finally:
