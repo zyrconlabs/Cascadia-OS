@@ -1,0 +1,17 @@
+{
+  "platform_id": "zyrcon-linux",
+  "display_name": "Zyrcon Linux Server",
+  "base_hardware": "Ubuntu 22.04+ x86_64 or ARM",
+  "cpu_architecture": "x86_64",
+  "min_ram_gb": 8,
+  "min_storage_gb": 100,
+  "recommended_model": "qwen2.5-7b",
+  "max_model": "qwen2.5-14b",
+  "memory_bandwidth_gbs": 68,
+  "os_requirements": "Ubuntu 22.04+",
+  "supports_gpu_inference": false,
+  "iot_capable": true,
+  "iot_protocols": ["mqtt", "modbus"],
+  "status": "available",
+  "thunderbolt_clustering": false
+}

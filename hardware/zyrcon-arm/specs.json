@@ -1,0 +1,18 @@
+{
+  "platform_id": "zyrcon-arm",
+  "display_name": "Zyrcon IoT Node",
+  "base_hardware": "Raspberry Pi 5 8GB",
+  "cpu_architecture": "arm64",
+  "min_ram_gb": 8,
+  "min_storage_gb": 32,
+  "recommended_model": "qwen2.5-3b",
+  "max_model": "qwen2.5-3b",
+  "memory_bandwidth_gbs": 10,
+  "os_requirements": "Raspberry Pi OS 64-bit Bookworm",
+  "supports_gpu_inference": false,
+  "iot_capable": true,
+  "iot_protocols": ["mqtt", "modbus", "zigbee", "gpio"],
+  "price_usd": 199,
+  "status": "planned",
+  "thunderbolt_clustering": false
+}

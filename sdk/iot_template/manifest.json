@@ -1,0 +1,18 @@
+{
+  "id": "my_iot_operator",
+  "name": "My IoT Operator",
+  "version": "1.0.0",
+  "type": "service",
+  "description": "IoT sensor monitoring operator template",
+  "autonomy_level": "semi_autonomous",
+  "capabilities": ["sensor_read", "threshold_monitor"],
+  "required_dependencies": [],
+  "requested_permissions": [],
+  "health_hook": "/health",
+  "port": 9001,
+  "start_cmd": "sensor_operator.py",
+  "autostart": true,
+  "author": "",
+  "min_cascadia_version": "0.47",
+  "network_access": false
+}

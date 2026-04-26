@@ -1,0 +1,2 @@
+# Add your dependencies here
+# cascadia_sdk.py uses stdlib only — no dependencies needed for SDK itself

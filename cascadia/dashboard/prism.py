@@ -145,6 +145,17 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/prism/production',           self.production_status)
         # Sprint 3
         self.runtime.register_route('GET',  '/api/overview',                   self.operator_overview)
+        # Workflow Designer routes
+        self.runtime.register_route('GET',    '/api/prism/workflows',          self.wf_list)
+        self.runtime.register_route('POST',   '/api/prism/workflows',          self.wf_save)
+        self.runtime.register_route('DELETE', '/api/prism/workflows/{id}',     self.wf_delete)
+        self.runtime.register_route('GET',    '/api/prism/workflow/palette',   self.wf_palette)
+        # Backup routes
+        self.runtime.register_route('GET',  '/api/prism/backups',              self.list_backups)
+        self.runtime.register_route('POST', '/api/prism/backups/create',       self.create_backup)
+        self.runtime.register_route('GET',  '/api/prism/backups/verify',       self.verify_backup)
+        # Campaign notify
+        self.runtime.register_route('POST', '/api/prism/campaign/notify',      self.campaign_notify)
 
     # ------------------------------------------------------------------
     # Aggregated views
@@ -711,11 +722,12 @@ class PrismService:
         }
 
     def system_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """Full FLINT component status. Includes process_state, health, restart counts."""
+        """Full FLINT component status. Includes process_state, health, restart counts, LLM health."""
         flint = _http_get(self._flint_port, '/api/flint/status') or {}
         sentinel = _http_get(self._ports.get('sentinel', 0), '/risk-levels') or {}
         return 200, {
             'flint': flint,
+            'llm': flint.get('llm', {'ok': None, 'latency_ms': None, 'error': None, 'checked_at': None}),
             'sentinel_rules_loaded': 'risk_levels' in sentinel,
             'generated_at': _now(),
         }
@@ -1463,6 +1475,120 @@ class PrismService:
             'operators':     result_ops,
             'roi':           roi,
         }
+
+    # ------------------------------------------------------------------
+    # Workflow Designer handlers
+    # ------------------------------------------------------------------
+
+    def _workflow_tier_check(self, required: str = 'pro') -> Optional[tuple]:
+        """Returns (403, dict) if current license tier is insufficient, else None."""
+        try:
+            from cascadia.licensing.tier_validator import TierValidator, TIER_RANKS
+            key = self.config.get('license_key', '')
+            if not key:
+                return 403, {'error': 'tier_required', 'tier_required': required, 'upgrade_url': 'https://zyrcon.store'}
+            validator = TierValidator(self.config.get('license_secret', ''))
+            info = validator.validate(key)
+            if not info:
+                return 403, {'error': 'invalid_license'}
+            user_rank = TIER_RANKS.get(info.get('tier', 'lite'), 0)
+            required_rank = TIER_RANKS.get(required, 1)
+            if user_rank < required_rank:
+                return 403, {'error': 'tier_required', 'tier_required': required,
+                             'current_tier': info.get('tier'), 'upgrade_url': 'https://zyrcon.store'}
+        except Exception:
+            pass  # fail-open if validator unavailable
+        return None
+
+    def wf_list(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        stitch_port = self._ports.get('stitch', 6201)
+        result = _http_get(stitch_port, '/api/stitch/workflows') or {'workflows': []}
+        return 200, result
+
+    def wf_save(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        check = self._workflow_tier_check('pro')
+        if check: return check
+        stitch_port = self._ports.get('stitch', 6201)
+        result = _http_post(stitch_port, '/api/stitch/workflows', payload)
+        return (200, result) if result else (502, {'error': 'stitch unavailable'})
+
+    def wf_delete(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        check = self._workflow_tier_check('pro')
+        if check: return check
+        wf_id = payload.get('id', '')
+        stitch_port = self._ports.get('stitch', 6201)
+        _http_post(stitch_port, f'/api/stitch/workflows/{wf_id}/delete', {})
+        return 200, {'deleted': True, 'id': wf_id}
+
+    def wf_palette(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Return available nodes for workflow palette — all tiers."""
+        operators = _http_get(self._ports.get('crew', 5100), '/crew') or {}
+        op_list = operators.get('operators', [])
+        if isinstance(op_list, dict):
+            op_list = [{'id': k, 'name': k, 'capabilities': []} for k in op_list]
+        nodes = [
+            {'type': 'operator', 'id': op.get('id'), 'name': op.get('name'), 'capabilities': op.get('capabilities', [])}
+            for op in op_list
+        ]
+        nodes += [
+            {'type': 'control', 'id': 'approval_gate', 'name': 'Approval Gate', 'capabilities': ['approval']},
+            {'type': 'control', 'id': 'condition',     'name': 'Condition',     'capabilities': ['branch']},
+            {'type': 'control', 'id': 'delay',         'name': 'Delay',         'capabilities': ['timing']},
+        ]
+        return 200, {'nodes': nodes, 'generated_at': _now()}
+
+    # ------------------------------------------------------------------
+    # Backup handlers
+    # ------------------------------------------------------------------
+
+    def list_backups(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        from cascadia.durability.backup import BackupManager
+        db = self.config.get('database_path', './data/runtime/cascadia.db')
+        bdir = self.config.get('backup_dir', './data/backups')
+        mgr = BackupManager(db, bdir)
+        return 200, {'backups': mgr.list_backups(), 'generated_at': _now()}
+
+    def create_backup(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        from cascadia.durability.backup import BackupManager
+        db = self.config.get('database_path', './data/runtime/cascadia.db')
+        bdir = self.config.get('backup_dir', './data/backups')
+        mgr = BackupManager(db, bdir)
+        try:
+            path = mgr.create_backup()
+            return 200, {'created': True, 'path': str(path), 'generated_at': _now()}
+        except Exception as e:
+            return 500, {'error': str(e)}
+
+    def verify_backup(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        from cascadia.durability.backup import BackupManager
+        db = self.config.get('database_path', './data/runtime/cascadia.db')
+        bdir = self.config.get('backup_dir', './data/backups')
+        mgr = BackupManager(db, bdir)
+        backups = mgr.list_backups()
+        ok = mgr.verify_latest()
+        return 200, {'verified': ok, 'latest': backups[0] if backups else None, 'generated_at': _now()}
+
+    # ------------------------------------------------------------------
+    # Campaign notify handler (Task 32)
+    # ------------------------------------------------------------------
+
+    def campaign_notify(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Receive campaign state notifications from social operator."""
+        session_id = payload.get('session_id', '')
+        state      = payload.get('state', '')
+        source     = payload.get('source', '')
+        if not hasattr(self, '_campaign_notifications'):
+            self._campaign_notifications = []
+        self._campaign_notifications.append({
+            'session_id': session_id, 'state': state,
+            'source': source, 'received_at': _now()
+        })
+        self._campaign_notifications = self._campaign_notifications[-100:]
+        try:
+            self.runtime.broadcast_event({'type': 'campaign_update', 'session_id': session_id, 'state': state})
+        except Exception:
+            pass
+        return 200, {'received': True}
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')

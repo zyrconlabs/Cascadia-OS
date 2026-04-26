@@ -83,6 +83,9 @@ class Flint:
         self.processes: Dict[str, subprocess.Popen[str]] = {}
         self.process_state = 'starting'
         self._status_server: ReusableHTTPServer | None = None
+        # LLM health tracking
+        self._llm_health: Dict[str, Any] = {'ok': False, 'latency_ms': None, 'error': None, 'checked_at': None}
+        self._llm_down_count: int = 0
 
     def _start_component(self, component: ProcessEntry) -> None:
         cmd = [sys.executable, '-m', component.module, '--config', self.config_path, '--name', component.name]
@@ -147,6 +150,49 @@ class Flint:
             hb.parent.mkdir(parents=True, exist_ok=True)
             hb.write_text(str(time.time()))
             time.sleep(self.config['flint']['heartbeat_interval_seconds'])
+
+    def _check_llm_health(self) -> Dict[str, Any]:
+        """
+        Check LLM server liveness via /health endpoint.
+        Returns a health dict with ok, latency_ms, error, and checked_at.
+        Does not own model selection or inference — only liveness probing.
+        """
+        llm_cfg = self.config.get('llm', {})
+        llm_url = llm_cfg.get('base_url', 'http://127.0.0.1:8080')
+        health_url = llm_url.rstrip('/') + '/health'
+        t0 = time.time()
+        try:
+            with request.urlopen(health_url, timeout=5) as r:
+                latency_ms = round((time.time() - t0) * 1000, 1)
+                ok = r.status < 400
+                return {'ok': ok, 'latency_ms': latency_ms, 'error': None, 'checked_at': t0}
+        except Exception as exc:
+            latency_ms = round((time.time() - t0) * 1000, 1)
+            return {'ok': False, 'latency_ms': latency_ms, 'error': str(exc), 'checked_at': t0}
+
+    def _llm_health_loop(self) -> None:
+        """Poll LLM health every 30 seconds. Log ERROR after 3 consecutive failures."""
+        poll_interval = 30
+        while not self.shutdown_event.is_set():
+            result = self._check_llm_health()
+            self._llm_health = result
+            if result['ok']:
+                if self._llm_down_count > 0:
+                    self.logger.info('FLINT LLM health restored after %s failures', self._llm_down_count)
+                self._llm_down_count = 0
+            else:
+                self._llm_down_count += 1
+                if self._llm_down_count >= 3:
+                    self.logger.error(
+                        'FLINT LLM unreachable (%s consecutive failures): %s',
+                        self._llm_down_count, result.get('error'),
+                    )
+                else:
+                    self.logger.warning(
+                        'FLINT LLM health check failed (%s): %s',
+                        self._llm_down_count, result.get('error'),
+                    )
+            self.shutdown_event.wait(timeout=poll_interval)
 
     def _maybe_restart(self, component: ProcessEntry) -> None:
         now = time.time()
@@ -242,7 +288,10 @@ class Flint:
                                      'state': flint.process_state,
                                      'components_healthy': sum(1 for c in comps if c.healthy),
                                      'components_total': len(comps),
-                                     'components': [asdict(c) for c in comps]})
+                                     'components': [asdict(c) for c in comps],
+                                     'llm': flint._llm_health})
+                elif self.path == '/api/flint/llm_health':
+                    self._send(200, flint._llm_health)
                 else:
                     self._send(404, {'error': 'not found'})
 
@@ -325,6 +374,7 @@ class Flint:
         signal.signal(signal.SIGINT, self.handle_signal)
         threading.Thread(target=self._heartbeat_loop, daemon=True, name='flint-hb').start()
         threading.Thread(target=self._serve_status, daemon=True, name='flint-status').start()
+        threading.Thread(target=self._llm_health_loop, daemon=True, name='flint-llm-health').start()
         self.start_tiers()
         self.process_state = 'ready'
         self.logger.info('FLINT ready — Cascadia OS v' + VERSION)

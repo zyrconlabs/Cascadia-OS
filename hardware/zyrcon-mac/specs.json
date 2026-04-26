@@ -1,0 +1,19 @@
+{
+  "platform_id": "zyrcon-mac",
+  "display_name": "Zyrcon AI Server",
+  "base_hardware": "Apple Mac mini M4",
+  "cpu_architecture": "arm64",
+  "min_ram_gb": 16,
+  "min_storage_gb": 256,
+  "recommended_model": "qwen2.5-7b",
+  "max_model": "qwen2.5-14b",
+  "memory_bandwidth_gbs": 273,
+  "os_requirements": "macOS 14+",
+  "supports_gpu_inference": true,
+  "gpu_layers": 99,
+  "iot_capable": false,
+  "price_usd": 899,
+  "status": "production",
+  "thunderbolt_clustering": true,
+  "_clustering_note": "8 units via Thunderbolt 5 enables frontier-class models (671B+) at fraction of GPU cost"
+}

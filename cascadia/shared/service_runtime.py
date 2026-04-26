@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac as _hmac
 import json
+import os
 import signal
 import struct
 import threading
@@ -164,6 +166,20 @@ class ServiceRuntime:
                 data['__headers__'] = dict(self.headers)
                 return data
 
+            def _check_internal_key(self) -> bool:
+                expected = os.environ.get('CASCADIA_INTERNAL_KEY', '')
+                if not expected:
+                    return True  # auth not enabled
+                # Exempt health paths
+                clean = self.path.split('?')[0]
+                if clean in ('/health', '/api/health', '/api/enterprise/health'):
+                    return True
+                provided = self.headers.get('X-Cascadia-Key', '')
+                if not _hmac.compare_digest(expected, provided):
+                    self._send_json(401, {'error': 'unauthorized', 'message': 'Valid X-Cascadia-Key required'})
+                    return False
+                return True
+
             def do_OPTIONS(self) -> None:  # noqa: N802
                 self.send_response(204)
                 self._cors_headers()
@@ -180,6 +196,8 @@ class ServiceRuntime:
                 if (self.headers.get('Upgrade', '').lower() == 'websocket'
                         and self.path in runtime._ws_paths):
                     self._handle_ws_upgrade()
+                    return
+                if not self._check_internal_key():
                     return
                 code, payload = runtime.route_request('GET', self.path, {})
                 if isinstance(payload, dict) and '__html__' in payload:
@@ -229,6 +247,8 @@ class ServiceRuntime:
                     runtime.logger.info('WS client disconnected')
 
             def do_POST(self) -> None:  # noqa: N802
+                if not self._check_internal_key():
+                    return
                 try:
                     code, payload = runtime.route_request('POST', self.path, self._read_payload())
                     self._send_json(code, payload)

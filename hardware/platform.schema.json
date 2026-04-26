@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cascadia OS Hardware Platform Spec",
+  "type": "object",
+  "required": ["platform_id", "display_name", "cpu_architecture", "min_ram_gb", "status"],
+  "properties": {
+    "platform_id": {"type": "string"},
+    "display_name": {"type": "string"},
+    "base_hardware": {"type": "string"},
+    "cpu_architecture": {"type": "string", "enum": ["arm64", "x86_64", "arm32"]},
+    "min_ram_gb": {"type": "integer"},
+    "min_storage_gb": {"type": "integer"},
+    "recommended_model": {"type": "string"},
+    "max_model": {"type": "string"},
+    "memory_bandwidth_gbs": {"type": "number"},
+    "os_requirements": {"type": "string"},
+    "supports_gpu_inference": {"type": "boolean"},
+    "gpu_layers": {"type": "integer"},
+    "iot_capable": {"type": "boolean"},
+    "iot_protocols": {"type": "array", "items": {"type": "string"}},
+    "price_usd": {"type": "number"},
+    "status": {"type": "string", "enum": ["production", "available", "planned"]},
+    "thunderbolt_clustering": {"type": "boolean"}
+  }
+}

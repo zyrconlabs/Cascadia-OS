@@ -44,6 +44,7 @@ class BeaconService:
 
     def __init__(self, config_path: str, name: str) -> None:
         self.config = load_config(config_path)
+        self._config = self.config  # alias for specs-aware routing methods
         component = next(c for c in self.config['components'] if c['name'] == name)
         self.runtime = ServiceRuntime(
             name=name, port=component['port'],
@@ -258,6 +259,46 @@ class BeaconService:
         except Exception as e:
             self.runtime.logger.warning('BEACON forward %s -> error: %s', url, e)
             return 500, {'error': str(e)}
+
+    def _get_platform_specs(self) -> dict:
+        import json
+        from pathlib import Path
+        platform_id = self._config.get('hardware_platform', 'zyrcon-mac')
+        specs_path = Path(__file__).parent.parent.parent / 'hardware' / platform_id / 'specs.json'
+        try:
+            return json.loads(specs_path.read_text())
+        except Exception:
+            return {}
+
+    def _can_handle_model(self, model_id: str) -> bool:
+        specs = self._get_platform_specs()
+        bandwidth = specs.get('memory_bandwidth_gbs', 0)
+        requirements = {'3b': 10, '7b': 50, '14b': 100, '32b': 200, '70b': 500}
+        for size, required in requirements.items():
+            if size in model_id.lower():
+                return bandwidth >= required
+        return True  # unknown model — allow
+
+    def _get_capable_fleet_nodes(self, model_id: str) -> list:
+        """Query fleet for nodes capable of running the model."""
+        try:
+            import urllib.request, json
+            resp = urllib.request.urlopen('http://127.0.0.1:6300/api/prism/fleet', timeout=2)
+            nodes = json.loads(resp.read())
+            requirements = {'3b': 10, '7b': 50, '14b': 100, '32b': 200, '70b': 500}
+            capable = []
+            for node in nodes:
+                bw = node.get('specs', {}).get('memory_bandwidth_gbs', 0)
+                node_ok = True
+                for size, req in requirements.items():
+                    if size in model_id.lower():
+                        node_ok = bw >= req
+                        break
+                if node_ok and node.get('status') == 'online':
+                    capable.append(node)
+            return sorted(capable, key=lambda n: n.get('specs', {}).get('memory_bandwidth_gbs', 0), reverse=True)
+        except Exception:
+            return []
 
     def start(self) -> None:
         self.runtime.logger.info(

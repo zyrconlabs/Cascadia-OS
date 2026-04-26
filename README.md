@@ -2,6 +2,9 @@
 
 > **The execution layer for AI operators that actually finish the work.**
 
+> Architecturally compliant with EU AI Act Articles 8-15 for high-risk AI systems — by design, not by retrofit.
+> → [EU AI Act Compliance Reference](./docs/eu_ai_act_compliance.md)
+
 ---
 
 I was five years old the first time I took apart a telephone. Not for school. Because I needed to understand how the sound got through the wire.
@@ -275,6 +278,17 @@ Operator registry: [cascadia/operators/registry.json](./cascadia/operators/regis
 
 ---
 
+
+---
+
+## Why 2026
+
+AI Infrastructure Software: $126B → $230B (83% growth)
+On-premise AI: 46% of total market, 24% CAGR
+EU AI Act Articles 8-15 deadline: August 2, 2026
+First responder wins 78% of leads in field services
+Industry average lead response: 47 hours
+Cascadia OS average lead response: 4 minutes
 
 ---
 

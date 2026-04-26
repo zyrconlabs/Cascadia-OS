@@ -131,4 +131,23 @@ def migrate(conn: sqlite3.Connection) -> None:
             except Exception:
                 pass
 
+    _add_workflow_definitions_table(conn)
     conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
+
+
+def _add_workflow_definitions_table(conn: sqlite3.Connection) -> None:
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS workflow_definitions (
+            id          TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            nodes       TEXT NOT NULL DEFAULT '[]',
+            edges       TEXT NOT NULL DEFAULT '[]',
+            viewport    TEXT NOT NULL DEFAULT '{}',
+            created_by  TEXT DEFAULT 'user',
+            is_template INTEGER NOT NULL DEFAULT 0,
+            deleted_at  TEXT DEFAULT NULL,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+    ''')

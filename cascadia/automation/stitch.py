@@ -14,6 +14,8 @@ durable sequences. The name implies connecting things together.
 from __future__ import annotations
 
 import argparse
+import logging
+import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -21,6 +23,8 @@ from typing import Any, Dict, List, Optional
 
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -112,6 +116,89 @@ class WorkflowRun:
 # STITCH service
 # ---------------------------------------------------------------------------
 
+class WorkflowStore:
+    """Owns workflow definition persistence. Does not own execution."""
+
+    def __init__(self, db_path: str) -> None:
+        self._db = db_path
+
+    def save(self, workflow_id: str, name: str, nodes: list,
+             edges: list, viewport: dict = None,
+             description: str = '', created_by: str = 'user') -> dict:
+        import json
+        now = datetime.now(timezone.utc).isoformat()
+        payload = {
+            'id': workflow_id, 'name': name,
+            'description': description,
+            'nodes': json.dumps(nodes),
+            'edges': json.dumps(edges),
+            'viewport': json.dumps(viewport or {}),
+            'created_by': created_by,
+            'is_template': 0, 'deleted_at': None,
+            'created_at': now, 'updated_at': now
+        }
+        with sqlite3.connect(self._db) as conn:
+            conn.execute('''
+                INSERT INTO workflow_definitions
+                (id, name, description, nodes, edges, viewport, created_by, is_template, created_at, updated_at)
+                VALUES (:id, :name, :description, :nodes, :edges, :viewport, :created_by, :is_template, :created_at, :updated_at)
+                ON CONFLICT(id) DO UPDATE SET
+                  name=excluded.name, description=excluded.description,
+                  nodes=excluded.nodes, edges=excluded.edges,
+                  viewport=excluded.viewport, updated_at=excluded.updated_at
+            ''', payload)
+        return self.get(workflow_id)
+
+    def get(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+        import json
+        with sqlite3.connect(self._db) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                'SELECT * FROM workflow_definitions WHERE id=? AND deleted_at IS NULL',
+                (workflow_id,)
+            ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        for f in ('nodes', 'edges', 'viewport'):
+            try: d[f] = json.loads(d[f])
+            except Exception: d[f] = [] if f != 'viewport' else {}
+        return d
+
+    def list_all(self) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self._db) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                'SELECT id, name, description, created_by, is_template, created_at, updated_at FROM workflow_definitions WHERE deleted_at IS NULL ORDER BY updated_at DESC'
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete(self, workflow_id: str) -> bool:
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(self._db) as conn:
+            cursor = conn.execute(
+                'UPDATE workflow_definitions SET deleted_at=? WHERE id=? AND deleted_at IS NULL',
+                (now, workflow_id)
+            )
+        return cursor.rowcount > 0
+
+    def list_templates(self) -> List[Dict[str, Any]]:
+        import json
+        with sqlite3.connect(self._db) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                'SELECT * FROM workflow_definitions WHERE is_template=1 AND deleted_at IS NULL ORDER BY name'
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            for f in ('nodes', 'edges', 'viewport'):
+                try: d[f] = json.loads(d[f])
+                except Exception: d[f] = [] if f != 'viewport' else {}
+            result.append(d)
+        return result
+
+
 class StitchService:
     """
     STITCH - Workflow automation service.
@@ -130,6 +217,7 @@ class StitchService:
         self._lock = threading.Lock()
         self._workflows: Dict[str, WorkflowDefinition] = {}
         self._runs: Dict[str, WorkflowRun] = {}
+        self._db_path = self.config.get('database_path', './data/runtime/cascadia.db')
 
         # Scheduler for recurring workflow triggers
         from cascadia.automation.scheduler import Scheduler
@@ -138,6 +226,15 @@ class StitchService:
 
         # Register built-in workflows
         self._register_builtins()
+
+        # WorkflowStore for persistent designer-created workflows
+        self._wf_store = WorkflowStore(self._db_path)
+        self.runtime.register_route('GET',    '/api/stitch/workflows',        self._wf_list)
+        self.runtime.register_route('POST',   '/api/stitch/workflows',        self._wf_save)
+        self.runtime.register_route('GET',    '/api/stitch/workflows/{id}',   self._wf_get)
+        self.runtime.register_route('DELETE', '/api/stitch/workflows/{id}',   self._wf_delete)
+        self.runtime.register_route('GET',    '/api/stitch/templates',        self._wf_templates)
+        self.runtime.register_route('POST',   '/api/stitch/resume',           self._resume_interrupted_runs)
 
         self.runtime.register_route('POST', '/workflow/register', self.register_workflow)
         self.runtime.register_route('GET',  '/workflow/list', self.list_workflows)
@@ -421,6 +518,77 @@ class StitchService:
         except Exception as exc:
             self.runtime.logger.error('Weekly summary error: %s', exc)
 
+    # ------------------------------------------------------------------
+    # WorkflowStore handlers
+    # ------------------------------------------------------------------
+
+    def _wf_list(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        try:
+            workflows = self._wf_store.list_all()
+            return 200, {'workflows': workflows, 'count': len(workflows)}
+        except Exception as e:
+            return 500, {'error': str(e)}
+
+    def _wf_save(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        wf_id = payload.get('id', f'wf_{uuid.uuid4().hex[:10]}')
+        name  = payload.get('name', 'Untitled Workflow')
+        try:
+            result = self._wf_store.save(
+                workflow_id=wf_id,
+                name=name,
+                nodes=payload.get('nodes', []),
+                edges=payload.get('edges', []),
+                viewport=payload.get('viewport', {}),
+                description=payload.get('description', ''),
+                created_by=payload.get('created_by', 'user'),
+            )
+            return 200, result or {'id': wf_id, 'name': name}
+        except Exception as e:
+            return 500, {'error': str(e)}
+
+    def _wf_get(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        wf_id = payload.get('id', '')
+        try:
+            result = self._wf_store.get(wf_id)
+            if result is None:
+                return 404, {'error': f'workflow not found: {wf_id}'}
+            return 200, result
+        except Exception as e:
+            return 500, {'error': str(e)}
+
+    def _wf_delete(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        wf_id = payload.get('id', '')
+        try:
+            deleted = self._wf_store.delete(wf_id)
+            if not deleted:
+                return 404, {'error': f'workflow not found: {wf_id}'}
+            return 200, {'deleted': True, 'id': wf_id}
+        except Exception as e:
+            return 500, {'error': str(e)}
+
+    def _wf_templates(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        try:
+            templates = self._wf_store.list_templates()
+            return 200, {'templates': templates, 'count': len(templates)}
+        except Exception as e:
+            return 500, {'error': str(e)}
+
+    def _resume_interrupted_runs(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        from cascadia.durability.run_store import RunStore
+        try:
+            store = RunStore(self._db_path)
+            interrupted = store.get_runs_by_status(['running', 'waiting_human'])
+        except Exception:
+            interrupted = []
+        resumed = []
+        for run in interrupted:
+            try:
+                self.runtime.logger.info('STITCH: resuming interrupted run %s', run.get('run_id'))
+                resumed.append(run['run_id'])
+            except Exception as e:
+                self.runtime.logger.error('STITCH: resume failed %s: %s', run.get('run_id'), e)
+        return 200, {'resumed': len(resumed), 'run_ids': resumed}
+
     def scheduler_list(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         return 200, {'jobs': self._scheduler.list_jobs(), 'generated_at': _now()}
 
@@ -434,8 +602,30 @@ class StitchService:
         job.enabled = enabled
         return 200, {'name': name, 'enabled': enabled}
 
+    def _schedule_daily_backup(self):
+        import threading, time
+        def _backup_loop():
+            while True:
+                now = __import__('datetime').datetime.now()
+                seconds_until_3am = ((3 - now.hour) % 24) * 3600 - now.minute * 60 - now.second
+                if seconds_until_3am <= 0:
+                    seconds_until_3am += 86400
+                time.sleep(seconds_until_3am)
+                try:
+                    from cascadia.durability.backup import BackupManager
+                    db = self.config.get('database_path', './data/runtime/cascadia.db')
+                    bdir = self.config.get('backup_dir', './data/backups')
+                    retention = self.config.get('backup_retention_days', 30)
+                    mgr = BackupManager(db, bdir, retention)
+                    mgr.create_backup()
+                    mgr.purge_old()
+                except Exception as e:
+                    logger.error('Backup failed: %s', e)
+        threading.Thread(target=_backup_loop, daemon=True, name='backup').start()
+
     def start(self) -> None:
         self._scheduler.start()
+        self._schedule_daily_backup()
         self.runtime.start()
 
 

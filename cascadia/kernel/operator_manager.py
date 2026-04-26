@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import resource
 import subprocess
 import sys
 import threading
@@ -58,17 +59,19 @@ class OperatorProcess:
         log_dir.mkdir(parents=True, exist_ok=True)
         return open(str(log_dir / f"{self.id}.log"), "a")
 
-    def start(self) -> None:
+    def start(self, preexec_fn=None) -> None:
         cmd = self._build_cmd()
         self.logger.info("OperatorManager starting %s (port %s)", self.name, self.port)
         log = self._log_file()
-        self.proc = subprocess.Popen(
-            cmd,
+        popen_kwargs = dict(
             cwd=str(self.operator_dir),
             env=self._env(),
             stdout=log,
             stderr=log,
         )
+        if preexec_fn is not None and sys.platform != 'win32':
+            popen_kwargs['preexec_fn'] = preexec_fn
+        self.proc = subprocess.Popen(cmd, **popen_kwargs)
 
     def _env(self) -> dict:
         env = os.environ.copy()
@@ -105,12 +108,31 @@ class OperatorManager:
     and supervises all running operators in a background thread.
     """
 
-    def __init__(self, logger, operators_dir: Path = None) -> None:
+    def __init__(self, logger, operators_dir: Path = None, config: dict = None) -> None:
         self.logger       = logger
         self.operators_dir = operators_dir or DEFAULT_OPERATORS_DIR
         self.operators: dict = {}
         self._thread: Optional[threading.Thread] = None
         self._running  = False
+        self._config   = config or {}
+
+    def _get_preexec_fn(self, sandbox_config: dict):
+        if sys.platform == 'win32':
+            return None
+        max_memory_mb  = sandbox_config.get('max_memory_mb', 512)
+        max_open_files = sandbox_config.get('max_open_files', 256)
+
+        def apply_limits():
+            mem_bytes = max_memory_mb * 1024 * 1024
+            try:
+                resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+            except ValueError:
+                pass
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (max_open_files, max_open_files))
+            except ValueError:
+                pass
+        return apply_limits
 
     def discover(self) -> None:
         """Scan operators directory for valid manifests."""
@@ -135,9 +157,12 @@ class OperatorManager:
 
     def start_all(self) -> None:
         """Start all discovered operators."""
+        sandbox_cfg = self._config.get('sandbox', {})
+        sandbox_enabled = sandbox_cfg.get('enabled', False)
+        preexec = self._get_preexec_fn(sandbox_cfg) if sandbox_enabled else None
         for op in self.operators.values():
             try:
-                op.start()
+                op.start(preexec_fn=preexec)
             except Exception as e:
                 self.logger.error("OperatorManager: failed to start %s — %s", op.name, e)
 

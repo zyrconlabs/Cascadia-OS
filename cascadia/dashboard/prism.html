@@ -594,6 +594,7 @@ input[type="file"]{display:none}
     <button class="nav-btn" onclick="switchSurface('settings')" id="nav-settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="nav-tooltip">Settings</span></button>
     <button class="nav-btn" onclick="switchSurface('health')" id="nav-health"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span class="nav-tooltip">Health & Observability</span></button>
     <button class="nav-btn" onclick="switchSurface('terminal')" id="nav-terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="nav-tooltip">Terminal</span></button>
+    <button class="nav-btn" onclick="switchSurface('workflows')" id="nav-workflows"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/><path d="M6.5 8v4M17.5 8v4M10.5 13h3" stroke-linecap="round"/></svg><span class="nav-tooltip">Workflows</span></button>
     <div class="nav-divider"></div>
     <button class="nav-btn" onclick="toggleAlmanac()" id="nav-almanac" style="margin-top:auto"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="17" x2="12" y2="17" stroke-linecap="round" stroke-width="2.5"/></svg><span class="nav-tooltip">Almanac — AI Help</span></button>
   </nav>
@@ -2203,6 +2204,7 @@ function switchSurface(surface) {
   else if (surface==='settings') renderSettingsSurface();
   else if (surface==='health') renderHealthSurface();
   else if (surface==='terminal') renderTerminalSurface();
+  else if (surface==='workflows') { renderWorkflowsSurface(); WF.init(); }
 }
 function switchToRuns(id) { S.selected=id; S.surface='runs'; switchSurface('runs'); }
 
@@ -3108,6 +3110,299 @@ Vault.loadAllRuns().then(runs=>{
 
 renderSidebar(); renderMain(); updateNavBadges(); maybeOpenHealth();
 
+// ── WORKFLOW DESIGNER ──────────────────────────────────────────────────────
+function renderWorkflowsSurface() {
+  const main = document.getElementById('main-panel');
+  if (!main) return;
+  const el = document.getElementById('tab-workflows');
+  if (el) { main.innerHTML = ''; main.appendChild(el); el.style.display='flex'; el.style.flexDirection='column'; el.style.height='100%'; return; }
+  main.innerHTML = '';
+  const div = document.createElement('div');
+  div.id = 'tab-workflows';
+  div.style.cssText = 'display:flex;flex-direction:column;height:100%;overflow:hidden';
+  div.innerHTML = `
+  <div id="wf-lite-banner" style="display:none;background:#fef3c7;padding:8px 16px;font-size:12px;border-bottom:1px solid #d4af37">
+    &#9888; Workflow Designer requires Pro tier.
+    <a href="https://zyrcon.store" style="color:#7c3aed;font-weight:600">Upgrade →</a>
+    You can view workflows but not create or edit them.
+  </div>
+  <div id="wf-toolbar" style="display:none;padding:8px 16px;border-bottom:1px solid var(--border);align-items:center;gap:8px;background:#fff;flex-shrink:0">
+    <input id="wf-name-input" type="text" placeholder="Workflow name..." style="font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:4px 8px;width:200px">
+    <button onclick="WF.save()" style="background:#7c3aed;color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer">Save</button>
+    <button onclick="WF.newWorkflow()" style="background:none;border:1px solid #e5e7eb;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer">+ New</button>
+    <div style="flex:1"></div>
+    <span id="wf-save-status" style="font-size:11px;color:var(--text-faint)"></span>
+  </div>
+  <div style="display:flex;flex:1;min-height:0">
+    <div id="wf-palette" style="display:none;width:180px;min-width:180px;border-right:1px solid var(--border);overflow-y:auto;padding:8px;background:#fafafa">
+      <div style="font-size:10px;font-weight:600;color:var(--text-faint);letter-spacing:.06em;margin-bottom:8px">OPERATORS</div>
+      <div id="wf-palette-nodes"></div>
+      <div style="font-size:10px;font-weight:600;color:var(--text-faint);letter-spacing:.06em;margin:12px 0 8px">CONTROL FLOW</div>
+      <div id="wf-palette-control"></div>
+    </div>
+    <div style="flex:1;position:relative;overflow:hidden;background:#f8f9fc">
+      <svg id="wf-svg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:10"></svg>
+      <div id="workflow-canvas" style="position:absolute;inset:0;overflow:hidden"></div>
+      <div id="wf-empty" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-faint);font-size:13px">
+        <div style="font-size:32px;margin-bottom:8px">&#9889;</div>
+        <div>Drag operators from the palette to build a workflow</div>
+      </div>
+    </div>
+    <div style="width:220px;min-width:220px;border-left:1px solid var(--border);overflow-y:auto;background:#fff">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;font-weight:600">Workflows</span>
+        <span id="wf-list-count" style="font-size:10px;color:var(--text-faint)">0</span>
+      </div>
+      <div id="wf-list-panel"></div>
+    </div>
+  </div>
+  `;
+  main.appendChild(div);
+}
+
+const WF = {
+  nodes: [],
+  edges: [],
+  viewport: {x: 0, y: 0, zoom: 1},
+  dragging: null,
+  connecting: null,
+  isDesigner: false,
+
+  init() {
+    const tier = window.CASCADIA_TIER || 'lite';
+    this.isDesigner = ['pro', 'enterprise'].includes(tier);
+    const banner = document.getElementById('wf-lite-banner');
+    const toolbar = document.getElementById('wf-toolbar');
+    const palette = document.getElementById('wf-palette');
+    if (!this.isDesigner) {
+      if (banner) banner.style.display = 'block';
+    } else {
+      if (toolbar) toolbar.style.display = 'flex';
+      if (palette) palette.style.display = 'block';
+    }
+    this.loadPalette();
+    this.loadWorkflowList();
+    const canvas = document.getElementById('workflow-canvas');
+    if (canvas) {
+      canvas.addEventListener('mousemove', e => this._onMouseMove(e));
+      canvas.addEventListener('mouseup', e => this._onMouseUp(e));
+    }
+  },
+
+  newWorkflow() {
+    this.nodes = []; this.edges = [];
+    const ni = document.getElementById('wf-name-input');
+    const ss = document.getElementById('wf-save-status');
+    if (ni) ni.value = '';
+    if (ss) ss.textContent = '';
+    this.renderAll();
+  },
+
+  addNode(type, name, capabilities) {
+    if (!this.isDesigner) return;
+    const id = 'node_' + Date.now();
+    this.nodes.push({id, type, name, capabilities: capabilities || [], x: 100 + Math.random()*300, y: 80 + Math.random()*200});
+    const em = document.getElementById('wf-empty');
+    if (em) em.style.display = 'none';
+    this.renderAll();
+  },
+
+  renderAll() { this._renderNodes(); this._renderEdges(); },
+
+  _renderNodes() {
+    const canvas = document.getElementById('workflow-canvas');
+    if (!canvas) return;
+    canvas.querySelectorAll('.wf-node').forEach(n => n.remove());
+    this.nodes.forEach(node => {
+      const el = document.createElement('div');
+      el.className = 'wf-node';
+      el.dataset.nodeId = node.id;
+      el.style.cssText = `position:absolute;left:${node.x}px;top:${node.y}px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;min-width:140px;cursor:${this.isDesigner?'grab':'default'};box-shadow:0 1px 4px rgba(0,0,0,.08);z-index:20;user-select:none`;
+      el.innerHTML = `
+        <div style="font-size:11px;font-weight:700;color:${node.type==='control'?'#7c3aed':'#1e293b'}">${node.name}</div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:2px">${node.type.toUpperCase()}</div>
+        ${this.isDesigner?`<button onclick="WF.removeNode('${node.id}')" style="position:absolute;top:4px;right:4px;background:none;border:none;color:#94a3b8;cursor:pointer;font-size:10px;padding:0 2px">&#10005;</button>`:''}
+        <div class="wf-port wf-port-out" data-node-id="${node.id}" style="position:absolute;right:-6px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#7c3aed;border-radius:50%;cursor:crosshair;z-index:30"></div>
+        <div class="wf-port wf-port-in" data-node-id="${node.id}" style="position:absolute;left:-6px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#e5e7eb;border:2px solid #7c3aed;border-radius:50%;cursor:crosshair;z-index:30"></div>
+      `;
+      if (this.isDesigner) {
+        el.addEventListener('mousedown', e => {
+          if (e.target.classList.contains('wf-port-out')) {
+            this.connecting = {fromNodeId: node.id};
+          } else if (!e.target.tagName.match(/BUTTON/i)) {
+            this.dragging = {nodeId: node.id, startX: e.clientX, startY: e.clientY, nodeStartX: node.x, nodeStartY: node.y};
+            el.style.cursor = 'grabbing';
+          }
+          e.stopPropagation();
+        });
+        const portIn = el.querySelector('.wf-port-in');
+        if (portIn) portIn.addEventListener('mousedown', e => {
+          e.stopPropagation();
+          if (this.connecting && this.connecting.fromNodeId !== node.id) {
+            this._addEdge(this.connecting.fromNodeId, node.id);
+            this.connecting = null;
+          }
+        });
+      }
+      canvas.appendChild(el);
+    });
+  },
+
+  _addEdge(fromId, toId) {
+    if (this.edges.find(e => e.from === fromId && e.to === toId)) return;
+    this.edges.push({id: 'edge_' + Date.now(), from: fromId, to: toId});
+    this._renderEdges();
+  },
+
+  removeNode(nodeId) {
+    this.nodes = this.nodes.filter(n => n.id !== nodeId);
+    this.edges = this.edges.filter(e => e.from !== nodeId && e.to !== nodeId);
+    this.renderAll();
+    const em = document.getElementById('wf-empty');
+    if (em) em.style.display = this.nodes.length ? 'none' : 'block';
+  },
+
+  _renderEdges() {
+    const svg = document.getElementById('wf-svg');
+    if (!svg) return;
+    svg.innerHTML = '';
+    this.edges.forEach(edge => {
+      const fromNode = this.nodes.find(n => n.id === edge.from);
+      const toNode = this.nodes.find(n => n.id === edge.to);
+      if (!fromNode || !toNode) return;
+      const x1 = fromNode.x + 154, y1 = fromNode.y + 26;
+      const x2 = toNode.x - 6,    y2 = toNode.y + 26;
+      const dx = Math.abs(x2 - x1) / 2;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`);
+      path.setAttribute('stroke', '#7c3aed'); path.setAttribute('stroke-width', '2');
+      path.setAttribute('fill', 'none');
+      if (this.isDesigner) {
+        path.style.cursor = 'pointer';
+        path.addEventListener('click', () => { this.edges = this.edges.filter(e => e.id !== edge.id); this._renderEdges(); });
+      }
+      svg.appendChild(path);
+      const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      arrow.setAttribute('points', `${x2},${y2} ${x2-8},${y2-4} ${x2-8},${y2+4}`);
+      arrow.setAttribute('fill', '#7c3aed');
+      svg.appendChild(arrow);
+    });
+  },
+
+  _onMouseMove(e) {
+    if (!this.dragging) return;
+    const node = this.nodes.find(n => n.id === this.dragging.nodeId);
+    if (node) {
+      node.x = this.dragging.nodeStartX + (e.clientX - this.dragging.startX);
+      node.y = this.dragging.nodeStartY + (e.clientY - this.dragging.startY);
+      this.renderAll();
+    }
+  },
+
+  _onMouseUp(e) {
+    if (this.dragging) {
+      const el = document.querySelector(`[data-node-id="${this.dragging.nodeId}"]`);
+      if (el) el.style.cursor = 'grab';
+    }
+    this.dragging = null; this.connecting = null;
+  },
+
+  async loadPalette() {
+    try {
+      const data = await fetch('/api/prism/workflow/palette').then(r => r.json());
+      const nodes = data.nodes || [];
+      const opDiv = document.getElementById('wf-palette-nodes');
+      const ctrlDiv = document.getElementById('wf-palette-control');
+      if (!opDiv || !ctrlDiv) return;
+      opDiv.innerHTML = nodes.filter(n => n.type === 'operator').map(n => `
+        <div onclick="WF.addNode('${n.type}','${n.name.replace(/'/g,"\\'")}',${JSON.stringify(n.capabilities||[])})"
+             style="padding:6px 8px;margin-bottom:4px;background:#fff;border:1px solid #e5e7eb;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;user-select:none"
+             onmouseover="this.style.borderColor='#7c3aed'" onmouseout="this.style.borderColor='#e5e7eb'">
+          ${n.name}</div>`).join('');
+      ctrlDiv.innerHTML = nodes.filter(n => n.type === 'control').map(n => `
+        <div onclick="WF.addNode('${n.type}','${n.name.replace(/'/g,"\\'")}',${JSON.stringify(n.capabilities||[])})"
+             style="padding:6px 8px;margin-bottom:4px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;user-select:none;color:#7c3aed"
+             onmouseover="this.style.borderColor='#7c3aed'" onmouseout="this.style.borderColor='#ddd6fe'">
+          ${n.name}</div>`).join('');
+    } catch(e) { console.warn('Palette load failed:', e); }
+  },
+
+  async loadWorkflowList() {
+    try {
+      const data = await fetch('/api/prism/workflows').then(r => r.json());
+      const workflows = data.workflows || [];
+      const panel = document.getElementById('wf-list-panel');
+      const count = document.getElementById('wf-list-count');
+      if (!panel) return;
+      if (count) count.textContent = workflows.length;
+      panel.innerHTML = workflows.length ? workflows.map(wf => `
+        <div onclick="WF.load('${wf.id}')"
+             style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px"
+             onmouseover="this.style.background='#f8f9fc'" onmouseout="this.style.background=''">
+          <div style="font-weight:600">${wf.name}</div>
+          <div style="font-size:10px;color:var(--text-faint);margin-top:2px">${new Date(wf.updated_at).toLocaleDateString()}</div>
+        </div>`).join('') : '<div style="padding:16px;text-align:center;font-size:12px;color:var(--text-faint)">No saved workflows</div>';
+    } catch(e) { console.warn('Workflow list load failed:', e); }
+  },
+
+  async load(workflowId) {
+    try {
+      const data = await fetch('/api/prism/workflows').then(r => r.json());
+      const wf = (data.workflows || []).find(w => w.id === workflowId);
+      if (!wf) return;
+      this.nodes = wf.nodes || []; this.edges = wf.edges || [];
+      const ni = document.getElementById('wf-name-input');
+      if (ni) ni.value = wf.name || '';
+      const em = document.getElementById('wf-empty');
+      if (em) em.style.display = this.nodes.length ? 'none' : 'block';
+      this.renderAll();
+    } catch(e) { console.warn('Workflow load failed:', e); }
+  },
+
+  async save() {
+    if (!this.isDesigner) return;
+    const ni = document.getElementById('wf-name-input');
+    const name = (ni ? ni.value.trim() : '') || 'Untitled Workflow';
+    const id = 'wf_' + Date.now();
+    const statusEl = document.getElementById('wf-save-status');
+    try {
+      const res = await fetch('/api/prism/workflows', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id, name, nodes: this.nodes, edges: this.edges, viewport: this.viewport})
+      });
+      if (res.ok) {
+        if (statusEl) { statusEl.textContent = 'Saved ✓'; statusEl.style.color = '#10b981'; }
+        this.loadWorkflowList();
+        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+      } else if (res.status === 403) {
+        if (statusEl) { statusEl.textContent = 'Pro required'; statusEl.style.color = '#ef4444'; }
+      }
+    } catch(e) {
+      if (statusEl) { statusEl.textContent = 'Save failed'; statusEl.style.color = '#ef4444'; }
+    }
+  }
+};
+
+async function loadBackupStatus() {
+  try {
+    const data = await fetch('/api/prism/backups/verify').then(r => r.json());
+    const el = document.getElementById('backup-status-val');
+    const sub = document.getElementById('backup-status-sub');
+    if (!el) return;
+    if (data.latest) {
+      const age = Math.round((Date.now() - new Date(data.latest.created_at)) / 3600000);
+      el.textContent = data.verified ? '✅ Verified' : '⚠ Unverified';
+      el.style.color = data.verified ? '#10b981' : '#f59e0b';
+      if (sub) sub.textContent = `${age}h ago · ${data.latest.size_kb} KB`;
+    } else {
+      el.textContent = '⚠ No backup';
+      el.style.color = '#f59e0b';
+      if (sub) sub.textContent = 'First backup runs at 03:00';
+    }
+  } catch(e) {}
+}
+
 (async()=>{
   await refreshOperators();
   // refreshOperators sidebar — reduced to 30s to avoid cursor/copy disruption
@@ -3121,6 +3416,8 @@ renderSidebar(); renderMain(); updateNavBadges(); maybeOpenHealth();
   connectWS();
   loadOverview();
   setInterval(loadOverview, 60000);
+  loadBackupStatus();
+  setInterval(loadBackupStatus, 300000);
   refreshWatchdogStatus();
   setInterval(refreshWatchdogStatus, 60000);
 })();

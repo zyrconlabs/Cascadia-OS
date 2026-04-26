@@ -21,6 +21,21 @@ from typing import Any, Dict, Optional, Tuple
 VALID_TIERS = ('lite', 'pro', 'enterprise')
 _KEY_PREFIX = 'zyrcon_'
 
+FEATURE_TIERS = {
+    'workflow_viewer':    'lite',
+    'workflow_designer':  'pro',
+    'workflow_save':      'pro',
+    'workflow_templates': 'pro',
+    'workflow_team':      'enterprise',
+    'fleet_management':   'enterprise',
+    'audit_export':       'pro',
+    'compliance_tab':     'enterprise',
+    'iot_triggers':       'pro',
+    'iot_actuators':      'enterprise',
+}
+
+TIER_RANKS = {'lite': 0, 'pro': 1, 'enterprise': 2}
+
 
 def _sign(secret: str, message: str) -> str:
     return hmac.new(
@@ -36,8 +51,9 @@ class TierValidator:
     Does not own key storage — reads secret from config at validation time.
     """
 
-    def __init__(self, secret: str) -> None:
+    def __init__(self, secret: str, tier: str = 'lite') -> None:
         self._secret = secret
+        self._tier = tier
 
     def validate(self, key: str) -> Dict[str, Any]:
         """
@@ -107,6 +123,17 @@ class TierValidator:
             'days_remaining': 0,
             'error': error,
         }
+
+    def can_access(self, feature: str) -> bool:
+        """Return True if the current tier has access to the given feature."""
+        required = FEATURE_TIERS.get(feature, 'lite')
+        user_rank = TIER_RANKS.get(self._tier, 0)
+        required_rank = TIER_RANKS.get(required, 0)
+        return user_rank >= required_rank
+
+    def feature_map(self) -> dict:
+        """Return a dict of all features and whether the current tier can access them."""
+        return {f: self.can_access(f) for f in FEATURE_TIERS}
 
     def generate(self, tier: str, customer_id: str, expiry_epoch: int) -> str:
         """Generate a valid license key. Used by generate_license.py script."""
