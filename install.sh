@@ -185,6 +185,7 @@ mkdir -p "$HOME/.local/bin"
 cat > "$LAUNCHER" <<EOF
 #!/usr/bin/env bash
 cd "$INSTALL_DIR"
+bash -n "$INSTALL_DIR/start.sh" || { echo "[cascadia] ERROR: start.sh has syntax errors — aborting"; exit 1; }
 exec bash "$INSTALL_DIR/start.sh"
 EOF
 chmod +x "$LAUNCHER"
@@ -198,6 +199,7 @@ cat > "$STARTUP_WRAPPER" <<EOF
 # Starts llama.cpp then Cascadia OS watchdog in the correct order
 cd "$INSTALL_DIR"
 source "$VENV_DIR/bin/activate"
+bash -n "$INSTALL_DIR/start.sh" || { echo "[cascadia] ERROR: start.sh has syntax errors — aborting"; exit 1; }
 exec bash "$INSTALL_DIR/start.sh"
 EOF
 chmod +x "$STARTUP_WRAPPER"
@@ -418,6 +420,8 @@ launchctl load "$HOME/Library/LaunchAgents/com.zyrconlabs.cascadia.plist" 2>/dev
 
 # start.sh handles llama.cpp → Cascadia OS in correct order
 mkdir -p "$INSTALL_DIR/data/logs"
+# Validate start.sh syntax before attempting to run
+bash -n "$INSTALL_DIR/start.sh" || die "start.sh has syntax errors — aborting deployment"
 cd "$INSTALL_DIR" && bash start.sh
 
 
