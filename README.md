@@ -27,22 +27,38 @@ I didn't want a chatbot. I wanted an operator I could trust. Something that reme
 
 ## ⚡ One-Command Install
 
+**macOS:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.sh | bash
 ```
 
-Installs Homebrew (if needed), SwiftBar, Cascadia OS, registers a login agent, and links the menu bar controller. Everything starts automatically at boot. No manual steps.
+Installs Homebrew (if needed), SwiftBar, Cascadia OS, and registers a login agent. Everything starts automatically at boot.
 
-> **Requires:** Python 3.11+ and git. Everything else is handled automatically.
+**Requirements:** Python 3.11+ and git  
+→ [macOS quickstart guide](https://github.com/zyrconlabs/Cascadia-OS/blob/main/QUICKSTART_MACOS.md)
 
-→ [Full quickstart guide](./QUICKSTART.md)
+---
+
+**Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.sh | bash
+```
+
+Installs dependencies, Cascadia OS, and sets up system tray integration (Argos for GNOME). Everything starts automatically at boot.
+
+**Requirements:** Python 3.11+ and git  
+**Optional:** Install [Argos](https://github.com/p-e-w/argos) for GNOME menu bar integration  
+→ [Linux quickstart guide](https://github.com/zyrconlabs/Cascadia-OS/blob/main/QUICKSTART_LINUX.md)
+
+---
 
 **Windows:**
+```powershell
+git clone https://github.com/zyrconlabs/cascadia-os.git
+powershell -ExecutionPolicy Bypass -File cascadia-os\windows\install.ps1
+```
 
-    git clone https://github.com/zyrconlabs/cascadia-os.git
-    powershell -ExecutionPolicy Bypass -File cascadia-os\windows\install.ps1
-
-→ [Windows installation guide](./windows/README.md)
+→ [Windows installation guide](https://github.com/zyrconlabs/Cascadia-OS/blob/main/windows/README.md)
 
 ---
 
@@ -248,6 +264,8 @@ Operator registry: [cascadia/operators/registry.json](./cascadia/operators/regis
 ## Docs
 
 - [Quickstart](./QUICKSTART.md)
+- [macOS Quickstart](./QUICKSTART_MACOS.md)
+- [Linux Quickstart](./QUICKSTART_LINUX.md)
 - [Windows Installation](./windows/README.md)
 - [Manual](./MANUAL.md)
 - [PRISM Manual](./PRISM_MANUAL.md)
