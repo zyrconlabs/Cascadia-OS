@@ -98,14 +98,35 @@ fi
 
 # ── Health check ──────────────────────────────────────────────────────────────
 
+PRISM_HEALTHY=false
 log "Waiting for PRISM to come up on port $PRISM_PORT..."
 for i in $(seq 1 15); do
   if curl -sf "http://127.0.0.1:$PRISM_PORT/api/prism/health-check" >/dev/null 2>&1; then
     log "PRISM is healthy"
+    PRISM_HEALTHY=true
     break
   fi
   sleep 2
 done
 
+if [ "$PRISM_HEALTHY" = false ]; then
+  log "WARNING: PRISM did not respond within 30s — check logs at $INSTALL_DIR/data/logs/"
+fi
+
+# ── Production readiness check ────────────────────────────────────────────────
+
+if [ "$PRISM_HEALTHY" = true ] && command -v jq >/dev/null 2>&1; then
+  log "Checking production readiness..."
+  PROD_STATUS=$(curl -sf "http://127.0.0.1:$PRISM_PORT/api/prism/production" 2>/dev/null || echo '{}')
+  PROD_READY=$(echo "$PROD_STATUS" | jq -r '.production_ready // false')
+  if [ "$PROD_READY" = "true" ]; then
+    log "Production readiness: PASS"
+  else
+    log "Production readiness: FAIL — configuration issues detected:"
+    echo "$PROD_STATUS" | jq -r '.issues[]? | "  ✗ " + .' 2>/dev/null || true
+    log "Edit $INSTALL_DIR/config.json to resolve these before serving production traffic."
+  fi
+fi
+
 log "Zero-touch deployment complete."
-log "Dashboard: http://$(hostname -I | awk '{print $1}'):$PRISM_PORT"
+log "Dashboard: http://$(hostname -I | awk '{print $1}' 2>/dev/null || echo 'localhost'):$PRISM_PORT"

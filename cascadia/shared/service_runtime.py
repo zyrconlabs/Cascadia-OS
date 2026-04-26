@@ -116,17 +116,34 @@ class ServiceRuntime:
         runtime = self
 
         class Handler(BaseHTTPRequestHandler):
+            def _cors_headers(self) -> None:
+                origin = self.headers.get('Origin', '*')
+                self.send_header('Access-Control-Allow-Origin', origin)
+                self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Stripe-Signature')
+                self.send_header('Access-Control-Max-Age', '86400')
+
             def _send_json(self, code: int, payload: Dict[str, Any]) -> None:
                 body = json.dumps(payload).encode('utf-8')
                 self.send_response(code)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Content-Length', str(len(body)))
+                self._cors_headers()
                 self.end_headers()
                 self.wfile.write(body)
 
             def _read_payload(self) -> Dict[str, Any]:
                 n = int(self.headers.get('Content-Length', '0'))
-                return json.loads(self.rfile.read(n).decode('utf-8')) if n else {}
+                data = json.loads(self.rfile.read(n).decode('utf-8')) if n else {}
+                # Inject request metadata so handlers can use it
+                data['__remote_addr__'] = self.client_address[0]
+                data['__headers__'] = dict(self.headers)
+                return data
+
+            def do_OPTIONS(self) -> None:  # noqa: N802
+                self.send_response(204)
+                self._cors_headers()
+                self.end_headers()
 
             def _send_html(self, code: int, body: bytes) -> None:
                 self.send_response(code)

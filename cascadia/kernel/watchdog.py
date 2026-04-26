@@ -19,10 +19,24 @@ class Watchdog:
         self.config_path = config_path
         self.config = load_config(config_path)
         self.logger = configure_logging(self.config['log_dir'], 'watchdog')
+        self._validate_config()
         self.proc = None
         ops_path = self.config.get("operators_dir", "")
         operators_dir = Path(ops_path).expanduser() if ops_path else None
         self.operator_manager = OperatorManager(self.logger, operators_dir=operators_dir)
+
+    def _validate_config(self) -> None:
+        """Warn on insecure or placeholder config values at startup."""
+        checks = [
+            ('curtain.signing_secret', lambda c: c.get('curtain', {}).get('signing_secret', '')),
+            ('license_secret',         lambda c: c.get('license_secret', '')),
+        ]
+        for label, getter in checks:
+            val = getter(self.config)
+            if not val or (isinstance(val, str) and val.startswith('replace-')):
+                self.logger.warning('CONFIG: %s not set — replace placeholder before production use', label)
+        if self.config.get('sentinel_fail_open', False):
+            self.logger.warning('CONFIG: sentinel_fail_open=true — sentinel will not block side-effects on failure')
 
     def start_flint(self) -> None:
         self.logger.info('Watchdog starting FLINT')

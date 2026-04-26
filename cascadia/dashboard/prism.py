@@ -16,6 +16,9 @@ from PRISM alone without reading logs.
 from __future__ import annotations
 
 import argparse
+import threading
+import time as _time
+from collections import defaultdict
 from pathlib import Path
 import json
 from datetime import datetime, timezone
@@ -28,6 +31,28 @@ from cascadia.shared.service_runtime import ServiceRuntime
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+class RateLimiter:
+    """Per-IP sliding-window rate limiter backed by an in-memory deque."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._windows: Dict[str, list] = defaultdict(list)
+
+    def check(self, key: str, limit: int = 30, window: int = 60) -> bool:
+        """Return True if key is within limit. Side-effect: records this call."""
+        now = _time.monotonic()
+        cutoff = now - window
+        with self._lock:
+            hits = self._windows[key]
+            # Evict expired entries
+            while hits and hits[0] < cutoff:
+                hits.pop(0)
+            if len(hits) >= limit:
+                return False
+            hits.append(now)
+            return True
 
 
 def _http_get(port: int, path: str, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
@@ -72,6 +97,7 @@ class PrismService:
             c['name']: c['port'] for c in self.config['components']
         }
         self._flint_port: int = self.config['flint']['status_port']
+        self._rate_limiter = RateLimiter()
 
         # Register all PRISM routes
         self.runtime.register_route('GET',  '/',                      self.serve_ui)
@@ -114,6 +140,9 @@ class PrismService:
         self.runtime.register_route('POST', '/api/prism/depot/operator',       self.depot_operator)
         self.runtime.register_route('GET',  '/api/prism/social/scheduled',     self.social_scheduled)
         self.runtime.register_route('GET',  '/api/prism/system/monitor',       self.system_monitor)
+        # Production hardening
+        self.runtime.register_route('GET',  '/api/prism/config/payment',       self.config_payment)
+        self.runtime.register_route('GET',  '/api/prism/production',           self.production_status)
 
     # ------------------------------------------------------------------
     # Aggregated views
@@ -993,8 +1022,11 @@ class PrismService:
         except Exception as exc:
             return 500, {'error': str(exc)}
 
-    def pairing_code(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    def pairing_code(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Generate a 6-digit pairing code for iOS companion app."""
+        remote = payload.get('__remote_addr__', '')
+        if not self._rate_limiter.check(f'pair:{remote}', limit=10, window=60):
+            return 429, {'error': 'rate limit exceeded'}
         try:
             from cascadia.network.discovery import generate_pairing_code
             code = generate_pairing_code()
@@ -1004,6 +1036,9 @@ class PrismService:
 
     def pairing_validate(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Validate a pairing code from the iOS companion app."""
+        remote = payload.get('__remote_addr__', '')
+        if not self._rate_limiter.check(f'pair:{remote}', limit=10, window=60):
+            return 429, {'error': 'rate limit exceeded'}
         code = payload.get('code', '')
         if not code:
             return 400, {'error': 'code required'}
@@ -1115,6 +1150,9 @@ class PrismService:
 
     def stripe_webhook(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Process Stripe webhook events — activate/deactivate licenses."""
+        remote = payload.get('__remote_addr__', '')
+        if not self._rate_limiter.check(f'webhook:{remote}', limit=20, window=60):
+            return 429, {'error': 'rate limit exceeded'}
         try:
             from cascadia.billing.stripe_handler import StripeHandler
             from cascadia.billing.license_generator import LicenseGenerator
@@ -1283,6 +1321,62 @@ class PrismService:
             return 200, {**snap, 'generated_at': _now()}
         except Exception as exc:
             return 500, {'error': str(exc)}
+
+    # ------------------------------------------------------------------
+    # F1 — Payment config endpoint
+    # ------------------------------------------------------------------
+
+    def config_payment(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Return configured payment links — read-only view for the UI."""
+        links = self.config.get('payment_links', {})
+        stripe_cfg = self.config.get('stripe', {})
+        return 200, {
+            'payment_links': links,
+            'stripe_configured': bool(stripe_cfg.get('webhook_secret')),
+            'generated_at': _now(),
+        }
+
+    # ------------------------------------------------------------------
+    # F2 — Production readiness endpoint
+    # ------------------------------------------------------------------
+
+    def production_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Return production readiness signals for ops monitoring."""
+        issues: List[str] = []
+
+        license_key = self.config.get('license_key', '')
+        if not license_key or license_key.startswith('replace-'):
+            issues.append('license_key not set')
+
+        curtain_secret = self.config.get('curtain', {}).get('signing_secret', '')
+        if not curtain_secret or curtain_secret.startswith('replace-'):
+            issues.append('curtain.signing_secret not set')
+
+        license_secret = self.config.get('license_secret', '')
+        if not license_secret or license_secret.startswith('replace-'):
+            issues.append('license_secret not set')
+
+        if not self.config.get('stripe', {}).get('webhook_secret'):
+            issues.append('stripe.webhook_secret not set')
+
+        sentinel_fail_open = self.config.get('sentinel_fail_open', False)
+        if sentinel_fail_open:
+            issues.append('sentinel_fail_open=true (unsafe for production)')
+
+        ready = len(issues) == 0
+        return 200, {
+            'production_ready': ready,
+            'issues': issues,
+            'generated_at': _now(),
+        }
+
+    # ------------------------------------------------------------------
+    # F3 — Per-IP rate limiter (applied to high-value endpoints)
+    # ------------------------------------------------------------------
+
+    def _check_rate_limit(self, remote_addr: str, limit: int = 30, window: int = 60) -> bool:
+        """Return True if request is within rate limit, False if exceeded."""
+        return self._rate_limiter.check(remote_addr, limit=limit, window=window)
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')
