@@ -1,15 +1,35 @@
 # MATURITY: PRODUCTION — Minimal HTTP wrapper for supervised services.
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import signal
+import struct
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List
 
 from .logger import configure_logging
+
+_WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+
+
+def _ws_accept_key(key: str) -> str:
+    combined = (key.strip() + _WS_GUID).encode('utf-8')
+    return base64.b64encode(hashlib.sha1(combined).digest()).decode('ascii')
+
+
+def _ws_frame(data: bytes) -> bytes:
+    length = len(data)
+    if length < 126:
+        return bytes([0x81, length]) + data
+    elif length < 65536:
+        return bytes([0x81, 126]) + struct.pack('>H', length) + data
+    else:
+        return bytes([0x81, 127]) + struct.pack('>Q', length) + data
 
 
 class ReusableHTTPServer(ThreadingHTTPServer):
@@ -31,10 +51,30 @@ class ServiceRuntime:
         self._shutdown = threading.Event()
         self._httpd: ReusableHTTPServer | None = None
         self._routes: Dict[tuple[str, str], Callable[[Dict[str, Any]], tuple[int, Dict[str, Any]]]] = {}
+        self._ws_paths: set = set()
+        self._ws_clients: List[Any] = []
+        self._ws_lock = threading.Lock()
 
     def register_route(self, method: str, path: str, handler: Callable[[Dict[str, Any]], tuple[int, Dict[str, Any]]]) -> None:
         """Owns route registration. Does not own request semantics beyond method/path dispatch."""
         self._routes[(method.upper(), path)] = handler
+
+    def register_ws_route(self, path: str) -> None:
+        """Register a path as a WebSocket upgrade endpoint."""
+        self._ws_paths.add(path)
+
+    def broadcast_event(self, event: Dict[str, Any]) -> None:
+        """Send a JSON event to all connected WebSocket clients. Dead connections are pruned."""
+        frame = _ws_frame(json.dumps(event).encode('utf-8'))
+        with self._ws_lock:
+            dead = []
+            for sock in self._ws_clients:
+                try:
+                    sock.sendall(frame)
+                except Exception:
+                    dead.append(sock)
+            for s in dead:
+                self._ws_clients.remove(s)
 
     def _heartbeat_loop(self) -> None:
         while not self._shutdown.is_set():
@@ -96,11 +136,56 @@ class ServiceRuntime:
                 self.wfile.write(body)
 
             def do_GET(self) -> None:  # noqa: N802
+                if (self.headers.get('Upgrade', '').lower() == 'websocket'
+                        and self.path in runtime._ws_paths):
+                    self._handle_ws_upgrade()
+                    return
                 code, payload = runtime.route_request('GET', self.path, {})
                 if isinstance(payload, dict) and '__html__' in payload:
                     self._send_html(code, payload['__html__'])
                 else:
                     self._send_json(code, payload)
+
+            def _handle_ws_upgrade(self) -> None:
+                key = self.headers.get('Sec-WebSocket-Key', '')
+                accept = _ws_accept_key(key)
+                self.send_response(101, 'Switching Protocols')
+                self.send_header('Upgrade', 'websocket')
+                self.send_header('Connection', 'Upgrade')
+                self.send_header('Sec-WebSocket-Accept', accept)
+                self.end_headers()
+                self.wfile.flush()
+                sock = self.request
+                with runtime._ws_lock:
+                    runtime._ws_clients.append(sock)
+                runtime.logger.info('WS client connected: %s', self.client_address)
+                try:
+                    while not runtime._shutdown.is_set():
+                        header = sock.recv(2)
+                        if len(header) < 2:
+                            break
+                        opcode = header[0] & 0x0F
+                        if opcode == 8:  # close frame
+                            break
+                        masked = (header[1] & 0x80) != 0
+                        plen = header[1] & 0x7F
+                        if plen == 126:
+                            plen = int.from_bytes(sock.recv(2), 'big')
+                        elif plen == 127:
+                            plen = int.from_bytes(sock.recv(8), 'big')
+                        if masked:
+                            sock.recv(4)  # consume masking key
+                        if plen > 0:
+                            sock.recv(plen)  # consume payload
+                except Exception:
+                    pass
+                finally:
+                    with runtime._ws_lock:
+                        try:
+                            runtime._ws_clients.remove(sock)
+                        except ValueError:
+                            pass
+                    runtime.logger.info('WS client disconnected')
 
             def do_POST(self) -> None:  # noqa: N802
                 try:

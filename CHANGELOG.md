@@ -3,6 +3,151 @@
 ---
 
 
+## [0.46.0] — 2026-04-25
+
+### Summary
+14-task Sprint v2. Three competitive moats shipped: Approval Gates (Stripe billing,
+timeout daemon, edit-and-approve, analytics, audit log), Hardware + Software Bundle
+(zero-touch deployment scripts, SystemMonitor, fleet registry, DEPOT marketplace),
+Open Core (LinkedIn connector, post scheduler, operator install, lead recovery, context
+builder). 279 tests pass.
+
+### New Modules
+- `cascadia/billing/stripe_handler.py` — HMAC-SHA256 webhook verification, replay
+  protection, checkout/subscription event processing
+- `cascadia/billing/license_generator.py` — key generation, VAULT storage, email delivery
+- `cascadia/system/approval_timeout.py` — daemon thread polling for stale approvals;
+  escalates then auto-rejects at 2× threshold; `actor='system:timeout'`
+- `cascadia/system/audit_log.py` — SHA-256 hash chain; `record()`, `verify_chain()`,
+  `query()`, `export_csv()`
+- `cascadia/hardware/system_monitor.py` — psutil-backed CPU/RAM/disk snapshot
+- `cascadia/fleet/fleet_registry.py` — JSON-persisted node dict, 60s health polling
+- `cascadia/marketplace/depot_client.py` — DEPOT API client with fallback catalogue
+- `cascadia/memory/context_builder.py` — VAULT-backed per-company context, last-10 outcomes
+- `operators/social/connectors/linkedin_connector.py` — LinkedIn UGC API, content scoring
+- `operators/social/pipeline/post_scheduler.py` — SQLite queue, 30s dispatch loop
+- `cascadia/operators/lead_recovery.py` — inbound email lead scorer; intent/urgency signals
+- `hardware/zero_touch_deploy.sh` — one-command server bootstrap with systemd integration
+- `hardware/server_health_check.sh` — pre-flight health check with JSON output mode
+
+### Changed — `cascadia/durability/run_store.py`
+- Added `approval_analytics(days=30)` — total/approved/rejected/edited/timed_out,
+  avg decision time, by-risk breakdown
+
+### Changed — `cascadia/durability/migration.py`
+- Added `risk_level`, `edited_content`, `edit_summary` columns to `approvals` table
+  (safe idempotent ALTER TABLE with try/except guard)
+
+### Changed — `cascadia/system/approval_store.py`
+- Added `edit_and_approve()` — stores edited content, marks approved, wakes run
+
+### Changed — `cascadia/chat/bell.py`
+- Added `POST /approve/edit` route → `edit_and_approve()`
+
+### Changed — `cascadia/registry/crew.py`
+- Added `POST /install_operator` → validates zip manifest, extracts to operators/,
+  registers in Crew; `_extract_and_validate_manifest()` helper
+
+### Changed — `cascadia/dashboard/prism.py`
+- Added 14 new routes: stripe webhook, approve/edit, approval analytics, audit log
+  (list/export/verify), fleet (status/register/remove), DEPOT (catalogue/detail),
+  social scheduled posts, system monitor live metrics
+- `overview()` now includes `hardware` key from `SystemMonitor.snapshot()`
+
+### Changed — `cascadia/dashboard/prism.html`
+- Live approval cards now show risk badge + Edit & Approve modal
+- Approval Intelligence analytics section (async-loaded on Approvals surface)
+- Hardware health mini-card in overview stat grid (CPU%, RAM used/total)
+- `openEditApprove()`, `submitEditApprove()`, `loadApprovalAnalytics()` functions
+
+### Changed — `enterprise/dashboard/enterprise_prism.py`
+- `demo_overview()` includes demo `hardware` object
+
+### Changed — `enterprise/dashboard/templates/enterprise_dashboard.html`
+- Approval cards now have Edit & Approve button with modal
+- `openDemoEditApprove()`, `submitDemoEdit()` functions
+
+### Tests
+- `tests/test_edit_approval.py` — 7 tests (edit_and_approve, migration columns)
+- `tests/test_approval_analytics.py` — 9 tests (empty, approved, denied, timed_out,
+  edited, avg time, by_risk, days field, mixed)
+- `tests/test_operator_install.py` — 10 tests (valid install, bad zip, missing manifest,
+  field validation, registry registration)
+- `tests/test_lead_recovery.py` — 12 tests (scoring, signals, batch, filter)
+
+
+## [0.45.0] — 2026-04-25
+
+### Summary
+12-task development sprint. Added response-time tracking, daily/weekly scheduler,
+mDNS network discovery with iOS pairing codes, CRM operator manifest, win/loss outcome
+tracking, WebSocket push from BELL, HMAC-SHA256 tier licensing, missed lead recovery
+via CSV upload, and weekly HTML summary reports. PRISM dashboard updated with avg
+response time stat, outcome badge, WebSocket auto-reconnect, and lead recovery UI.
+189 tests pass.
+
+### New Modules
+- `cascadia/automation/scheduler.py` — `Scheduler` + `ScheduledJob`; supports `HH:MM`,
+  `FRI HH:MM`, `MON-FRI HH:MM` schedules; daemon thread, 30s poll, date-keyed fire guard
+- `cascadia/network/discovery.py` — optional mDNS via zeroconf (`_cascadia._tcp.local.`),
+  `PairingManager` with 6-digit codes, 5-min TTL, single-use, `pending_count()`
+- `cascadia/licensing/tier_validator.py` — HMAC-SHA256 key format
+  `zyrcon_<tier>_<customer>_<expiry>_<hmac>`; `validate()` / `generate()`
+- `cascadia/reports/weekly_summary.py` — HTML report built from SQLite runs table;
+  delivers via HANDSHAKE `/call` or writes to `data/reports/weekly/`
+- `cascadia/operators/crm_operator.json` — CRM operator manifest
+- `scripts/generate_license.py` — CLI for generating signed license keys
+- `docs/crm_integration.md` — non-technical CRM integration guide
+
+### Changed — `cascadia/durability/migration.py`
+- Added `lead_received_at TEXT`, `outcome TEXT`, `outcome_recorded_at TEXT` columns
+  to the ALTER TABLE migration dict
+
+### Changed — `cascadia/durability/run_store.py`
+- `avg_response_time_minutes(limit)` — queries completed runs with `lead_received_at`
+- `record_outcome(run_id, outcome)` — validates to `won|lost|no_decision`
+
+### Changed — `cascadia/automation/stitch.py`
+- `Scheduler` wired in `__init__`; morning brief (07:00) and weekly summary (FRI 17:00)
+  registered on start
+- Added `GET /scheduler/jobs`, `POST /scheduler/enable` routes
+
+### Changed — `cascadia/shared/service_runtime.py`
+- WebSocket upgrade handling (RFC 6455): `register_ws_route()`, `broadcast_event()`,
+  `_ws_clients` registry; correct mask-key-before-payload frame parsing
+
+### Changed — `cascadia/chat/bell.py`
+- Registered `/bell/ws` WebSocket route
+
+### Changed — `cascadia/dashboard/prism.py`
+- 6 new routes: `/api/prism/scheduler`, `/api/prism/runs/outcome`,
+  `/api/prism/pairing/code`, `/api/prism/pairing/validate`,
+  `/api/prism/pairing/status`, `/api/prism/leads/recover`
+- `avg_response_time_minutes` included in overview response
+- mDNS started on `start()`
+
+### Changed — `cascadia/dashboard/prism.html`
+- `/status` overview card grid changed from 3→4 columns; 4th card shows avg response time
+- `renderRunRow` expanded detail includes outcome badge / selector; `recordOutcome()`
+  calls `POST /api/prism/runs/outcome`
+- `connectWS()` — WebSocket client connecting to BELL `/bell/ws`; 3s auto-reconnect;
+  triggers `pollLiveRuns()` on approval/run events
+- Admin surface: missed lead recovery section with CSV textarea, first-boot banner,
+  `scoreMissedLeads()` calling `POST /api/prism/leads/recover`
+
+### Changed — `config.example.json`
+- Added `license_secret`, `license_key`, `weekly_summary_email`, `reports_dir`,
+  `scheduler` (morning_brief_time, weekly_summary_time)
+
+### Tests
+- `tests/test_scheduler.py` — 8 tests
+- `tests/test_pairing.py` — 7 tests
+- `tests/test_licensing.py` — 11 tests (HMAC validate/generate, expiry, tamper)
+- `tests/test_weekly_summary.py` — 7 tests (build HTML, deliver file, subdir creation)
+
+---
+
+
 ## [0.44.0] — 2026-04-23
 
 ### Changed

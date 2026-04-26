@@ -47,6 +47,28 @@ class ApprovalStore:
         """Owns pending-approval queries. Does not own escalation policy."""
         return self.run_store.pending_approvals(run_id)
 
+    def edit_and_approve(self, approval_id: int, actor: str,
+                          edited_content: str, edit_summary: str = '') -> None:
+        """
+        Approve an action with owner edits applied.
+        Owns: recording the edit, marking approved, waking the run.
+        Does not own: applying edits to operator output (operator responsibility).
+        """
+        self.run_store.update_approval(
+            approval_id,
+            decision='approved',
+            actor=actor,
+            edited_content=edited_content,
+            edit_summary=edit_summary,
+            decided_at=utc_now(),
+        )
+        with self.run_store.connection() as conn:
+            row = conn.execute(
+                'SELECT run_id FROM approvals WHERE id = ?', (approval_id,)
+            ).fetchone()
+        if row:
+            self.wake_blocked_run(row['run_id'])
+
     def wake_blocked_run(self, run_id: str) -> None:
         """Owns wake transition after approval. Does not own resume execution itself."""
         self.run_store.clear_blocked(run_id)

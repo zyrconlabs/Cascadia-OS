@@ -131,6 +131,11 @@ class StitchService:
         self._workflows: Dict[str, WorkflowDefinition] = {}
         self._runs: Dict[str, WorkflowRun] = {}
 
+        # Scheduler for recurring workflow triggers
+        from cascadia.automation.scheduler import Scheduler
+        self._scheduler = Scheduler()
+        self._register_scheduled_jobs()
+
         # Register built-in workflows
         self._register_builtins()
 
@@ -143,6 +148,8 @@ class StitchService:
         self.runtime.register_route('GET',  '/run/active',   self.active_runs)
         self.runtime.register_route('POST', '/run/execute',  self.execute_run)
         self.runtime.register_route('POST', '/run/resume',   self.resume_run)
+        self.runtime.register_route('GET',  '/scheduler/jobs', self.scheduler_list)
+        self.runtime.register_route('POST', '/scheduler/enable', self.scheduler_enable)
 
     def _register_builtins(self) -> None:
         """Register built-in workflow templates."""
@@ -297,7 +304,74 @@ class StitchService:
         except Exception as exc:
             return 500, {'error': str(exc)}
 
+    def _register_scheduled_jobs(self) -> None:
+        """Register default recurring jobs. Config overrides can be added externally."""
+        morning_brief_time = self.config.get('scheduler', {}).get('morning_brief_time', '07:00')
+        self._scheduler.add_job(
+            name='morning_brief',
+            schedule=morning_brief_time,
+            trigger_fn=lambda: self._trigger_workflow_by_id('calendar_check', {'goal': 'morning_brief'}),
+        )
+        weekly_time = self.config.get('scheduler', {}).get('weekly_summary_time', 'FRI 17:00')
+        self._scheduler.add_job(
+            name='weekly_summary',
+            schedule=weekly_time,
+            trigger_fn=self._trigger_weekly_summary,
+        )
+
+    def _trigger_workflow_by_id(self, workflow_id: str, payload: Optional[Dict[str, Any]] = None) -> None:
+        """Trigger a registered workflow by ID. Used by the scheduler."""
+        with self._lock:
+            wf = self._workflows.get(workflow_id)
+        if wf is None:
+            self.runtime.logger.warning('Scheduler: workflow not found: %s', workflow_id)
+            return
+        run_id = f'sched_{uuid.uuid4().hex[:10]}'
+        run = WorkflowRun(
+            run_id=run_id,
+            workflow_id=workflow_id,
+            tenant_id=(payload or {}).get('tenant_id', 'default'),
+            goal=(payload or {}).get('goal', wf.name),
+            total_steps=len(wf.steps),
+        )
+        run.state = 'running'
+        run.updated_at = _now()
+        with self._lock:
+            self._runs[run_id] = run
+        self.runtime.logger.info('Scheduler fired: %s → run %s', workflow_id, run_id)
+
+    def _trigger_weekly_summary(self) -> None:
+        """Trigger the weekly summary report via WeeklySummaryReport."""
+        try:
+            from cascadia.reports.weekly_summary import WeeklySummaryReport
+            db_path = self.config.get('database_path', './data/runtime/cascadia.db')
+            reports_dir = self.config.get('reports_dir', './data/reports')
+            email = self.config.get('weekly_summary_email', '')
+            rpt = WeeklySummaryReport(
+                database_path=db_path,
+                reports_dir=reports_dir,
+                delivery_email=email,
+            )
+            dest = rpt.deliver()
+            self.runtime.logger.info('Weekly summary delivered to: %s', dest)
+        except Exception as exc:
+            self.runtime.logger.error('Weekly summary error: %s', exc)
+
+    def scheduler_list(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        return 200, {'jobs': self._scheduler.list_jobs(), 'generated_at': _now()}
+
+    def scheduler_enable(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        name = payload.get('name', '')
+        enabled = bool(payload.get('enabled', True))
+        with self._scheduler._lock:
+            job = self._scheduler._jobs.get(name)
+        if job is None:
+            return 404, {'error': f'job not found: {name}'}
+        job.enabled = enabled
+        return 200, {'name': name, 'enabled': enabled}
+
     def start(self) -> None:
+        self._scheduler.start()
         self.runtime.start()
 
 

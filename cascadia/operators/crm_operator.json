@@ -1,0 +1,59 @@
+{
+  "id": "crm",
+  "name": "CRM",
+  "category": "sales",
+  "description": "Reads and writes CRM contact records, deal stages, and activity history. Supports HubSpot, Pipedrive, and generic CSV export.",
+  "port": 8012,
+  "health_path": "/api/health",
+  "autonomy": "supervised",
+  "status": "beta",
+  "tier": "pro",
+  "capabilities": [
+    "crm.read_contact",
+    "crm.write_contact",
+    "crm.update_deal_stage",
+    "crm.log_activity",
+    "crm.list_contacts",
+    "crm.import_csv"
+  ],
+  "triggers": [
+    {
+      "name": "on_run_complete",
+      "description": "Automatically logs run outcome to CRM after a workflow completes"
+    },
+    {
+      "name": "on_approval",
+      "description": "Updates deal stage when a proposal is approved"
+    }
+  ],
+  "integrations": {
+    "hubspot": {
+      "auth": "api_key",
+      "base_url": "https://api.hubapi.com",
+      "docs": "https://developers.hubspot.com/docs/api/overview"
+    },
+    "pipedrive": {
+      "auth": "api_key",
+      "base_url": "https://api.pipedrive.com/v1",
+      "docs": "https://developers.pipedrive.com/docs/api/v1"
+    },
+    "csv": {
+      "auth": "none",
+      "description": "Import/export contacts via CSV file"
+    }
+  },
+  "sample_output": {
+    "contact": {
+      "id": "contact_abc123",
+      "name": "Maria Torres",
+      "company": "Gulf Coast Logistics",
+      "deal_stage": "proposal_sent",
+      "last_activity": "2026-04-25T09:15:00Z"
+    }
+  },
+  "config_keys": [
+    "crm_provider",
+    "crm_api_key",
+    "crm_pipeline_id"
+  ]
+}

@@ -94,6 +94,26 @@ class PrismService:
         self.runtime.register_route('POST', '/api/prism/settings',        self.save_settings)
         self.runtime.register_route('GET',  '/api/prism/setup-progress',  self.setup_progress)
         self.runtime.register_route('POST', '/api/prism/almanac',          self.almanac_query)
+        self.runtime.register_route('GET',  '/api/prism/scheduler',        self.scheduler_status)
+        self.runtime.register_route('POST', '/api/prism/runs/outcome',     self.record_run_outcome)
+        self.runtime.register_route('GET',  '/api/prism/pairing/code',     self.pairing_code)
+        self.runtime.register_route('POST', '/api/prism/pairing/validate', self.pairing_validate)
+        self.runtime.register_route('GET',  '/api/prism/pairing/status',   self.pairing_status)
+        self.runtime.register_route('POST', '/api/prism/leads/recover',    self.leads_recover)
+        # Sprint v2
+        self.runtime.register_route('POST', '/api/prism/stripe/webhook',       self.stripe_webhook)
+        self.runtime.register_route('POST', '/api/prism/approve/edit',         self.approve_edit)
+        self.runtime.register_route('GET',  '/api/prism/approvals/analytics',  self.approval_analytics)
+        self.runtime.register_route('GET',  '/api/prism/audit',                self.audit_log)
+        self.runtime.register_route('GET',  '/api/prism/audit/export',         self.audit_export)
+        self.runtime.register_route('GET',  '/api/prism/audit/verify',         self.audit_verify)
+        self.runtime.register_route('GET',  '/api/prism/fleet',                self.fleet_status)
+        self.runtime.register_route('POST', '/api/prism/fleet/register',       self.fleet_register)
+        self.runtime.register_route('POST', '/api/prism/fleet/remove',         self.fleet_remove)
+        self.runtime.register_route('GET',  '/api/prism/depot/operators',      self.depot_operators)
+        self.runtime.register_route('POST', '/api/prism/depot/operator',       self.depot_operator)
+        self.runtime.register_route('GET',  '/api/prism/social/scheduled',     self.social_scheduled)
+        self.runtime.register_route('GET',  '/api/prism/system/monitor',       self.system_monitor)
 
     # ------------------------------------------------------------------
     # Aggregated views
@@ -630,6 +650,12 @@ class PrismService:
         healthy_count = sum(1 for s in component_states.values() if s == 'ready')
         total_count = len(component_states)
 
+        avg_rt = self._get_avg_response_time()
+        try:
+            from cascadia.hardware.system_monitor import SystemMonitor
+            hw = SystemMonitor().snapshot()
+        except Exception:
+            hw = {'available': False}
         return 200, {
             'cascadia_os': 'v0.44',
             'generated_at': _now(),
@@ -638,11 +664,13 @@ class PrismService:
                 'components_healthy': f'{healthy_count}/{total_count}',
                 'component_states': component_states,
             },
+            'hardware': hw,
             'crew': {
                 'operator_count': crew.get('crew_size', 0),
                 'operators': list(crew.get('operators', {}).keys()),
             },
             'runs': runs,
+            'avg_response_time_minutes': avg_rt,
             'attention_required': {
                 'pending_approvals': len(approvals),
                 'blocked_runs': len(blocked),
@@ -933,6 +961,98 @@ class PrismService:
     # Internal helpers — query durability layer directly
     # ------------------------------------------------------------------
 
+    def _get_avg_response_time(self) -> Optional[float]:
+        try:
+            from cascadia.durability.run_store import RunStore
+            store = RunStore(self.config['database_path'])
+            return store.avg_response_time_minutes()
+        except Exception:
+            return None
+
+    def scheduler_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Proxy to STITCH /scheduler/jobs."""
+        stitch = _http_get(self._ports.get('stitch', 0), '/scheduler/jobs') or {}
+        return 200, {
+            'jobs': stitch.get('jobs', []),
+            'generated_at': _now(),
+        }
+
+    def record_run_outcome(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Record win/loss outcome: {run_id, outcome: 'won'|'lost'|'no_decision'}."""
+        run_id = payload.get('run_id', '')
+        outcome = payload.get('outcome', '')
+        if not run_id:
+            return 400, {'error': 'run_id required'}
+        if outcome not in ('won', 'lost', 'no_decision'):
+            return 400, {'error': 'outcome must be won | lost | no_decision'}
+        try:
+            from cascadia.durability.run_store import RunStore
+            store = RunStore(self.config['database_path'])
+            store.record_outcome(run_id, outcome, _now())
+            return 200, {'run_id': run_id, 'outcome': outcome, 'recorded_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def pairing_code(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Generate a 6-digit pairing code for iOS companion app."""
+        try:
+            from cascadia.network.discovery import generate_pairing_code
+            code = generate_pairing_code()
+            return 200, {'code': code, 'ttl_seconds': 300, 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def pairing_validate(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Validate a pairing code from the iOS companion app."""
+        code = payload.get('code', '')
+        if not code:
+            return 400, {'error': 'code required'}
+        try:
+            from cascadia.network.discovery import validate_pairing_code
+            valid = validate_pairing_code(code)
+            if valid:
+                return 200, {'valid': True, 'message': 'Pairing successful'}
+            return 401, {'valid': False, 'error': 'Invalid, expired, or already-used code'}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def pairing_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """mDNS and pairing status."""
+        try:
+            from cascadia.network.discovery import pairing_status
+            return 200, pairing_status()
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def leads_recover(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """
+        Missed lead recovery: score a list of leads via CHIEF and return enriched results.
+        Expects {leads: [{name, company, notes}]}
+        """
+        leads = payload.get('leads', [])
+        if not leads or not isinstance(leads, list):
+            return 400, {'error': 'leads array required'}
+        chief_port = self._ports.get('chief', 8006)
+        scored = []
+        for lead in leads[:50]:  # cap at 50 per call
+            score_result = _http_post(chief_port, '/api/score', {
+                'name': lead.get('name', ''),
+                'company': lead.get('company', ''),
+                'notes': lead.get('notes', ''),
+            }) or {}
+            scored.append({
+                **lead,
+                'score': score_result.get('score'),
+                'priority': score_result.get('priority', 'unknown'),
+                'notes_ai': score_result.get('notes', ''),
+            })
+        scored.sort(key=lambda x: -(x.get('score') or 0))
+        return 200, {
+            'leads': scored,
+            'count': len(scored),
+            'generated_at': _now(),
+        }
+
     def _get_runs_summary(self) -> List[Dict[str, Any]]:
         try:
             from cascadia.durability.run_store import RunStore
@@ -989,9 +1109,212 @@ class PrismService:
         except Exception:
             return []
 
+    # ------------------------------------------------------------------
+    # Sprint v2 handlers
+    # ------------------------------------------------------------------
+
+    def stripe_webhook(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Process Stripe webhook events — activate/deactivate licenses."""
+        try:
+            from cascadia.billing.stripe_handler import StripeHandler
+            from cascadia.billing.license_generator import LicenseGenerator
+        except ImportError as exc:
+            return 503, {'error': f'billing module unavailable: {exc}'}
+
+        stripe_cfg = self.config.get('stripe', {})
+        secret = stripe_cfg.get('webhook_secret', '')
+        if not secret:
+            return 503, {'error': 'stripe.webhook_secret not configured'}
+
+        handler = StripeHandler(secret)
+        event = handler.process_event(payload)
+        if event is None:
+            return 200, {'status': 'ignored'}
+
+        action = event.get('action')
+        if action == 'activate':
+            gen = LicenseGenerator()
+            gen.activate(
+                customer_email=event.get('customer_email', ''),
+                customer_id=event.get('customer_id', ''),
+                tier=event.get('tier', 'solo'),
+            )
+            return 200, {'status': 'activated', 'tier': event.get('tier')}
+        if action == 'deactivate':
+            return 200, {'status': 'deactivated', 'customer_id': event.get('customer_id')}
+        return 200, {'status': 'processed'}
+
+    def approve_edit(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Approve with owner edits — stores edited_content, wakes the run."""
+        approval_id = payload.get('approval_id')
+        content     = payload.get('content', '')
+        summary     = payload.get('summary', '')
+        actor       = payload.get('actor', 'prism_operator')
+        if approval_id is None:
+            return 400, {'error': 'approval_id required'}
+        if not content:
+            return 400, {'error': 'content required'}
+        try:
+            from cascadia.durability.run_store import RunStore
+            from cascadia.system.approval_store import ApprovalStore
+            store     = RunStore(self.config['database_path'])
+            approvals = ApprovalStore(store)
+            approvals.edit_and_approve(int(approval_id), actor, content, summary)
+            return 200, {'approval_id': approval_id, 'decision': 'approved', 'edited': True}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def approval_analytics(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Approval gate intelligence — totals, timing, risk breakdown."""
+        try:
+            from cascadia.durability.run_store import RunStore
+            store = RunStore(self.config['database_path'])
+            analytics = store.approval_analytics()
+            return 200, {**analytics, 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def audit_log(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Return recent audit log entries."""
+        try:
+            from cascadia.system.audit_log import AuditLog
+            log = AuditLog()
+            return 200, {'events': log.query(days=30), 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def audit_export(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Export audit log as CSV string."""
+        try:
+            from cascadia.system.audit_log import AuditLog
+            log = AuditLog()
+            return 200, {'csv': log.export_csv(days=30), 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def audit_verify(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Verify the audit log hash chain integrity."""
+        try:
+            from cascadia.system.audit_log import AuditLog
+            log = AuditLog()
+            ok = log.verify_chain()
+            return 200, {'ok': ok, 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def fleet_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """All fleet nodes and their current health."""
+        try:
+            from cascadia.fleet.fleet_registry import FleetRegistry
+            reg = FleetRegistry()
+            return 200, {'nodes': reg.list_nodes(), 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def fleet_register(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Register a new fleet node: {node_id, name, host, port}."""
+        node_id = payload.get('node_id', '')
+        name    = payload.get('name', '')
+        host    = payload.get('host', '')
+        port    = int(payload.get('port', 6300))
+        if not node_id or not host:
+            return 400, {'error': 'node_id and host required'}
+        try:
+            from cascadia.fleet.fleet_registry import FleetRegistry
+            reg = FleetRegistry()
+            node = reg.register(node_id, name or node_id, host, port)
+            return 201, {'node': node}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def fleet_remove(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Remove a fleet node: {node_id}."""
+        node_id = payload.get('node_id', '')
+        if not node_id:
+            return 400, {'error': 'node_id required'}
+        try:
+            from cascadia.fleet.fleet_registry import FleetRegistry
+            reg = FleetRegistry()
+            removed = reg.remove(node_id)
+            if removed:
+                return 200, {'removed': node_id}
+            return 404, {'error': 'node not found'}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def depot_operators(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Browse the DEPOT operator marketplace catalogue."""
+        try:
+            from cascadia.marketplace.depot_client import DEPOTClient
+            client = DEPOTClient()
+            return 200, {'operators': client.list_operators(), 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def depot_operator(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Get details for one DEPOT operator: {operator_id}."""
+        op_id = payload.get('operator_id', '')
+        if not op_id:
+            return 400, {'error': 'operator_id required'}
+        try:
+            from cascadia.marketplace.depot_client import DEPOTClient
+            client = DEPOTClient()
+            op = client.get_operator(op_id)
+            if op is None:
+                return 404, {'error': 'operator not found'}
+            return 200, op
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def social_scheduled(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Return queued scheduled posts across all social platforms."""
+        try:
+            from operators.social.pipeline.post_scheduler import PostScheduler
+            scheduler = PostScheduler(publish_fn=lambda p, c: {})
+            return 200, {'posts': scheduler.get_queue(), 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def system_monitor(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Live hardware metrics via SystemMonitor (psutil-backed)."""
+        try:
+            from cascadia.hardware.system_monitor import SystemMonitor
+            snap = SystemMonitor().snapshot()
+            return 200, {**snap, 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')
+        self._start_approval_timeout_daemon()
+        try:
+            from cascadia.network.discovery import start_discovery
+            ok = start_discovery(port=self.runtime.port)
+            if ok:
+                self.runtime.logger.info('mDNS: registered _cascadia._tcp.local.')
+        except Exception:
+            pass  # mDNS is optional
         self.runtime.start()
+
+    def _start_approval_timeout_daemon(self) -> None:
+        try:
+            from cascadia.system.approval_timeout import ApprovalTimeoutDaemon
+            db_path   = self.config.get('database_path', './data/runtime/cascadia.db')
+            hs_port   = self._ports.get('handshake', 6203)
+            owner     = self.config.get('weekly_summary_email', '')
+            escalation = self.config.get('approval_escalation_email', '') or owner
+            timeouts  = self.config.get('approval_timeouts')
+            daemon = ApprovalTimeoutDaemon(
+                db_path=db_path,
+                handshake_port=hs_port,
+                owner_email=owner,
+                escalation_email=escalation,
+                timeouts=timeouts or None,
+            )
+            daemon.start()
+            self.runtime.logger.info('PRISM: approval timeout daemon started')
+        except Exception as exc:
+            self.runtime.logger.warning('PRISM: approval timeout daemon failed to start: %s', exc)
 
 
 def main() -> None:

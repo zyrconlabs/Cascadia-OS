@@ -159,6 +159,24 @@
       "recommended_for": "image analysis, document OCR, visual workflows"
     }
   ],
+  "approval_timeouts": {
+    "HIGH":   30,
+    "MEDIUM": 120,
+    "LOW":    480,
+    "_note": "Minutes until escalation email. Auto-reject fires at 2× these values."
+  },
+  "approval_escalation_email": "",
+  "approval_escalation_email_note": "Email to cc on escalation alerts. Falls back to weekly_summary_email if blank.",
   "sentinel_fail_open": false,
-  "sentinel_fail_open_note": "Production default is false (fail-closed): if SENTINEL is unreachable, side-effect steps are blocked. Set true only for dev/demo environments."
+  "sentinel_fail_open_note": "Production default is false (fail-closed): if SENTINEL is unreachable, side-effect steps are blocked. Set true only for dev/demo environments.",
+  "license_secret": "replace-with-output-of-python3-c-import-secrets-print-secrets-token-hex-32",
+  "license_key": "",
+  "license_key_note": "Generate keys with: python scripts/generate_license.py --tier pro --customer yourname --days 365 --secret <license_secret>",
+  "weekly_summary_email": "",
+  "weekly_summary_email_note": "Leave blank to save weekly reports to data/reports/weekly/ instead of emailing",
+  "reports_dir": "./data/reports",
+  "scheduler": {
+    "morning_brief_time": "07:00",
+    "weekly_summary_time": "FRI 17:00"
+  }
 }

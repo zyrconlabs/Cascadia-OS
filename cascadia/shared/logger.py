@@ -27,3 +27,16 @@ def configure_logging(log_dir: str, name: str) -> logging.Logger:
     logger.addHandler(fh)
     logger.addHandler(sh)
     return logger
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Lightweight logger for components that don't own a log directory."""
+    logger = logging.getLogger(name)
+    if logger.handlers:
+        return logger
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s | %(name)-12s | %(levelname)-8s | %(message)s')
+    sh = logging.StreamHandler()
+    sh.setFormatter(formatter)
+    logger.addHandler(sh)
+    return logger

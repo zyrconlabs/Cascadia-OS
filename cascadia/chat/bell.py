@@ -99,8 +99,10 @@ class BellService:
         self.runtime.register_route('POST', '/session/start',   self.start_session)
         self.runtime.register_route('POST', '/message',         self.receive_message)
         self.runtime.register_route('POST', '/approve',         self.receive_approval)
+        self.runtime.register_route('POST', '/approve/edit',    self.edit_and_approve)
         self.runtime.register_route('GET',  '/sessions',        self.list_sessions)
         self.runtime.register_route('POST', '/session/history', self.get_history)
+        self.runtime.register_ws_route('/bell/ws')
 
     # ------------------------------------------------------------------
     # Session management
@@ -252,6 +254,28 @@ class BellService:
             'recorded': True,
             'resume_result': resume_result,
         }
+
+    def edit_and_approve(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Accept owner edits alongside approval. Stores edited_content, wakes the run."""
+        approval_id = payload.get('approval_id')
+        content     = payload.get('content', '')
+        summary     = payload.get('summary', '')
+        actor       = payload.get('actor', 'operator')
+
+        if approval_id is None:
+            return 400, {'error': 'approval_id required'}
+        if not content:
+            return 400, {'error': 'content required'}
+
+        try:
+            self._wf_runtime.approvals.edit_and_approve(
+                int(approval_id), actor, content, summary
+            )
+        except Exception as exc:
+            self.runtime.logger.error('BELL edit_and_approve failed: %s', exc)
+            return 500, {'error': str(exc)}
+
+        return 200, {'approval_id': approval_id, 'decision': 'approved', 'edited': True}
 
     # ------------------------------------------------------------------
     # Session queries

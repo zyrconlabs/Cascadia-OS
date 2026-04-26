@@ -48,6 +48,9 @@ def migrate(conn: sqlite3.Connection) -> None:
             'blocked_reason': 'TEXT',
             'blocking_entity': 'TEXT',
             'dependency_request': 'TEXT',
+            'lead_received_at': 'TEXT',
+            'outcome': 'TEXT',
+            'outcome_recorded_at': 'TEXT',
         }.items():
             if not _column_exists(conn, 'runs', name):
                 conn.execute(f'ALTER TABLE runs ADD COLUMN {name} {kind}')
@@ -116,4 +119,16 @@ def migrate(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Sprint v2 approval extensions — safe idempotent migrations
+    for col, kind in {
+        'risk_level':      'TEXT DEFAULT "MEDIUM"',
+        'edited_content':  'TEXT',
+        'edit_summary':    'TEXT',
+    }.items():
+        if not _column_exists(conn, 'approvals', col):
+            try:
+                conn.execute(f'ALTER TABLE approvals ADD COLUMN {col} {kind}')
+            except Exception:
+                pass
+
     conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
