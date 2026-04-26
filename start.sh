@@ -6,7 +6,21 @@
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 
-LLAMA_BIN="$HOME/llama.cpp/build/bin/llama-server"
+# Find llama-server — priority: brew → Zyrcon → fallback
+LLAMA_BIN=""
+for _candidate in \
+    "/opt/homebrew/bin/llama-server" \
+    "/usr/local/bin/llama-server" \
+    "$HOME/Zyrcon/llama.cpp/build/bin/llama-server" \
+    "$HOME/llama.cpp/build/bin/llama-server"; do
+    if [[ -f "$_candidate" ]]; then
+        LLAMA_BIN="$_candidate"
+        break
+    fi
+done
+if [[ -z "$LLAMA_BIN" ]]; then
+    echo "⚠ llama.cpp not found — run install.sh to build it"
+fi
 # Model directory — reads from config.json, defaults to ./models inside install dir
 MODELS_DIR=$(python3 -c "import json,os; c=json.load(open('config.json')); d=c.get('llm',{}).get('models_dir','./models'); print(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath('config.json')),d)) if d.startswith('.') else os.path.expanduser(d))" 2>/dev/null || echo "$REPO/models")
 MODEL_FILE=$(python3 -c "import json; c=json.load(open('config.json')); print(c.get('llm',{}).get('model','qwen2.5-3b-instruct-q4_k_m.gguf'))" 2>/dev/null || echo "qwen2.5-3b-instruct-q4_k_m.gguf")

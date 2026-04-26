@@ -294,11 +294,38 @@ PLIST
 
     # ── Separate launchd plist for llama.cpp — auto-restarts on crash ─────────
     LLAMA_PLIST_PATH="$PLIST_DIR/com.zyrconlabs.cascadia.llama.plist"
-    LLAMA_BIN_PATH="$HOME/llama.cpp/build/bin/llama-server"
-    # Find llama-server binary
-    for candidate in "/opt/homebrew/bin/llama-server" "/usr/local/bin/llama-server" "$LLAMA_BIN_PATH"; do
-        [[ -f "$candidate" ]] && LLAMA_BIN_PATH="$candidate" && break
+    # Find llama-server — priority: brew → Zyrcon production → fallback
+    LLAMA_BIN_PATH=""
+    for candidate in \
+        "/opt/homebrew/bin/llama-server" \
+        "/usr/local/bin/llama-server" \
+        "$HOME/Zyrcon/llama.cpp/build/bin/llama-server" \
+        "$HOME/llama.cpp/build/bin/llama-server"; do
+        if [[ -f "$candidate" ]]; then
+            LLAMA_BIN_PATH="$candidate"
+            break
+        fi
     done
+
+    # Auto-build if not found anywhere
+    if [[ -z "$LLAMA_BIN_PATH" ]]; then
+        info "llama.cpp not found — building from source into ~/Zyrcon/llama.cpp"
+        info "This takes 5-10 minutes on first install..."
+        LLAMA_SRC="$HOME/Zyrcon/llama.cpp"
+        if [[ -d "$LLAMA_SRC/.git" ]]; then
+            git -C "$LLAMA_SRC" pull --ff-only
+        else
+            git clone https://github.com/ggerganov/llama.cpp "$LLAMA_SRC" --depth 1
+        fi
+        cmake "$LLAMA_SRC" -B "$LLAMA_SRC/build" -DGGML_METAL=ON -DCMAKE_BUILD_TYPE=Release
+        cmake --build "$LLAMA_SRC/build" --config Release -j$(sysctl -n hw.ncpu)
+        LLAMA_BIN_PATH="$LLAMA_SRC/build/bin/llama-server"
+        if [[ -f "$LLAMA_BIN_PATH" ]]; then
+            success "llama.cpp built successfully"
+        else
+            die "llama.cpp build failed. Install manually: brew install llama.cpp then re-run installer."
+        fi
+    fi
 
     cat > "$LLAMA_PLIST_PATH" << LLAMA_PLIST
 <?xml version="1.0" encoding="UTF-8"?>
