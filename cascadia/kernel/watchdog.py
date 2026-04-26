@@ -20,7 +20,9 @@ class Watchdog:
         self.config = load_config(config_path)
         self.logger = configure_logging(self.config['log_dir'], 'watchdog')
         self.proc = None
-        self.operator_manager = OperatorManager(self.logger)
+        ops_path = self.config.get("operators_dir", "")
+        operators_dir = Path(ops_path).expanduser() if ops_path else None
+        self.operator_manager = OperatorManager(self.logger, operators_dir=operators_dir)
 
     def start_flint(self) -> None:
         self.logger.info('Watchdog starting FLINT')

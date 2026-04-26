@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 
-OPERATORS_DIR   = Path(__file__).parent.parent / "operators"
+DEFAULT_OPERATORS_DIR = Path(__file__).parent.parent / "operators"
 HEALTH_INTERVAL = 10       # seconds between health checks
 RESTART_DELAY   = 5        # seconds before restarting a crashed operator
 STARTUP_GRACE   = 8        # seconds to wait after start before first health check
@@ -101,23 +101,24 @@ class OperatorProcess:
 
 class OperatorManager:
     """
-    Discovers operators from OPERATORS_DIR, starts autostart ones,
+    Discovers operators from operators_dir, starts autostart ones,
     and supervises all running operators in a background thread.
     """
 
-    def __init__(self, logger) -> None:
-        self.logger    = logger
+    def __init__(self, logger, operators_dir: Path = None) -> None:
+        self.logger       = logger
+        self.operators_dir = operators_dir or DEFAULT_OPERATORS_DIR
         self.operators: dict = {}
         self._thread: Optional[threading.Thread] = None
         self._running  = False
 
     def discover(self) -> None:
         """Scan operators directory for valid manifests."""
-        if not OPERATORS_DIR.exists():
-            self.logger.warning("OperatorManager: operators dir not found at %s", OPERATORS_DIR)
+        if not self.operators_dir.exists():
+            self.logger.warning("OperatorManager: operators dir not found at %s", self.operators_dir)
             return
 
-        for op_dir in sorted(OPERATORS_DIR.iterdir()):
+        for op_dir in sorted(self.operators_dir.iterdir()):
             manifest_path = op_dir / "manifest.json"
             if not op_dir.is_dir() or not manifest_path.exists():
                 continue
