@@ -30,3 +30,11 @@ run.sh
 *.config.json
 *.bak
 cascadia/operators/social/chat_operator/data/
+
+# Social operator — secrets and runtime data
+operators/social/connectors/linkedin.config.json
+operators/social/data/
+cascadia/fleet/
+data/runtime/fleet.json
+data/runtime/audit.db
+operators/social/data/scheduled_posts.db

@@ -1078,6 +1078,10 @@ async function handleCommand(id, cmd) {
     const healthy = data.system?.components_healthy || '?';
     const pendingCount = data.attention_required?.pending_approvals || 0;
     const runCount = (data.runs || []).length;
+    const avgRespMin = data.avg_response_time_minutes;
+    const avgResp = avgRespMin != null ? avgRespMin.toFixed(1)+'m' : '—';
+    const hw = data.hardware || {};
+    const hwCard = hw.available ? `<div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:8px;padding:9px 11px"><div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--navy-800)">${hw.cpu_percent!=null?hw.cpu_percent.toFixed(0)+'% CPU':'—'}</div><div style="font-size:9.5px;color:var(--gray-500);margin-top:2px">RAM ${hw.ram_used_gb!=null?(hw.ram_used_gb.toFixed(1)+'/'+hw.ram_total_gb.toFixed(0)+'G'):'—'}</div></div>` : '';
     const cards = Object.entries(comps).map(([name,state],i) => {
       const ok = state === 'ready';
       const dc = ok ? 'sc-dot--g' : state === 'starting' ? 'sc-dot--y' : 'sc-dot--r';
@@ -1085,7 +1089,7 @@ async function handleCommand(id, cmd) {
     }).join('');
     S.messages[id].push({time:t,type:'agent',html:`
       <div class="msg-text" style="margin-bottom:10px">Cascadia OS v0.44 — System Overview</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:repeat(${hw.available?'5':'4'},1fr);gap:6px;margin-bottom:10px">
         <div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:8px;padding:9px 11px">
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--navy-800)">${healthy}</div>
           <div style="font-size:9.5px;color:var(--gray-500);margin-top:2px">Healthy</div>
@@ -1098,6 +1102,11 @@ async function handleCommand(id, cmd) {
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${pendingCount?'var(--yellow)':'var(--navy-800)'}">${pendingCount}</div>
           <div style="font-size:9.5px;color:var(--gray-500);margin-top:2px">Pending approvals</div>
         </div>
+        <div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:8px;padding:9px 11px">
+          <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--navy-800)">${avgResp}</div>
+          <div style="font-size:9.5px;color:var(--gray-500);margin-top:2px">Avg response</div>
+        </div>
+        ${hwCard}
       </div>
       <div style="display:flex;flex-direction:column;gap:5px">${cards}</div>`});
     await Vault.saveMessages(id,S.messages[id]); renderMain(); scrollChat(); return;
@@ -1450,6 +1459,11 @@ function renderRunRow(run) {
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--gray-500)"><span>in: ${run.tokensIn}tok</span><span>out: ${run.tokensOut}tok</span><span>cost: $${run.cost||'0'}</span><span>retries: ${run.retries}</span><span>model: ${run.model}</span></div>
     <div class="run-timeline">${(run.events||[]).map(ev=>{const ic=ev.type?.includes('completed')||ev.type?.includes('run.completed')?'rt-icon--done':ev.type?.includes('fail')?'rt-icon--fail':ev.type?.includes('tool')?'rt-icon--tool':'rt-icon--run';return`<div class="rt-event"><div class="rt-icon ${ic}">${ev.icon||'·'}</div><div style="flex:1"><div class="rt-label">${esc(ev.label||ev.type)}</div><div class="rt-sub">${new Date(ev.ts).toLocaleTimeString()}</div></div></div>`;}).join('')}
     </div>
+    <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">Outcome:</span>
+      ${run.outcome?`<span style="font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;background:${run.outcome==='won'?'rgba(34,197,94,.15)':run.outcome==='lost'?'rgba(239,68,68,.12)':'var(--gray-100)'};color:${run.outcome==='won'?'var(--green)':run.outcome==='lost'?'var(--red)':'var(--gray-400)'}">${run.outcome}</span>`
+      :`<select onchange="recordOutcome('${run.id}',this.value)" style="font-size:10px;padding:2px 6px;border:1px solid var(--gray-200);border-radius:4px;background:var(--white);color:var(--navy-700)"><option value="">— record outcome —</option><option value="won">won</option><option value="lost">lost</option><option value="no_decision">no decision</option></select>`}
+    </div>
   </div>`:''}`;
 }
 
@@ -1515,7 +1529,7 @@ function renderObsSurface() {
 }
 
 /* ═══ APPROVALS SURFACE ═══ */
-function renderApprovalsSurface() {
+async function renderApprovalsSurface() {
   const panel=document.getElementById('main-panel');
   const pending=S.approvals.filter(a=>a.status==='pending');
   const resolved=S.approvals.filter(a=>a.status!=='pending');
@@ -1526,6 +1540,7 @@ function renderApprovalsSurface() {
     </div>
     <div class="surface">
       <div id="live-approvals-section"></div>
+      <div id="approval-analytics-section"></div>
       ${!pending.length&&(!S.liveApprovals||!S.liveApprovals.length)?`<div class="approvals-empty"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span>All clear — no pending approvals</span></div>`:''}
       ${pending.map(a=>renderApprovalCard(a,false)).join('')}
       ${resolved.length?`<div style="font-family:var(--mono);font-size:9.5px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.08em;padding:14px 0 8px">Resolved</div>${resolved.map(a=>renderApprovalCard(a,true)).join('')}`:''}
@@ -1538,6 +1553,29 @@ function renderApprovalsSurface() {
         + la.map(renderLiveApprovalCard).join('')
         + '<div style="height:1px;background:var(--gray-150);margin:12px 0 10px"></div>'
       : '';
+  }
+  // Load analytics async
+  const analytics = await loadApprovalAnalytics();
+  const aas = document.getElementById('approval-analytics-section');
+  if (aas && analytics && analytics.total > 0) {
+    const pct = v => analytics.total ? Math.round(v/analytics.total*100) : 0;
+    aas.innerHTML = `
+      <div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:10px;padding:14px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--navy-700);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">Approval Intelligence · last ${analytics.days}d</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px">
+          ${[
+            ['Total',analytics.total,'var(--navy-800)'],
+            ['Approved',analytics.approved,'var(--green)'],
+            ['Rejected',analytics.rejected,'var(--red)'],
+            ['Edited',analytics.edited,'var(--purple)'],
+            ['Timed out',analytics.timed_out,'var(--yellow)'],
+          ].map(([l,v,c])=>`<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:${c}">${v}</div><div style="font-size:9.5px;color:var(--gray-500)">${l}</div></div>`).join('')}
+        </div>
+        ${analytics.avg_decision_minutes!=null?`<div style="font-size:11px;color:var(--gray-500)">Avg decision time: <strong style="color:var(--navy-800)">${analytics.avg_decision_minutes}m</strong></div>`:''}
+        ${Object.keys(analytics.by_risk||{}).length?`<div style="font-size:11px;color:var(--gray-500);margin-top:4px">By risk: `+Object.entries(analytics.by_risk).map(([k,v])=>`<strong>${k}</strong> ${v}`).join(' · ')+'</div>':''}
+      </div>`;
+  } else if (aas) {
+    aas.innerHTML = '';
   }
 }
 function renderApprovalCard(a, resolved) {
@@ -1811,6 +1849,18 @@ async function renderAdminSurface() {
         ${allAudit.length?allAudit.map(e=>`<div class="audit-row"><div class="audit-icon">${e.icon||'·'}</div><div class="audit-info"><div class="audit-action">${esc(e.action)}</div><div class="audit-actor">${esc(e.actor)}</div></div><div class="audit-time">${e.time||'—'}</div></div>`).join(''):`<div style="font-size:12px;color:var(--gray-400);padding:8px 0">No audit events yet. Actions like stopping workers, resolving approvals, and creating keys are logged here.</div>`}
       </div>
 
+      <!-- MISSED LEAD RECOVERY -->
+      <div class="admin-section">
+        <div class="admin-section__title">Missed Lead Recovery</div>
+        ${vStats.runs===0?`<div style="background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.25);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--navy-700);line-height:1.6"><strong>First boot detected.</strong> No runs yet. Paste leads below to score and queue them for follow-up.</div>`:''}
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">Paste CSV leads (one per line: name, email, company, notes) to score with CHIEF and create recovery workflows.</div>
+        <textarea id="leads-csv-input" style="width:100%;min-height:100px;font-family:var(--mono);font-size:11px;padding:8px 10px;border:1px solid var(--gray-200);border-radius:6px;background:var(--gray-50);color:var(--navy-800);resize:vertical;box-sizing:border-box" placeholder="John Smith, john@acme.com, Acme Corp, Interested in HVAC automation&#10;Jane Doe, jane@apex.com, Apex Build, Requested callback last week"></textarea>
+        <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+          <button class="hbtn" onclick="scoreMissedLeads()">⚡ Score Leads</button>
+          <span id="leads-recover-status" style="font-family:var(--mono);font-size:10px;color:var(--gray-400)"></span>
+        </div>
+      </div>
+
       <!-- SSO -->
       <div class="admin-section">
         <div class="admin-section__title">SSO / Identity <span class="badge-preview">Preview · Phase 6</span></div>
@@ -1820,6 +1870,25 @@ async function renderAdminSurface() {
 
   // Run contract check immediately
   runContractCheck();
+}
+
+async function scoreMissedLeads() {
+  const ta = document.getElementById('leads-csv-input');
+  const status = document.getElementById('leads-recover-status');
+  if (!ta || !ta.value.trim()) { if (status) status.textContent = 'No leads entered.'; return; }
+  if (status) status.textContent = 'Scoring…';
+  try {
+    const resp = await fetch(PRISM_URL + '/api/prism/leads/recover', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({csv: ta.value.trim()}),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await resp.json();
+    if (status) status.textContent = `Done — ${data.queued||0} leads queued`;
+    ta.value = '';
+  } catch(e) {
+    if (status) status.textContent = 'Error — PRISM not reachable';
+  }
 }
 
 async function runContractCheck() {
@@ -1961,17 +2030,74 @@ function renderLiveRunRow(run) {
     + '</div>' + runStateBadge(run.run_state) + '</div>';
 }
 
+const _TIMEOUT_MINUTES = {HIGH: 30, MEDIUM: 120, LOW: 480};
+function _approvalTimeRemaining(createdAt, riskLevel) {
+  if (!createdAt) return null;
+  const risk = (riskLevel||'MEDIUM').toUpperCase();
+  const escalateAt = _TIMEOUT_MINUTES[risk] || 120;
+  const rejectAt = escalateAt * 2;
+  const ageMins = (Date.now() - new Date(createdAt).getTime()) / 60000;
+  return {
+    escalate_in: Math.max(0, Math.round(escalateAt - ageMins)),
+    reject_in:   Math.max(0, Math.round(rejectAt - ageMins)),
+  };
+}
+
 function renderLiveApprovalCard(a) {
   const age = a.created_at ? Math.round((Date.now()-new Date(a.created_at).getTime())/60000)+'m ago' : '';
+  const risk = (a.risk_level||'MEDIUM').toUpperCase();
+  const riskCls = risk==='HIGH'?'var(--red)':risk==='LOW'?'var(--green)':'var(--yellow)';
+  const tr = _approvalTimeRemaining(a.created_at, a.risk_level);
+  const countdownHtml = tr
+    ? (tr.reject_in === 0
+        ? '<span style="font-family:var(--mono);font-size:10px;color:var(--red);font-weight:600">auto-rejecting…</span>'
+        : tr.escalate_in === 0
+          ? '<span style="font-family:var(--mono);font-size:10px;color:var(--yellow)">escalated · auto-reject in '+tr.reject_in+'m</span>'
+          : '<span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">escalates in '+tr.escalate_in+'m · rejects in '+tr.reject_in+'m</span>')
+    : '';
   return '<div class="approval-live-card">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
     + '<div style="font-size:13px;font-weight:600;color:var(--navy-800)">Approval required</div>'
-    + runStateBadge('waiting_human') + '</div>'
+    + '<span style="font-family:var(--mono);font-size:9px;font-weight:600;padding:2px 7px;border-radius:4px;background:rgba(0,0,0,.06);color:'+riskCls+'">'+risk+'</span>'
+    + '</div>'
     + '<div class="approval-live-meta">run: ' + esc(a.run_id) + ' · ' + esc(a.action_key||'email.send') + ' · ' + age + '</div>'
+    + (countdownHtml ? '<div style="margin-bottom:8px">'+countdownHtml+'</div>' : '')
     + '<div class="approval-live-actions">'
     + '<button class="appr-btn appr-btn--approve" onclick="approveFromPrism(' + a.id + ',\'approved\')">✓ Approve</button>'
     + '<button class="appr-btn appr-btn--reject" onclick="approveFromPrism(' + a.id + ',\'denied\')">✗ Reject</button>'
+    + '<button class="appr-btn" style="background:rgba(167,139,250,.1);border-color:rgba(167,139,250,.3);color:#6d28d9" onclick="openEditApprove(' + a.id + ',\'' + esc(a.run_id) + '\')">✎ Edit &amp; Approve</button>'
     + '</div></div>';
+}
+
+async function recordOutcome(runId, outcome) {
+  if (!outcome) return;
+  try {
+    await fetch(PRISM_URL + '/api/prism/runs/outcome', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({run_id: runId, outcome}),
+      signal: AbortSignal.timeout(5000),
+    });
+    const r = Object.values(S.runs).flat().find(x => x.id === runId);
+    if (r) r.outcome = outcome;
+    renderRunsSurface();
+  } catch(_) {}
+}
+
+let _ws = null, _wsRetry = null;
+function connectWS() {
+  if (_ws && _ws.readyState < 2) return;
+  try {
+    _ws = new WebSocket('ws://127.0.0.1:6204/bell/ws');
+    _ws.onopen = () => { if (_wsRetry) { clearTimeout(_wsRetry); _wsRetry = null; } };
+    _ws.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.type === 'approval_request' || ev.type === 'run_update') pollLiveRuns();
+      } catch(_) {}
+    };
+    _ws.onclose = () => { _ws = null; _wsRetry = setTimeout(connectWS, 3000); };
+    _ws.onerror = () => { try { _ws.close(); } catch(_) {} };
+  } catch(_) {}
 }
 
 async function approveFromPrism(approvalId, decision) {
@@ -1987,7 +2113,53 @@ async function approveFromPrism(approvalId, decision) {
   if (sa) sa.status = decision;
   updateNavBadges();
   renderApprovalsSurface();
-  // setTimeout(pollLiveRuns, 800); — triggered on demand only
+}
+
+function openEditApprove(approvalId, runId) {
+  const existing = document.getElementById('edit-approve-modal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'edit-approve-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:24px;width:520px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:15px;font-weight:700;color:var(--navy-800);margin-bottom:4px">Edit &amp; Approve</div>
+      <div style="font-size:12px;color:var(--gray-400);font-family:var(--mono);margin-bottom:14px">Approval #${approvalId} · run: ${esc(runId)}</div>
+      <textarea id="edit-approve-content" placeholder="Enter edited content…"
+        style="width:100%;height:120px;border:1px solid var(--gray-200);border-radius:8px;padding:10px;font-size:13px;font-family:var(--mono);resize:vertical;outline:none;margin-bottom:10px"></textarea>
+      <input id="edit-approve-summary" placeholder="Edit summary (optional)"
+        style="width:100%;height:34px;border:1px solid var(--gray-200);border-radius:8px;padding:0 10px;font-size:13px;outline:none;margin-bottom:14px">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="appr-btn" onclick="document.getElementById('edit-approve-modal').remove()">Cancel</button>
+        <button class="appr-btn appr-btn--approve" onclick="submitEditApprove(${approvalId})">✓ Approve with edits</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target===modal) modal.remove(); });
+}
+
+async function submitEditApprove(approvalId) {
+  const content = document.getElementById('edit-approve-content')?.value?.trim();
+  const summary = document.getElementById('edit-approve-summary')?.value?.trim() || '';
+  if (!content) { alert('Content is required'); return; }
+  try {
+    await fetch(PRISM_URL + '/api/prism/approve/edit', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({approval_id: approvalId, content, summary}),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch(_) {}
+  document.getElementById('edit-approve-modal')?.remove();
+  S.liveApprovals = S.liveApprovals.filter(a => a.id !== approvalId);
+  updateNavBadges();
+  renderApprovalsSurface();
+}
+
+async function loadApprovalAnalytics() {
+  try {
+    const r = await fetch(PRISM_URL + '/api/prism/approvals/analytics', {signal:AbortSignal.timeout(4000)});
+    return await r.json();
+  } catch(_) { return null; }
 }
 
 /* ═══ SURFACE SWITCHER ═══ */
@@ -2821,6 +2993,7 @@ renderSidebar(); renderMain(); updateNavBadges(); maybeOpenHealth();
   setInterval(refreshOpCards, 10000);
   maybeOpenHealth();
   setInterval(()=>{ if(S.surface==='health') refreshHealth(); }, 30000);
+  connectWS();
 })();
 </script>
 <!-- ALMANAC OVERLAY -->

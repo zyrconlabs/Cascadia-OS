@@ -122,3 +122,81 @@ class RunStore:
         """Owns insertion into run_trace. Does not own metrics aggregation."""
         with self.connection() as conn:
             conn.execute('INSERT INTO run_trace (run_id, event_type, step_index, payload, created_at) VALUES (?,?,?,?,?)', (run_id, event_type, step_index, self.dump_json(payload), created_at))
+
+    def avg_response_time_minutes(self, limit: int = 100) -> Optional[float]:
+        """Average minutes from lead_received_at to run completion for recent completed runs."""
+        try:
+            from datetime import datetime as _dt
+            with self.connection() as conn:
+                rows = conn.execute(
+                    "SELECT lead_received_at, updated_at FROM runs "
+                    "WHERE run_state = 'completed' AND lead_received_at IS NOT NULL "
+                    "ORDER BY updated_at DESC LIMIT ?",
+                    (limit,)
+                ).fetchall()
+            if not rows:
+                return None
+            deltas = []
+            for r in rows:
+                try:
+                    t0 = _dt.fromisoformat(r['lead_received_at'])
+                    t1 = _dt.fromisoformat(r['updated_at'])
+                    deltas.append((t1 - t0).total_seconds() / 60)
+                except Exception:
+                    pass
+            return round(sum(deltas) / len(deltas), 1) if deltas else None
+        except Exception:
+            return None
+
+    def record_outcome(self, run_id: str, outcome: str, recorded_at: str) -> None:
+        """Record win/loss outcome for a completed run. outcome must be 'won' | 'lost' | 'no_decision'."""
+        if outcome not in ('won', 'lost', 'no_decision'):
+            raise ValueError(f'Invalid outcome: {outcome!r}')
+        self.update_run(run_id, outcome=outcome, outcome_recorded_at=recorded_at)
+
+    def approval_analytics(self, days: int = 30) -> Dict[str, Any]:
+        """Owns approval analytics aggregation. Does not own UI rendering or policy decisions."""
+        try:
+            with self.connection() as conn:
+                rows = conn.execute(
+                    "SELECT decision, actor, risk_level, edited_content, created_at, decided_at "
+                    "FROM approvals "
+                    "WHERE created_at >= datetime('now', ? || ' days')",
+                    (f'-{days}',),
+                ).fetchall()
+        except Exception:
+            rows = []
+
+        total = len(rows)
+        approved = sum(1 for r in rows if r['decision'] == 'approved' and r['actor'] != 'system:timeout')
+        rejected = sum(1 for r in rows if r['decision'] == 'denied')
+        timed_out = sum(1 for r in rows if r['actor'] == 'system:timeout')
+        edited = sum(1 for r in rows if r['edited_content'])
+
+        decision_minutes: list = []
+        for r in rows:
+            if r['created_at'] and r['decided_at']:
+                try:
+                    from datetime import datetime as _dt
+                    t0 = _dt.fromisoformat(r['created_at'])
+                    t1 = _dt.fromisoformat(r['decided_at'])
+                    decision_minutes.append((t1 - t0).total_seconds() / 60)
+                except Exception:
+                    pass
+        avg_decision_minutes = round(sum(decision_minutes) / len(decision_minutes), 1) if decision_minutes else None
+
+        by_risk: Dict[str, int] = {}
+        for r in rows:
+            level = (r['risk_level'] or 'MEDIUM').upper()
+            by_risk[level] = by_risk.get(level, 0) + 1
+
+        return {
+            'total': total,
+            'approved': approved,
+            'rejected': rejected,
+            'edited': edited,
+            'timed_out': timed_out,
+            'avg_decision_minutes': avg_decision_minutes,
+            'by_risk': by_risk,
+            'days': days,
+        }
