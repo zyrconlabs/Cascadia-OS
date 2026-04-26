@@ -27,17 +27,24 @@ MODEL_FILE=$(python3 -c "import json; c=json.load(open('config.json')); print(c.
 LLAMA_MODEL="$MODELS_DIR/$MODEL_FILE"
 
 echo "Starting Cascadia OS full stack..."
+
+# Rotate startup.log if over 5MB
+STARTUP_LOG="data/logs/startup.log"
+if [[ -f "$STARTUP_LOG" ]] && [[ $(stat -f%z "$STARTUP_LOG" 2>/dev/null || echo 0) -gt 5242880 ]]; then
+    mv "$STARTUP_LOG" "data/logs/startup.log.1"
+    echo "$(date) | startup log rotated" > "$STARTUP_LOG"
+fi
 echo ""
 
 # ── 1. llama.cpp ──────────────────────────────────────────────────────────
 if curl -sf http://127.0.0.1:8080/health > /dev/null 2>&1; then
     echo "✓ llama.cpp already running"
 elif [[ ! -f "$LLAMA_BIN" ]]; then
-    echo "⚠ llama.cpp not installed — skipping (install via: brew install llama.cpp)"
+    echo "⚠ llama.cpp not installed — run install.sh to set up"
 elif [[ ! -f "$LLAMA_MODEL" ]]; then
     echo "⚠ AI model not downloaded yet — open PRISM → Settings to set up AI"
 else
-    echo "▸ Starting llama.cpp (Qwen 3B)..."
+    echo "▸ Starting llama.cpp..."
     lsof -ti :8080 | xargs kill -9 2>/dev/null; sleep 1
     "$LLAMA_BIN" \
         --model "$LLAMA_MODEL" \
@@ -59,7 +66,7 @@ if curl -sf http://127.0.0.1:4011/health > /dev/null 2>&1; then
         echo "✓ Cascadia OS already running"
         CASCADIA_RUNNING=true
     else
-        echo "▸ Restarting Cascadia OS (stale instance from different path)..."
+        echo "▸ Restarting Cascadia OS — stale instance detected..."
         pkill -f "cascadia.kernel" 2>/dev/null || true
         sleep 2
     fi
@@ -71,7 +78,7 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     [[ ! -f "$PYTHON" ]] && PYTHON="python3"
     "$PYTHON" -m cascadia.kernel.watchdog --config config.json >> data/logs/flint.log 2>&1 &
     sleep 10
-    curl -sf http://127.0.0.1:4011/health > /dev/null && echo "✓ Cascadia OS ready (11/11)" || echo "✗ Cascadia OS failed"
+    curl -sf http://127.0.0.1:4011/health > /dev/null && echo "✓ Cascadia OS ready" || echo "✗ Cascadia OS failed — check logs"
 fi
 
 # ── 3. Operators ──────────────────────────────────────────────────────────
