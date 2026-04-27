@@ -3043,16 +3043,16 @@ async function refreshWatchdogStatus() {
   const el = document.getElementById('watchdog-status');
   if (!el) return;
   try {
-    const r = await fetch('http://127.0.0.1:5100/api/watchdog/status', {signal: AbortSignal.timeout(2000)});
+    const r = await fetch(PRISM_URL + '/api/watchdog/status', {signal: AbortSignal.timeout(2000)});
     if (!r.ok) return;
     const d = await r.json();
     const ops = Object.values(d.operators || {});
     if (!ops.length) { el.style.display = 'none'; return; }
-    const restarts = ops.reduce((s, o) => s + (o.restart_count || 0), 0);
-    const offline = ops.filter(o => o.status === 'offline' || o.status === 'restarting').length;
+    const healthy = ops.filter(o => o.status === 'online').length;
+    const down = ops.filter(o => o.status === 'offline' || o.status === 'restarting').length;
     el.style.display = '';
-    el.textContent = `watchdog · ${ops.length} ops${offline ? ' · ⚠ '+offline+' offline' : ''}${restarts ? ' · ↺ '+restarts+' restarts' : ''}`;
-    el.style.color = offline ? 'var(--yellow)' : 'var(--gray-400)';
+    el.textContent = `Watchdog: watching ${ops.length} operators, ${healthy} healthy, ${down} down`;
+    el.style.color = down ? 'var(--yellow)' : 'var(--gray-400)';
   } catch(_) {}
 }
 

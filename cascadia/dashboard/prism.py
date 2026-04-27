@@ -169,6 +169,18 @@ class PrismService:
         # Social campaign integration (R11)
         self.runtime.register_route('POST', '/api/prism/campaign/notify',      self.campaign_notify)
         self.runtime.register_route('GET',  '/api/prism/campaign/states',      self.campaign_states)
+        # Sprint 3 — SENTINEL alert ingestion
+        self.runtime.register_route('POST', '/api/prism/alert',                self.receive_alert)
+        self.runtime.register_route('GET',  '/api/prism/alerts',               self.list_alerts)
+        # Sprint 3 — Watchdog status
+        self.runtime.register_route('GET',  '/api/watchdog/status',            self.watchdog_status)
+
+        # Start operator watchdog
+        try:
+            from cascadia.core.watchdog import OperatorWatchdog
+            self._watchdog: Optional[Any] = OperatorWatchdog(self.config, self.runtime.logger)
+        except Exception:
+            self._watchdog = None
 
     # ------------------------------------------------------------------
     # Aggregated views
@@ -1628,8 +1640,55 @@ class PrismService:
             'generated_at': _now(),
         }
 
+    # ------------------------------------------------------------------
+    # Sprint 3 — SENTINEL alert ingestion
+    # ------------------------------------------------------------------
+
+    def receive_alert(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """
+        POST /api/prism/alert
+        Called by SENTINEL circuit breakers (e.g. Social operator) when they open.
+        Body: { "type": "sentinel_down", "message": "...", "source": "social_operator" }
+        Stores last 50 alerts; evicts oldest on overflow.
+        """
+        if not hasattr(self, '_alerts'):
+            self._alerts: List[Dict[str, Any]] = []
+        entry = {
+            'type':        payload.get('type', 'unknown'),
+            'message':     payload.get('message', ''),
+            'source':      payload.get('source', ''),
+            'received_at': _now(),
+        }
+        self.runtime.logger.error(
+            'PRISM alert [%s] from %s: %s',
+            entry['type'], entry['source'], entry['message'],
+        )
+        self._alerts.append(entry)
+        if len(self._alerts) > 50:
+            self._alerts = self._alerts[-50:]
+        return 200, {'received': True}
+
+    def list_alerts(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/alerts — return last 20 alerts, newest first."""
+        if not hasattr(self, '_alerts'):
+            self._alerts = []
+        recent = list(reversed(self._alerts[-20:]))
+        return 200, {
+            'alerts':       recent,
+            'count':        len(recent),
+            'generated_at': _now(),
+        }
+
+    def watchdog_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/watchdog/status — operator health as tracked by OperatorWatchdog."""
+        if self._watchdog is None:
+            return 200, {'operators': {}, 'generated_at': _now(), 'poll_interval_seconds': 30}
+        return 200, self._watchdog.get_status()
+
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')
+        if self._watchdog is not None:
+            self._watchdog.start()
         self._start_approval_timeout_daemon()
         try:
             from cascadia.network.discovery import start_discovery
