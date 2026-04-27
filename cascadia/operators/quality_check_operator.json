@@ -1,0 +1,12 @@
+{
+  "id": "quality_check_operator",
+  "name": "Quality Check Operator",
+  "version": "1.0.0",
+  "type": "skill",
+  "capabilities": ["content.quality_check"],
+  "required_dependencies": [],
+  "requested_permissions": [],
+  "autonomy_level": "assistive",
+  "health_hook": "/api/health",
+  "description": "Scores and quality-checks platform drafts before publish approval."
+}

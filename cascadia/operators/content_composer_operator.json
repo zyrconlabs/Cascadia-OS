@@ -1,0 +1,12 @@
+{
+  "id": "content_composer_operator",
+  "name": "Content Composer Operator",
+  "version": "1.0.0",
+  "type": "service",
+  "capabilities": ["content.compose"],
+  "required_dependencies": [],
+  "requested_permissions": [],
+  "autonomy_level": "semi_autonomous",
+  "health_hook": "/api/health",
+  "description": "Composes master content for social campaigns."
+}

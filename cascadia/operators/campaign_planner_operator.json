@@ -1,0 +1,12 @@
+{
+  "id": "campaign_planner_operator",
+  "name": "Campaign Planner Operator",
+  "version": "1.0.0",
+  "type": "service",
+  "capabilities": ["campaign.plan", "campaign.advance"],
+  "required_dependencies": [],
+  "requested_permissions": [],
+  "autonomy_level": "assistive",
+  "health_hook": "/api/health",
+  "description": "Builds multi-day campaign plans and advances campaign day state."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "publisher_instagram_operator",
+  "name": "Instagram Publisher Operator",
+  "version": "1.0.0",
+  "type": "service",
+  "capabilities": ["instagram.post"],
+  "required_dependencies": [],
+  "requested_permissions": ["social.instagram.post"],
+  "autonomy_level": "semi_autonomous",
+  "health_hook": "/api/health",
+  "description": "Publishes approved content to Instagram."
+}

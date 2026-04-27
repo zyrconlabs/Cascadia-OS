@@ -1,0 +1,12 @@
+{
+  "id": "publisher_facebook_operator",
+  "name": "Facebook Publisher Operator",
+  "version": "1.0.0",
+  "type": "service",
+  "capabilities": ["facebook.post"],
+  "required_dependencies": [],
+  "requested_permissions": ["social.facebook.post"],
+  "autonomy_level": "semi_autonomous",
+  "health_hook": "/api/health",
+  "description": "Publishes approved content to Facebook."
+}

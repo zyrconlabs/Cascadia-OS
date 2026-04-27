@@ -1,0 +1,12 @@
+{
+  "id": "publisher_x_operator",
+  "name": "X Publisher Operator",
+  "version": "1.0.0",
+  "type": "service",
+  "capabilities": ["x.post"],
+  "required_dependencies": [],
+  "requested_permissions": ["social.x.post"],
+  "autonomy_level": "semi_autonomous",
+  "health_hook": "/api/health",
+  "description": "Publishes approved content to X (Twitter)."
+}

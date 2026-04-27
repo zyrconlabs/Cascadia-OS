@@ -1,0 +1,12 @@
+{
+  "id": "renderer_facebook_operator",
+  "name": "Facebook Renderer Operator",
+  "version": "1.0.0",
+  "type": "skill",
+  "capabilities": ["content.render"],
+  "required_dependencies": [],
+  "requested_permissions": [],
+  "autonomy_level": "assistive",
+  "health_hook": "/api/health",
+  "description": "Renders content drafts for Facebook."
+}
