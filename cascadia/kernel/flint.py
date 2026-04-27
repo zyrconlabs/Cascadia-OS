@@ -164,7 +164,7 @@ class Flint:
         try:
             with request.urlopen(health_url, timeout=5) as r:
                 latency_ms = round((time.time() - t0) * 1000, 1)
-                ok = r.status < 400
+                ok = r.status == 200
                 return {'ok': ok, 'latency_ms': latency_ms, 'error': None, 'checked_at': t0}
         except Exception as exc:
             latency_ms = round((time.time() - t0) * 1000, 1)

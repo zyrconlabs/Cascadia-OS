@@ -67,8 +67,8 @@ def vault_store(key: str, value: str) -> bool:
     Returns True on success, False on failure.
     """
     try:
-        result = _post(_PORTS['vault'], '/set', {'key': key, 'value': value})
-        return bool(result and result.get('ok', False))
+        result = _post(_PORTS['vault'], '/write', {'key': key, 'value': value})
+        return bool(result and result.get('written', False))
     except Exception:
         return False
 
@@ -79,7 +79,7 @@ def vault_get(key: str) -> Optional[str]:
     Returns the value string or None if not found or on error.
     """
     try:
-        result = _post(_PORTS['vault'], '/get', {'key': key})
+        result = _post(_PORTS['vault'], '/read', {'key': key})
         if result and 'value' in result:
             return result['value']
         return None

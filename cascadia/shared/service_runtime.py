@@ -256,6 +256,16 @@ class ServiceRuntime:
                     runtime.logger.error('POST %s error: %s', self.path, exc, exc_info=True)
                     self._send_json(500, {'error': str(exc)})
 
+            def do_DELETE(self) -> None:  # noqa: N802
+                if not self._check_internal_key():
+                    return
+                try:
+                    code, payload = runtime.route_request('DELETE', self.path, {})
+                    self._send_json(code, payload)
+                except Exception as exc:
+                    runtime.logger.error('DELETE %s error: %s', self.path, exc, exc_info=True)
+                    self._send_json(500, {'error': str(exc)})
+
             def log_message(self, format: str, *args: Any) -> None:
                 runtime.logger.info(format, *args)
 

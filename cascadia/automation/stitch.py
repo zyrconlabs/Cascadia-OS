@@ -581,13 +581,20 @@ class StitchService:
         except Exception:
             interrupted = []
         resumed = []
+        failed = []
         for run in interrupted:
+            run_id = run.get('run_id', '')
             try:
-                self.runtime.logger.info('STITCH: resuming interrupted run %s', run.get('run_id'))
-                resumed.append(run['run_id'])
+                self.runtime.logger.info('STITCH: resuming interrupted run %s', run_id)
+                code, result = self.resume_run({'run_id': run_id})
+                if code == 200:
+                    resumed.append(run_id)
+                else:
+                    failed.append(run_id)
             except Exception as e:
-                self.runtime.logger.error('STITCH: resume failed %s: %s', run.get('run_id'), e)
-        return 200, {'resumed': len(resumed), 'run_ids': resumed}
+                self.runtime.logger.error('STITCH: resume failed %s: %s', run_id, e)
+                failed.append(run_id)
+        return 200, {'resumed': len(resumed), 'failed': len(failed), 'run_ids': resumed}
 
     def scheduler_list(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         return 200, {'jobs': self._scheduler.list_jobs(), 'generated_at': _now()}

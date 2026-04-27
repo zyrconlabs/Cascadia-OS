@@ -283,7 +283,8 @@ class BeaconService:
         """Query fleet for nodes capable of running the model."""
         try:
             import urllib.request, json
-            resp = urllib.request.urlopen('http://127.0.0.1:6300/api/prism/fleet', timeout=2)
+            prism_port = self._port_map.get('prism', 6300)
+            resp = urllib.request.urlopen(f'http://127.0.0.1:{prism_port}/api/prism/fleet', timeout=2)
             nodes = json.loads(resp.read())
             requirements = {'3b': 10, '7b': 50, '14b': 100, '32b': 200, '70b': 500}
             capable = []

@@ -76,6 +76,18 @@ def _http_post(port: int, path: str, payload: Dict[str, Any], timeout: float = 2
         return None
 
 
+def _http_delete(port: int, path: str, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
+    try:
+        req = urllib_request.Request(
+            f'http://127.0.0.1:{port}{path}', method='DELETE',
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib_request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode())
+    except Exception:
+        return None
+
+
 class PrismService:
     """
     PRISM - Dashboard and command center.
@@ -1518,7 +1530,9 @@ class PrismService:
         if check: return check
         wf_id = payload.get('id', '')
         stitch_port = self._ports.get('stitch', 6201)
-        _http_post(stitch_port, f'/api/stitch/workflows/{wf_id}/delete', {})
+        result = _http_delete(stitch_port, f'/api/stitch/workflows/{wf_id}')
+        if result is None:
+            return 502, {'error': 'STITCH unavailable'}
         return 200, {'deleted': True, 'id': wf_id}
 
     def wf_palette(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
