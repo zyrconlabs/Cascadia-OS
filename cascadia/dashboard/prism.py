@@ -1339,13 +1339,45 @@ class PrismService:
             return 500, {'error': str(exc)}
 
     def depot_operators(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """Browse the DEPOT operator marketplace catalogue."""
+        """Browse the DEPOT operator marketplace catalogue.
+        Tries live fetch from depot.zyrcon.ai first; falls back to local catalog.
+        Merges with registry to show installed/active status.
+        """
+        import urllib.request as _ur
+        import urllib.error as _ue
+
+        operators: List[Dict[str, Any]] = []
+
+        # Try live DEPOT catalog
         try:
-            from cascadia.marketplace.depot_client import DEPOTClient
-            client = DEPOTClient()
-            return 200, {'operators': client.list_operators(), 'generated_at': _now()}
-        except Exception as exc:
-            return 500, {'error': str(exc)}
+            with _ur.urlopen('https://depot.zyrcon.ai/api/v1/operators', timeout=2) as r:
+                data = json.loads(r.read().decode())
+                operators = data.get('operators', [])
+        except Exception:
+            pass
+
+        # Fallback to local DEPOTClient catalog
+        if not operators:
+            try:
+                from cascadia.marketplace.depot_client import DEPOTClient
+                operators = DEPOTClient().list_operators()
+            except Exception:
+                operators = []
+
+        # Load registry to mark installed operators
+        try:
+            configured = self.config.get('operators_registry_path', '')
+            reg_path = (Path(configured).expanduser() if configured
+                        else Path(__file__).parent.parent / 'operators' / 'registry.json')
+            reg = json.loads(reg_path.read_text())
+            installed_ids = {op.get('id') for op in reg.get('operators', [])}
+        except Exception:
+            installed_ids = set()
+
+        for op in operators:
+            op['installed'] = op.get('id', op.get('operator_id', '')) in installed_ids
+
+        return 200, {'operators': operators, 'count': len(operators), 'generated_at': _now()}
 
     def depot_operator(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Get details for one DEPOT operator: {operator_id}."""
