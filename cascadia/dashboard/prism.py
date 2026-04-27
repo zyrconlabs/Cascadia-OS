@@ -174,6 +174,8 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/prism/alerts',               self.list_alerts)
         # Sprint 3 — Watchdog status
         self.runtime.register_route('GET',  '/api/watchdog/status',            self.watchdog_status)
+        # License gate
+        self.runtime.register_route('GET',  '/api/prism/license',              self.license_status)
 
         # Start operator watchdog
         try:
@@ -610,12 +612,14 @@ class PrismService:
         _groups = {
             'crew': 'Foundation', 'vault': 'Foundation',
             'sentinel': 'Foundation', 'curtain': 'Foundation',
+            'license_gate': 'Foundation',
             'beacon': 'Runtime', 'stitch': 'Runtime', 'vanguard': 'Runtime',
             'handshake': 'Runtime', 'bell': 'Runtime', 'almanac': 'Runtime',
             'prism': 'Dashboard',
         }
         COMPONENTS = (
-            [('flint', self._flint_port, 'Kernel')] +
+            [('flint', self._flint_port, 'Kernel'),
+             ('license_gate', 6100, 'Foundation')] +
             [(c['name'], c['port'], _groups.get(c['name'], 'Runtime'))
              for c in self.config.get('components', [])]
         )
@@ -871,6 +875,13 @@ class PrismService:
         sentinel = _http_get(self._ports.get('sentinel', 0), '/risk-levels') or {}
         return 200, {**sentinel, 'generated_at': _now()}
 
+    def license_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Proxy to license_gate — returns current tier and validity."""
+        status = _http_get(6100, '/api/license/status') or {
+            'valid': False, 'tier': 'lite', 'operator_limit': 2, 'expires': None,
+            'error': 'license_gate not running',
+        }
+        return 200, {**status, 'generated_at': _now()}
 
     def operator_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Live status of all registered operators from registry.json.

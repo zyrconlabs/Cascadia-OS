@@ -56,7 +56,19 @@ else
     curl -sf http://127.0.0.1:8080/health > /dev/null && echo "✓ llama.cpp ready" || echo "✗ llama.cpp failed — check data/logs/llamacpp.log"
 fi
 
-# ── 2. Cascadia OS ────────────────────────────────────────────────────────
+# ── 2. License Gate ───────────────────────────────────────────────────────
+if curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; then
+    echo "✓ License Gate already running"
+else
+    echo "▸ Starting License Gate..."
+    PYTHON="${REPO}/.venv/bin/python3"
+    [[ ! -f "$PYTHON" ]] && PYTHON="python3"
+    "$PYTHON" -m cascadia.licensing.license_gate >> data/logs/license_gate.log 2>&1 &
+    sleep 2
+    curl -sf http://127.0.0.1:6100/api/health > /dev/null && echo "✓ License Gate ready" || echo "✗ License Gate failed — check data/logs/license_gate.log"
+fi
+
+# ── 3. Cascadia OS ────────────────────────────────────────────────────────
 CASCADIA_RUNNING=false
 if curl -sf http://127.0.0.1:4011/health > /dev/null 2>&1; then
     # Verify it's running from THIS directory, not a stale/backup instance
@@ -81,12 +93,12 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     curl -sf http://127.0.0.1:4011/health > /dev/null && echo "✓ Cascadia OS ready" || echo "✗ Cascadia OS failed — check logs"
 fi
 
-# ── 3. Operators ──────────────────────────────────────────────────────────
+# ── 4. Operators ──────────────────────────────────────────────────────────
 # First-party operators are maintained in cascadia-os-operators (private).
 # Start operators from that repo before running this script.
 # See: https://github.com/zyrconlabs/cascadia-os-operators
 
-# ── 4. Register operators with CREW ──────────────────────────────────────
+# ── 5. Register operators with CREW ──────────────────────────────────────
 # BELL self-registers with CREW automatically after startup.
 # Commercial operators (cascadia-os-operators) self-register when started.
 # Custom operators: POST http://127.0.0.1:5100/register with your operator_id.
@@ -97,6 +109,10 @@ echo "════════════════════════�
 echo " Cascadia OS stack is up."
 echo "═══════════════════════════════════════════════════════════"
 echo ""
+# Component health summary
+_lg_health=$(curl -sf http://127.0.0.1:6100/api/health 2>/dev/null)
+_lg_tier=$(echo "$_lg_health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tier','?'))" 2>/dev/null || echo "?")
+echo "  License Gate     →  http://127.0.0.1:6100/api/health  (tier: $_lg_tier)"
 echo "  PRISM dashboard  →  http://localhost:6300/"
 echo ""
 echo "  Run demo:  bash demo.sh"
