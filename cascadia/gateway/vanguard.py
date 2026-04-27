@@ -41,6 +41,8 @@ CHANNEL_TYPES = {
     'bell',       # From BELL chat interface
     'calendar',   # Calendar event triggers
     'form',       # Web form submissions
+    'telegram',
+    'whatsapp',
 }
 
 
@@ -109,9 +111,17 @@ class VanguardService:
         self.runtime.register_route('GET',  '/inbox',              self.get_inbox)
         self.runtime.register_route('GET',  '/outbox',             self.get_outbox)
         self.runtime.register_route('POST', '/webhook',            self.receive_webhook)
+        self.runtime.register_route('GET',  '/webhook',            self.verify_webhook)
 
     def _register_defaults(self) -> None:
         for ch_type in ('email', 'webhook', 'api', 'bell'):
+            self._channels[ch_type] = {
+                'channel_id': ch_type,
+                'type': ch_type,
+                'active': True,
+                'registered_at': _now(),
+            }
+        for ch_type in ('telegram', 'whatsapp'):
             self._channels[ch_type] = {
                 'channel_id': ch_type,
                 'type': ch_type,
@@ -159,16 +169,72 @@ class VanguardService:
 
     def receive_webhook(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """
-        Dedicated webhook endpoint. Normalizes and queues for BEACON.
-        Trigger source could be Stripe, Calendly, Typeform, Zapier, etc.
+        Dedicated webhook endpoint. Normalizes known platform formats.
+        Supports: Telegram, WhatsApp Cloud API, generic webhooks.
         """
-        source = payload.get('source', 'webhook')
-        return self.receive_inbound({
-            **payload,
-            'channel': 'webhook',
-            'sender': source,
-            'content': f'Webhook from {source}',
-        })
+        # Telegram inbound
+        if 'update_id' in payload and 'message' in payload:
+            msg = payload['message']
+            from_info = msg.get('from', {})
+            username = from_info.get('username') or str(from_info.get('id', 'unknown'))
+            return self.receive_inbound({
+                'channel': 'telegram',
+                'sender': username,
+                'content': msg.get('text', ''),
+                'metadata': {
+                    'chat_id': msg.get('chat', {}).get('id'),
+                    'update_id': payload['update_id'],
+                    'first_name': from_info.get('first_name', ''),
+                    'message_id': msg.get('message_id'),
+                },
+                'raw': payload,
+            })
+
+        # WhatsApp Cloud API inbound
+        elif (payload.get('object') == 'whatsapp_business_account'
+              and 'entry' in payload):
+            try:
+                entry  = payload['entry'][0]
+                change = entry['changes'][0]['value']
+                msgs   = change.get('messages', [])
+                if not msgs:
+                    # Status update, not a message
+                    return 200, {'status': 'ignored', 'reason': 'no_messages'}
+                msg        = msgs[0]
+                meta       = change.get('metadata', {})
+                return self.receive_inbound({
+                    'channel': 'whatsapp',
+                    'sender': msg['from'],
+                    'content': msg.get('text', {}).get('body', ''),
+                    'metadata': {
+                        'wa_message_id': msg['id'],
+                        'phone_number_id': meta.get('phone_number_id', ''),
+                        'timestamp': msg.get('timestamp'),
+                        'message_type': msg.get('type', 'text'),
+                    },
+                    'raw': payload,
+                })
+            except (KeyError, IndexError):
+                self.runtime.logger.warning('VANGUARD: malformed WhatsApp payload')
+                return 200, {'status': 'ignored', 'reason': 'malformed_payload'}
+
+        # Generic webhook (original behavior)
+        else:
+            source = payload.get('source', 'webhook')
+            return self.receive_inbound({
+                **payload,
+                'channel': 'webhook',
+                'sender': source,
+                'content': f'Webhook from {source}',
+            })
+
+    def verify_webhook(self, payload: Dict[str, Any]) -> tuple[int, Any]:
+        """Handle Meta WhatsApp hub.challenge verification (GET request)."""
+        import os
+        verify_token = os.environ.get('WHATSAPP_VERIFY_TOKEN', '')
+        # payload won't have query params from ServiceRuntime; get from Flask request if available
+        # This is a best-effort passthrough — the WhatsApp operator server handles real verification
+        return 200, {'status': 'webhook_endpoint_active'}
 
     def dispatch_outbound(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """
