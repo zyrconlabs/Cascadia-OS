@@ -176,6 +176,14 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/watchdog/status',            self.watchdog_status)
         # License gate
         self.runtime.register_route('GET',  '/api/prism/license',              self.license_status)
+        # Sales Funnel trigger (Sprint 4)
+        self.runtime.register_route('POST', '/api/prism/sales_funnel/run',               self.sales_funnel_run)
+        self.runtime.register_route('GET',  '/api/prism/sales_funnel/run/{run_id}',      self.sales_funnel_run_status)
+        self.runtime.register_route('POST', '/api/prism/sales_funnel/approve/{run_id}',  self.sales_funnel_approve)
+        self.runtime.register_route('GET',  '/sales-funnel',                             self.serve_sales_funnel)
+        # DEPOT one-button install/remove (Sprint 4 Task 7)
+        self.runtime.register_route('POST', '/api/prism/depot/install',                  self.depot_install)
+        self.runtime.register_route('POST', '/api/prism/depot/remove',                   self.depot_remove)
 
         # Start operator watchdog
         try:
@@ -1695,6 +1703,92 @@ class PrismService:
         if self._watchdog is None:
             return 200, {'operators': {}, 'generated_at': _now(), 'poll_interval_seconds': 30}
         return 200, self._watchdog.get_status()
+
+    # ------------------------------------------------------------------
+    # Sprint 4 — Sales Funnel trigger
+    # ------------------------------------------------------------------
+
+    def sales_funnel_run(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/sales_funnel/run — trigger the Sales Funnel workflow via STITCH."""
+        stitch_port = self._ports.get('stitch', 6201)
+        result = _http_post(stitch_port, '/api/workflows/wf_sales_funnel/run', {
+            'id': 'wf_sales_funnel',
+            'input': {
+                'company_name':    payload.get('company_name', ''),
+                'contact_name':    payload.get('contact_name', ''),
+                'contact_email':   payload.get('contact_email', ''),
+                'service_interest': payload.get('service_interest', ''),
+            },
+        }, timeout=10.0)
+        if result is None:
+            return 502, {'error': 'STITCH not reachable'}
+        return 202, result
+
+    def sales_funnel_run_status(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/sales_funnel/run/{run_id} — poll run state from STITCH."""
+        run_id = payload.get('run_id', '')
+        if not run_id:
+            return 400, {'error': 'run_id required'}
+        stitch_port = self._ports.get('stitch', 6201)
+        result = _http_get(stitch_port, f'/api/workflows/runs/{run_id}', timeout=5.0)
+        if result is None:
+            return 502, {'error': 'STITCH not reachable'}
+        return 200, result
+
+    def sales_funnel_approve(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/sales_funnel/approve/{run_id} — proxy approval decision to STITCH."""
+        run_id = payload.get('run_id', '')
+        if not run_id:
+            return 400, {'error': 'run_id required'}
+        stitch_port = self._ports.get('stitch', 6201)
+        result = _http_post(stitch_port, f'/api/workflows/runs/{run_id}/approve', {
+            'run_id': run_id,
+            'approved': payload.get('approved', False),
+            'note': payload.get('note', ''),
+        }, timeout=10.0)
+        if result is None:
+            return 502, {'error': 'STITCH not reachable'}
+        return 200, result
+
+    def serve_sales_funnel(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /sales-funnel — serve the Sales Funnel trigger UI."""
+        html = (Path(__file__).parent / 'templates' / 'sales_funnel.html').read_bytes()
+        return 200, {'__html__': html}
+
+    # ------------------------------------------------------------------
+    # Sprint 4 Task 7 — DEPOT install / remove
+    # ------------------------------------------------------------------
+
+    def depot_install(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/depot/install — proxy to CREW /install_operator."""
+        crew_port = self._ports.get('crew', 5100)
+        result = _http_post(crew_port, '/install_operator', payload, timeout=30.0)
+        if result is None:
+            return 502, {'error': 'CREW not reachable'}
+        return 200, result
+
+    def depot_remove(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/depot/remove — proxy to CREW /remove_operator with dry-run support."""
+        # Dry-run pass: check impact before confirming
+        if not payload.get('confirmed', False):
+            crew_port = self._ports.get('crew', 5100)
+            dry = _http_post(crew_port, '/remove_operator', {**payload, 'dry_run': True}, timeout=10.0)
+            if dry is None:
+                return 502, {'error': 'CREW not reachable'}
+            affected = dry.get('affected_workflows', [])
+            return 200, {
+                'requires_confirmation': True,
+                'operator_id': payload.get('operator_id', ''),
+                'affected_workflows': affected,
+                'dry_run': True,
+                'message': f'This will remove the operator and affect {len(affected)} workflow(s). POST again with confirmed=true to proceed.',
+            }
+        # Confirmed — execute removal
+        crew_port = self._ports.get('crew', 5100)
+        result = _http_post(crew_port, '/remove_operator', payload, timeout=15.0)
+        if result is None:
+            return 502, {'error': 'CREW not reachable'}
+        return 200, result
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')

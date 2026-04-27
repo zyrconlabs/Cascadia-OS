@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sales Funnel — Cascadia OS</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .container { width: 100%; max-width: 680px; }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 2rem; }
+    .card {
+      background: #1e2430;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #93c5fd; }
+    label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.3rem; }
+    input[type="text"], input[type="email"] {
+      width: 100%;
+      padding: 0.6rem 0.85rem;
+      background: #131720;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 1rem;
+    }
+    input:focus { border-color: #3b82f6; }
+    button#submit-btn {
+      width: 100%;
+      padding: 0.75rem;
+      background: #2563eb;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button#submit-btn:hover:not(:disabled) { background: #1d4ed8; }
+    button#submit-btn:disabled { background: #374151; cursor: not-allowed; }
+    #status-panel { display: none; }
+    #run-meta { font-size: 0.8rem; color: #64748b; margin-bottom: 1rem; }
+    .steps-list { list-style: none; }
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid #2d3748;
+    }
+    .step-item:last-child { border-bottom: none; }
+    .step-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+    .step-icon.pending   { background: #374151; color: #94a3b8; }
+    .step-icon.running   { background: #1d4ed8; color: #fff; animation: pulse 1.2s infinite; }
+    .step-icon.complete  { background: #16a34a; color: #fff; }
+    .step-icon.skipped   { background: #4b5563; color: #9ca3af; }
+    .step-icon.error,
+    .step-icon.timeout   { background: #dc2626; color: #fff; }
+    .step-icon.awaiting_approval { background: #d97706; color: #fff; }
+    .step-icon.approval_denied   { background: #7c2d12; color: #fff; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    .step-name { flex: 1; font-size: 0.9rem; }
+    .step-badge {
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      background: #1e3a5f;
+      color: #93c5fd;
+    }
+    #approval-panel {
+      display: none;
+      background: #1c1400;
+      border: 1px solid #92400e;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-top: 0.5rem;
+    }
+    #approval-label { font-size: 0.9rem; margin-bottom: 0.75rem; color: #fde68a; }
+    .approval-btns { display: flex; gap: 0.75rem; }
+    .btn-approve {
+      flex: 1; padding: 0.6rem; border: none; border-radius: 6px;
+      background: #15803d; color: #fff; font-weight: 600; cursor: pointer;
+    }
+    .btn-deny {
+      flex: 1; padding: 0.6rem; border: none; border-radius: 6px;
+      background: #b91c1c; color: #fff; font-weight: 600; cursor: pointer;
+    }
+    #run-status-badge {
+      display: inline-block;
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-left: 0.5rem;
+    }
+    .badge-running        { background: #1d4ed8; color: #fff; }
+    .badge-complete       { background: #16a34a; color: #fff; }
+    .badge-failed         { background: #dc2626; color: #fff; }
+    .badge-awaiting_approval { background: #d97706; color: #fff; }
+    #error-msg { color: #f87171; font-size: 0.85rem; margin-top: 0.5rem; display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Sales Funnel</h1>
+    <p class="subtitle">Qualify a lead, research the company, generate a proposal, and send it.</p>
+
+    <div class="card" id="form-card">
+      <h2>New Lead</h2>
+      <label for="company_name">Company Name <span style="color:#f87171">*</span></label>
+      <input type="text" id="company_name" placeholder="Acme Corp" required>
+
+      <label for="contact_name">Contact Name</label>
+      <input type="text" id="contact_name" placeholder="Jane Smith">
+
+      <label for="contact_email">Contact Email <span style="color:#f87171">*</span></label>
+      <input type="email" id="contact_email" placeholder="jane@acme.com" required>
+
+      <label for="service_interest">Service Interest</label>
+      <input type="text" id="service_interest" placeholder="e.g. automation, analytics">
+
+      <button id="submit-btn" onclick="submitFunnel()">Run Sales Funnel →</button>
+      <div id="error-msg"></div>
+    </div>
+
+    <div class="card" id="status-panel">
+      <h2>
+        Run Status
+        <span id="run-status-badge" class="badge-running">running</span>
+      </h2>
+      <div id="run-meta"></div>
+
+      <div id="approval-panel">
+        <div id="approval-label"></div>
+        <div class="approval-btns">
+          <button class="btn-approve" onclick="decideApproval(true)">Approve &amp; Send</button>
+          <button class="btn-deny" onclick="decideApproval(false)">Deny</button>
+        </div>
+      </div>
+
+      <ul class="steps-list" id="steps-list"></ul>
+    </div>
+  </div>
+
+  <script>
+    let _runId = null;
+    let _pollTimer = null;
+    const STEP_ICONS = {
+      pending: '·', running: '…', complete: '✓', skipped: '–',
+      error: '✕', timeout: '✕', awaiting_approval: '!', approval_denied: '✕',
+      approved: '✓',
+    };
+
+    function showError(msg) {
+      const el = document.getElementById('error-msg');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    async function submitFunnel() {
+      const company = document.getElementById('company_name').value.trim();
+      const email   = document.getElementById('contact_email').value.trim();
+      if (!company) { showError('Company Name is required.'); return; }
+      if (!email)   { showError('Contact Email is required.'); return; }
+
+      document.getElementById('error-msg').style.display = 'none';
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Starting…';
+
+      try {
+        const resp = await fetch('/api/prism/sales_funnel/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            company_name:     company,
+            contact_name:     document.getElementById('contact_name').value.trim(),
+            contact_email:    email,
+            service_interest: document.getElementById('service_interest').value.trim(),
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.run_id) {
+          showError(data.error || 'Failed to start workflow.');
+          btn.disabled = false;
+          btn.textContent = 'Run Sales Funnel →';
+          return;
+        }
+        _runId = data.run_id;
+        document.getElementById('run-meta').textContent = `Run ID: ${_runId}`;
+        document.getElementById('status-panel').style.display = 'block';
+        document.getElementById('form-card').style.opacity = '0.5';
+        btn.textContent = 'Running…';
+        startPolling();
+      } catch (e) {
+        showError('Network error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Run Sales Funnel →';
+      }
+    }
+
+    function startPolling() {
+      _pollTimer = setInterval(pollStatus, 3000);
+      pollStatus();
+    }
+
+    async function pollStatus() {
+      if (!_runId) return;
+      try {
+        const resp = await fetch(`/api/prism/sales_funnel/run/${_runId}`);
+        const data = await resp.json();
+        renderStatus(data);
+      } catch (e) { /* ignore transient */ }
+    }
+
+    function renderStatus(run) {
+      const badge = document.getElementById('run-status-badge');
+      badge.textContent = run.status || 'unknown';
+      badge.className = `badge-${run.status || 'running'}`;
+
+      // Steps
+      const steps = run.steps || [];
+      const ul = document.getElementById('steps-list');
+      ul.innerHTML = '';
+      steps.forEach(s => {
+        const li = document.createElement('li');
+        li.className = 'step-item';
+        const icon = document.createElement('div');
+        icon.className = `step-icon ${s.status}`;
+        icon.textContent = STEP_ICONS[s.status] || '·';
+        const name = document.createElement('div');
+        name.className = 'step-name';
+        name.textContent = s.name || s.step_id;
+        const badge = document.createElement('span');
+        badge.className = 'step-badge';
+        badge.textContent = s.status;
+        li.appendChild(icon);
+        li.appendChild(name);
+        li.appendChild(badge);
+        ul.appendChild(li);
+      });
+
+      // Approval gate
+      const approvalPanel = document.getElementById('approval-panel');
+      if (run.awaiting_approval) {
+        approvalPanel.style.display = 'block';
+        document.getElementById('approval-label').textContent =
+          run.approval_label || 'Approval required to continue.';
+      } else {
+        approvalPanel.style.display = 'none';
+      }
+
+      // Terminal states
+      if (['complete', 'failed'].includes(run.status)) {
+        clearInterval(_pollTimer);
+        document.getElementById('submit-btn').textContent =
+          run.status === 'complete' ? 'Workflow Complete ✓' : 'Workflow Failed ✕';
+        if (run.error) {
+          showError(run.error);
+        }
+      }
+    }
+
+    async function decideApproval(approved) {
+      if (!_runId) return;
+      const note = approved ? '' : 'Denied from PRISM dashboard';
+      await fetch(`/api/prism/sales_funnel/approve/${_runId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved, note }),
+      });
+      document.getElementById('approval-panel').style.display = 'none';
+    }
+  </script>
+</body>
+</html>
