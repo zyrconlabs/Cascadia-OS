@@ -154,8 +154,9 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/prism/backups',              self.list_backups)
         self.runtime.register_route('POST', '/api/prism/backups/create',       self.create_backup)
         self.runtime.register_route('GET',  '/api/prism/backups/verify',       self.verify_backup)
-        # Campaign notify
+        # Social campaign integration (R11)
         self.runtime.register_route('POST', '/api/prism/campaign/notify',      self.campaign_notify)
+        self.runtime.register_route('GET',  '/api/prism/campaign/states',      self.campaign_states)
 
     # ------------------------------------------------------------------
     # Aggregated views
@@ -1573,22 +1574,45 @@ class PrismService:
     # ------------------------------------------------------------------
 
     def campaign_notify(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """Receive campaign state notifications from social operator."""
+        """Receive campaign state push from social operator; store by session_id."""
         session_id = payload.get('session_id', '')
-        state      = payload.get('state', '')
+        state      = payload.get('state', {})
         source     = payload.get('source', '')
         if not hasattr(self, '_campaign_notifications'):
             self._campaign_notifications = []
+        if not hasattr(self, '_campaign_states'):
+            self._campaign_states: Dict[str, Any] = {}
         self._campaign_notifications.append({
             'session_id': session_id, 'state': state,
             'source': source, 'received_at': _now()
         })
         self._campaign_notifications = self._campaign_notifications[-100:]
+        self._campaign_states[session_id] = {
+            'session_id':  session_id,
+            'state':       state,
+            'source':      source,
+            'received_at': _now(),
+        }
         try:
             self.runtime.broadcast_event({'type': 'campaign_update', 'session_id': session_id, 'state': state})
         except Exception:
             pass
         return 200, {'received': True}
+
+    def campaign_states(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Return all known campaign states pushed by the social operator."""
+        if not hasattr(self, '_campaign_states'):
+            self._campaign_states = {}
+        states = sorted(
+            self._campaign_states.values(),
+            key=lambda s: s.get('received_at', ''),
+            reverse=True,
+        )
+        return 200, {
+            'states':       states,
+            'count':        len(states),
+            'generated_at': _now(),
+        }
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')
