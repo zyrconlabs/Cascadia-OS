@@ -14,11 +14,16 @@ durable sequences. The name implies connecting things together.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import re as _re
 import sqlite3
 import threading
+import time as _time
+import urllib.request as _urllib_request
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from cascadia.shared.config import load_config
@@ -29,6 +34,476 @@ logger = logging.getLogger(__name__)
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Sales Funnel workflow seed + execution helpers
+# ---------------------------------------------------------------------------
+
+_SALES_FUNNEL_DEF = {
+    "id": "wf_sales_funnel",
+    "name": "Sales Funnel — Lead to Proposal",
+    "description": "Qualifies a lead, researches the company, generates a proposal, gets approval, and sends it.",
+    "trigger": {"type": "manual", "label": "New Lead Received"},
+    "input_schema": {
+        "company_name": "string (required)",
+        "contact_name": "string (optional)",
+        "contact_email": "string (required for final send)",
+        "service_interest": "string (optional)"
+    },
+    "steps": [
+        {
+            "id": "step_scout",
+            "name": "Qualify Lead",
+            "operator": "scout",
+            "port": 7002,
+            "endpoint": "POST /api/chat",
+            "input_map": {
+                "message": "Qualify this lead: {trigger.company_name}, contact: {trigger.contact_name}, email: {trigger.contact_email}, interest: {trigger.service_interest}"
+            },
+            "output_key": "scout_result",
+            "requires_approval": False,
+            "timeout_seconds": 30
+        },
+        {
+            "id": "step_recon",
+            "name": "Research Company",
+            "operator": "recon",
+            "port": 8002,
+            "endpoint": "POST /api/research/company",
+            "input_map": {
+                "company_name": "{trigger.company_name}",
+                "context": "new lead research",
+                "depth": 3
+            },
+            "poll_endpoint": "GET /api/research/run/{run_id}",
+            "poll_field": "run_id",
+            "poll_status_field": "status",
+            "poll_complete_value": "complete",
+            "poll_interval_seconds": 5,
+            "poll_timeout_seconds": 120,
+            "output_key": "recon_result",
+            "requires_approval": False
+        },
+        {
+            "id": "step_quote",
+            "name": "Generate Proposal",
+            "operator": "quote",
+            "port": 8007,
+            "endpoint": "POST /api/task",
+            "input_map": {
+                "task": "Generate a professional proposal for {trigger.company_name}",
+                "context": "{recon_result.result.summary}"
+            },
+            "output_key": "quote_result",
+            "requires_approval": False,
+            "timeout_seconds": 60
+        },
+        {
+            "id": "step_sentinel",
+            "name": "Request Approval",
+            "operator": "sentinel",
+            "port": 5102,
+            "endpoint": "POST /check",
+            "input_map": {
+                "action": "email.send",
+                "autonomy_level": "semi_autonomous",
+                "context": "proposal for {trigger.company_name} to {trigger.contact_email}"
+            },
+            "output_key": "sentinel_result",
+            "requires_approval": True,
+            "approval_label": "Approve sending proposal to {trigger.contact_email}?",
+            "approval_risk": "medium",
+            "timeout_seconds": 3600
+        },
+        {
+            "id": "step_email",
+            "name": "Send Proposal",
+            "operator": "email",
+            "port": 8010,
+            "endpoint": "POST /send",
+            "condition": "sentinel_result.verdict",
+            "input_map": {
+                "to": "{trigger.contact_email}",
+                "subject": "Proposal for {trigger.company_name}",
+                "body": "Please find attached the proposal for {trigger.company_name}. {quote_result.reply}"
+            },
+            "output_key": "email_result",
+            "requires_approval": False,
+            "timeout_seconds": 30
+        }
+    ],
+    "created_at": "",
+    "updated_at": ""
+}
+
+
+def _seed_sales_funnel(db_path: str) -> None:
+    """Create the Sales Funnel workflow on startup if it doesn't already exist."""
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                'SELECT id FROM workflow_definitions WHERE id=? AND deleted_at IS NULL',
+                ('wf_sales_funnel',)
+            ).fetchone()
+        if row:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        wf = _SALES_FUNNEL_DEF.copy()
+        wf['created_at'] = now
+        wf['updated_at'] = now
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('''
+                INSERT INTO workflow_definitions
+                (id, name, description, nodes, edges, viewport, created_by, is_template, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO NOTHING
+            ''', (
+                'wf_sales_funnel',
+                wf['name'],
+                wf['description'],
+                json.dumps(wf['steps']),
+                json.dumps([]),
+                json.dumps({'definition': wf}),
+                'system',
+                0,
+                now,
+                now,
+            ))
+    except Exception as exc:
+        logger.warning('STITCH: could not seed sales funnel: %s', exc)
+
+
+# ---------------------------------------------------------------------------
+# Workflow run execution engine
+# ---------------------------------------------------------------------------
+
+def _resolve_template(template: Any, context: dict) -> Any:
+    """Resolve {path.to.value} placeholders in template strings."""
+    if not isinstance(template, str):
+        return template
+
+    def replacer(match: '_re.Match') -> str:
+        path = match.group(1)
+        parts = path.split('.')
+        val: Any = context
+        for p in parts:
+            if isinstance(val, dict):
+                val = val.get(p, '')
+            else:
+                return ''
+        return str(val) if val is not None else ''
+
+    return _re.sub(r'\{([^}]+)\}', replacer, template)
+
+
+def _resolve_input_map(input_map: dict, context: dict) -> dict:
+    """Resolve all template strings in an input_map dict."""
+    resolved = {}
+    for k, v in input_map.items():
+        if isinstance(v, str):
+            resolved[k] = _resolve_template(v, context)
+        else:
+            resolved[k] = v
+    return resolved
+
+
+def _call_operator(port: int, endpoint: str, payload: dict) -> dict:
+    """Make HTTP call to operator. Returns response dict or error dict."""
+    method, path = endpoint.split(' ', 1)
+    url = f"http://127.0.0.1:{port}{path}"
+    if method == 'POST':
+        body = json.dumps(payload).encode()
+        req = _urllib_request.Request(url, data=body, method='POST',
+                                      headers={'Content-Type': 'application/json'})
+    else:
+        req = _urllib_request.Request(url, method='GET',
+                                      headers={'Content-Type': 'application/json'})
+    try:
+        with _urllib_request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read().decode())
+    except Exception as exc:
+        return {'error': str(exc), 'status': 'operator_error'}
+
+
+def _get_nested(obj: Any, path: str) -> Any:
+    """Get a nested value from a dict using dot-notation path."""
+    parts = path.split('.')
+    val = obj
+    for p in parts:
+        if isinstance(val, dict):
+            val = val.get(p)
+        else:
+            return None
+    return val
+
+
+_RUNS_FILE_LOCK = threading.Lock()
+
+
+def _runs_file_path(db_path: str) -> Path:
+    """Return path to the workflow_runs.json file, co-located with the DB."""
+    return Path(db_path).parent / 'workflow_runs.json'
+
+
+def _load_runs(db_path: str) -> dict:
+    fp = _runs_file_path(db_path)
+    try:
+        return json.loads(fp.read_text())
+    except Exception:
+        return {}
+
+
+def _save_runs(db_path: str, runs: dict) -> None:
+    fp = _runs_file_path(db_path)
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    fp.write_text(json.dumps(runs, indent=2))
+
+
+def _update_run(db_path: str, run_id: str, updates: dict) -> None:
+    with _RUNS_FILE_LOCK:
+        runs = _load_runs(db_path)
+        if run_id in runs:
+            runs[run_id].update(updates)
+            runs[run_id]['updated_at'] = _now()
+            _save_runs(db_path, runs)
+
+
+class WorkflowRunEngine:
+    """
+    Executes a sales-funnel-style workflow definition sequentially.
+    Supports: polling steps, approval gates, conditional steps, timeout handling.
+    State is persisted in workflow_runs.json.
+    """
+
+    def __init__(self, db_path: str) -> None:
+        self._db_path = db_path
+
+    def start(self, workflow_def: dict, input_data: dict) -> str:
+        """Create a run record and launch execution in a background thread."""
+        run_id = f'run_{uuid.uuid4().hex[:12]}'
+        now = _now()
+        run_record = {
+            'run_id': run_id,
+            'workflow_id': workflow_def.get('id', 'unknown'),
+            'workflow_name': workflow_def.get('name', ''),
+            'status': 'running',
+            'input': input_data,
+            'steps': [],
+            'outputs': {},
+            'created_at': now,
+            'updated_at': now,
+            'error': None,
+            'awaiting_approval': False,
+            'approval_step': None,
+        }
+        with _RUNS_FILE_LOCK:
+            runs = _load_runs(self._db_path)
+            runs[run_id] = run_record
+            _save_runs(self._db_path, runs)
+
+        thread = threading.Thread(
+            target=self._execute,
+            args=(run_id, workflow_def, input_data),
+            daemon=True,
+            name=f'wf-run-{run_id}',
+        )
+        thread.start()
+        return run_id
+
+    def _execute(self, run_id: str, workflow_def: dict, input_data: dict) -> None:
+        steps = workflow_def.get('steps', [])
+        context = {'trigger': input_data}
+        step_records: List[dict] = []
+
+        try:
+            for i, step in enumerate(steps):
+                step_id = step.get('id', f'step_{i}')
+                step_name = step.get('name', step_id)
+                port = step.get('port', 0)
+                endpoint = step.get('endpoint', 'POST /')
+                input_map = step.get('input_map', {})
+                output_key = step.get('output_key', step_id)
+                requires_approval = step.get('requires_approval', False)
+                condition = step.get('condition')
+                timeout_s = step.get('timeout_seconds', 30)
+
+                step_rec = {
+                    'step_id': step_id,
+                    'name': step_name,
+                    'status': 'running',
+                    'started_at': _now(),
+                    'completed_at': None,
+                    'output': None,
+                    'error': None,
+                    'skipped': False,
+                }
+                step_records.append(step_rec)
+                _update_run(self._db_path, run_id, {'steps': step_records, 'current_step': step_id})
+
+                # Evaluate condition — skip step if condition is falsy
+                if condition:
+                    cond_val = _get_nested(context, condition)
+                    if not cond_val:
+                        step_rec.update({'status': 'skipped', 'skipped': True, 'completed_at': _now()})
+                        _update_run(self._db_path, run_id, {'steps': step_records})
+                        logger.info('STITCH run %s: step %s skipped (condition=%s falsy)', run_id, step_id, condition)
+                        continue
+
+                # Approval gate — pause run and wait
+                if requires_approval:
+                    approval_label = _resolve_template(
+                        step.get('approval_label', f'Approve step: {step_name}'), context
+                    )
+                    step_rec.update({'status': 'awaiting_approval'})
+                    _update_run(self._db_path, run_id, {
+                        'steps': step_records,
+                        'status': 'awaiting_approval',
+                        'awaiting_approval': True,
+                        'approval_step': step_id,
+                        'approval_label': approval_label,
+                    })
+                    logger.info('STITCH run %s: paused at approval gate %s', run_id, step_id)
+
+                    # Wait up to timeout for approval
+                    deadline = _time.monotonic() + timeout_s
+                    approved = False
+                    while _time.monotonic() < deadline:
+                        _time.sleep(3)
+                        with _RUNS_FILE_LOCK:
+                            runs = _load_runs(self._db_path)
+                        run_state = runs.get(run_id, {})
+                        decision = run_state.get('approval_decision')
+                        if decision == 'approved':
+                            approved = True
+                            break
+                        if decision == 'denied':
+                            approved = False
+                            break
+
+                    if not approved:
+                        step_rec.update({
+                            'status': 'approval_denied',
+                            'completed_at': _now(),
+                            'error': 'approval denied or timed out',
+                        })
+                        _update_run(self._db_path, run_id, {
+                            'steps': step_records,
+                            'status': 'failed',
+                            'error': f'Approval denied or timed out at step: {step_name}',
+                            'awaiting_approval': False,
+                        })
+                        return
+
+                    # Approval granted — clear gate state, continue
+                    step_rec.update({'status': 'approved'})
+                    _update_run(self._db_path, run_id, {
+                        'steps': step_records,
+                        'status': 'running',
+                        'awaiting_approval': False,
+                        'approval_decision': None,
+                    })
+
+                # Resolve inputs
+                resolved_inputs = _resolve_input_map(input_map, context)
+
+                # Execute step
+                poll_endpoint = step.get('poll_endpoint')
+                if poll_endpoint:
+                    # Polling step — first call starts the job, then poll for completion
+                    result = _call_operator(port, endpoint, resolved_inputs)
+                    if 'error' in result and result.get('status') == 'operator_error':
+                        step_rec.update({
+                            'status': 'error',
+                            'completed_at': _now(),
+                            'error': result['error'],
+                        })
+                        _update_run(self._db_path, run_id, {
+                            'steps': step_records,
+                            'status': 'failed',
+                            'error': f'Step {step_name} failed: {result["error"]}',
+                        })
+                        return
+
+                    # Extract poll field value (e.g. run_id from response)
+                    poll_field = step.get('poll_field', 'run_id')
+                    poll_id = result.get(poll_field, '')
+                    poll_status_field = step.get('poll_status_field', 'status')
+                    poll_complete_value = step.get('poll_complete_value', 'complete')
+                    poll_interval = step.get('poll_interval_seconds', 5)
+                    poll_timeout = step.get('poll_timeout_seconds', 120)
+
+                    # Resolve poll endpoint URL with run_id substituted
+                    poll_path = _resolve_template(
+                        poll_endpoint.split(' ', 1)[1] if ' ' in poll_endpoint else poll_endpoint,
+                        {**context, 'run_id': poll_id}
+                    )
+                    deadline = _time.monotonic() + poll_timeout
+                    while _time.monotonic() < deadline:
+                        _time.sleep(poll_interval)
+                        poll_result = _call_operator(port, f'GET {poll_path}', {})
+                        if poll_result.get(poll_status_field) == poll_complete_value:
+                            result = poll_result
+                            break
+                    else:
+                        step_rec.update({
+                            'status': 'timeout',
+                            'completed_at': _now(),
+                            'error': f'polling timed out after {poll_timeout}s',
+                        })
+                        _update_run(self._db_path, run_id, {
+                            'steps': step_records,
+                            'status': 'failed',
+                            'error': f'Step {step_name} timed out',
+                        })
+                        return
+                else:
+                    # Simple synchronous step
+                    result = _call_operator(port, endpoint, resolved_inputs)
+                    if 'error' in result and result.get('status') == 'operator_error':
+                        step_rec.update({
+                            'status': 'error',
+                            'completed_at': _now(),
+                            'error': result['error'],
+                        })
+                        _update_run(self._db_path, run_id, {
+                            'steps': step_records,
+                            'status': 'failed',
+                            'error': f'Step {step_name} failed: {result["error"]}',
+                        })
+                        return
+
+                # Store output
+                context[output_key] = result
+                step_rec.update({
+                    'status': 'complete',
+                    'completed_at': _now(),
+                    'output': result,
+                })
+                with _RUNS_FILE_LOCK:
+                    runs = _load_runs(self._db_path)
+                    if run_id in runs:
+                        runs[run_id]['steps'] = step_records
+                        runs[run_id]['outputs'][output_key] = result
+                        runs[run_id]['updated_at'] = _now()
+                        _save_runs(self._db_path, runs)
+                logger.info('STITCH run %s: step %s complete', run_id, step_id)
+
+            # All steps complete
+            _update_run(self._db_path, run_id, {
+                'status': 'complete',
+                'steps': step_records,
+                'completed_at': _now(),
+            })
+            logger.info('STITCH run %s: workflow complete', run_id)
+
+        except Exception as exc:
+            logger.error('STITCH run %s: unhandled error: %s', run_id, exc)
+            _update_run(self._db_path, run_id, {
+                'status': 'failed',
+                'error': str(exc),
+            })
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +728,12 @@ class StitchService:
         self.runtime.register_route('POST', '/api/workflows/{id}/run',    self.api_run_workflow)
         self.runtime.register_route('GET',  '/api/workflows/{id}/runs',   self.api_list_runs)
         self.runtime.register_route('GET',  '/designer',                  self.serve_designer)
+        # Sales Funnel execution engine routes
+        self.runtime.register_route('GET',  '/api/workflows/runs/{run_id}',         self.api_get_run)
+        self.runtime.register_route('POST', '/api/workflows/runs/{run_id}/approve', self.api_approve_run)
+
+        # Seed the Sales Funnel workflow
+        _seed_sales_funnel(self._db_path)
 
     def _register_builtins(self) -> None:
         """Register built-in workflow templates."""
@@ -426,9 +907,34 @@ class StitchService:
             return 404, {'error': f'workflow not found: {wf_id}'}
         return 200, wf.to_dict()
 
-    def api_run_workflow(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/workflows/{id}/run — start a run for a specific workflow."""
+    def api_list_runs(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/workflows/{id}/runs — list runs for a specific workflow."""
         wf_id = payload.get('id', '')
+        with self._lock:
+            runs = [r.to_dict() for r in self._runs.values() if r.workflow_id == wf_id]
+        runs.sort(key=lambda r: r.get('created_at', ''), reverse=True)
+        return 200, {'runs': runs, 'count': len(runs), 'workflow_id': wf_id}
+
+    def api_run_workflow(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/workflows/{id}/run — start a run for a specific workflow.
+        For the Sales Funnel (wf_sales_funnel), uses WorkflowRunEngine for real execution.
+        Falls back to the lightweight in-memory run for other workflows.
+        """
+        wf_id = payload.get('id', '')
+        input_data = payload.get('input', {})
+
+        # Sales Funnel — use the execution engine
+        if wf_id == 'wf_sales_funnel':
+            engine = WorkflowRunEngine(self._db_path)
+            run_id = engine.start(_SALES_FUNNEL_DEF, input_data)
+            return 202, {
+                'run_id': run_id,
+                'workflow_id': wf_id,
+                'status': 'running',
+                'message': 'Sales Funnel workflow started',
+            }
+
+        # Fallback — in-memory lightweight run
         with self._lock:
             wf = self._workflows.get(wf_id)
         if wf is None:
@@ -448,13 +954,43 @@ class StitchService:
         self.runtime.logger.info('STITCH api run: %s (%s)', run_id, wf_id)
         return 202, run.to_dict()
 
-    def api_list_runs(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """GET /api/workflows/{id}/runs — list runs for a specific workflow."""
-        wf_id = payload.get('id', '')
-        with self._lock:
-            runs = [r.to_dict() for r in self._runs.values() if r.workflow_id == wf_id]
-        runs.sort(key=lambda r: r.get('created_at', ''), reverse=True)
-        return 200, {'runs': runs, 'count': len(runs), 'workflow_id': wf_id}
+    def api_get_run(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/workflows/runs/{run_id} — return full run state from workflow_runs.json."""
+        run_id = payload.get('run_id', '')
+        if not run_id:
+            return 400, {'error': 'run_id required'}
+        with _RUNS_FILE_LOCK:
+            runs = _load_runs(self._db_path)
+        run = runs.get(run_id)
+        if run is None:
+            return 404, {'error': f'run not found: {run_id}'}
+        return 200, run
+
+    def api_approve_run(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/workflows/runs/{run_id}/approve — resume a paused run waiting for approval."""
+        run_id = payload.get('run_id', '')
+        approved = payload.get('approved', False)
+        note = payload.get('note', '')
+        if not run_id:
+            return 400, {'error': 'run_id required'}
+        with _RUNS_FILE_LOCK:
+            runs = _load_runs(self._db_path)
+        run = runs.get(run_id)
+        if run is None:
+            return 404, {'error': f'run not found: {run_id}'}
+        if run.get('status') != 'awaiting_approval':
+            return 400, {'error': f'run is not awaiting approval (status: {run.get("status")})'}
+        decision = 'approved' if approved else 'denied'
+        with _RUNS_FILE_LOCK:
+            runs = _load_runs(self._db_path)
+            if run_id in runs:
+                runs[run_id]['approval_decision'] = decision
+                runs[run_id]['approval_note'] = note
+                runs[run_id]['approval_decided_at'] = _now()
+                runs[run_id]['updated_at'] = _now()
+                _save_runs(self._db_path, runs)
+        self.runtime.logger.info('STITCH run %s: approval decision=%s note=%s', run_id, decision, note)
+        return 200, {'run_id': run_id, 'decision': decision, 'recorded_at': _now()}
 
     def serve_designer(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """GET /designer — serve the workflow designer HTML."""
