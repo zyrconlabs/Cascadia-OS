@@ -23,6 +23,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from cascadia.billing.stripe_handler import StripeHandler
+from cascadia.billing.license_generator import LicenseGenerator
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s [stripe_webhook] %(message)s')
 logger = logging.getLogger('stripe_webhook')
@@ -61,10 +62,29 @@ _handler = StripeHandler(
     price_map=PRICE_TO_TIER or None,
 )
 
+# License signing secret: env var > config.json license_secret
+_LICENSE_SECRET: str = os.environ.get('LICENSE_SIGNING_SECRET', '')
+if not _LICENSE_SECRET:
+    try:
+        _main_cfg = json.loads((_ROOT / 'config.json').read_text())
+        _LICENSE_SECRET = _main_cfg.get('license_secret', '')
+    except Exception:
+        pass
+
+_HANDSHAKE_PORT = int(os.environ.get('HANDSHAKE_PORT', '6203'))
+_VAULT_PORT = int(os.environ.get('VAULT_PORT', '5101'))
+
+_license_gen: LicenseGenerator | None = (
+    LicenseGenerator(_LICENSE_SECRET, _HANDSHAKE_PORT, _VAULT_PORT)
+    if _LICENSE_SECRET and 'replace-' not in _LICENSE_SECRET
+    else None
+)
+
 logger.info(
-    'Stripe config loaded — tiers mapped: %d, webhook_secret: %s, mode: %s',
+    'Stripe config loaded — tiers mapped: %d, webhook_secret: %s, license_gen: %s, mode: %s',
     len(PRICE_TO_TIER),
     'configured' if WEBHOOK_SECRET else 'missing',
+    'ready' if _license_gen else 'not configured',
     _stripe_cfg.get('mode', 'unknown'),
 )
 
@@ -104,7 +124,18 @@ def _handle_webhook(raw_body: bytes, sig_header: str) -> tuple[int, Dict[str, An
         return 400, {'error': 'invalid_json'}
     result = _handler.process_event(event)
     if result:
-        logger.info('Stripe event processed: action=%s', result.get('action'))
+        action = result.get('action')
+        logger.info('Stripe event processed: action=%s', action)
+        if action == 'activate' and _license_gen:
+            try:
+                key = _license_gen.activate(
+                    customer_email=result['customer_email'],
+                    customer_id=result['customer_id'],
+                    tier=result['tier'],
+                )
+                logger.info('License activated: tier=%s email=%s', result['tier'], result['customer_email'])
+            except Exception as exc:
+                logger.error('License activation failed: %s', exc)
     return 200, {'received': True, 'action': result.get('action') if result else None}
 
 
