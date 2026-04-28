@@ -43,13 +43,14 @@ def _now() -> str:
 _SALES_FUNNEL_DEF = {
     "id": "wf_sales_funnel",
     "name": "Sales Funnel — Lead to Proposal",
-    "description": "Qualifies a lead, researches the company, generates a proposal, gets approval, and sends it.",
+    "description": "Qualifies a lead, researches the company, synthesizes intelligence, generates a proposal, gets approval, and sends it.",
     "trigger": {"type": "manual", "label": "New Lead Received"},
     "input_schema": {
-        "company_name": "string (required)",
-        "contact_name": "string (optional)",
-        "contact_email": "string (required for final send)",
-        "service_interest": "string (optional)"
+        "company_name":    "string (required)",
+        "contact_name":    "string (optional)",
+        "contact_email":   "string (required for final send)",
+        "website":         "string (optional)",
+        "service_interest":"string (optional)",
     },
     "steps": [
         {
@@ -57,13 +58,19 @@ _SALES_FUNNEL_DEF = {
             "name": "Qualify Lead",
             "operator": "scout",
             "port": 7002,
-            "endpoint": "POST /api/chat",
+            "endpoint": "POST /api/leads/inbound",
             "input_map": {
-                "message": "Qualify this lead: {trigger.company_name}, contact: {trigger.contact_name}, email: {trigger.contact_email}, interest: {trigger.service_interest}"
+                "source": "workflow",
+                "data": {
+                    "company_name":    "{trigger.company_name}",
+                    "contact_name":    "{trigger.contact_name}",
+                    "contact_email":   "{trigger.contact_email}",
+                    "service_interest":"{trigger.service_interest}",
+                }
             },
             "output_key": "scout_result",
             "requires_approval": False,
-            "timeout_seconds": 30
+            "timeout_seconds": 30,
         },
         {
             "id": "step_recon",
@@ -73,17 +80,44 @@ _SALES_FUNNEL_DEF = {
             "endpoint": "POST /api/research/company",
             "input_map": {
                 "company_name": "{trigger.company_name}",
-                "context": "new lead research",
-                "depth": 3
+                "website":      "{trigger.website}",
+                "context":      "Sales lead — {trigger.service_interest}",
+                "depth":        3,
             },
-            "poll_endpoint": "GET /api/research/run/{run_id}",
-            "poll_field": "run_id",
-            "poll_status_field": "status",
-            "poll_complete_value": "complete",
+            "poll_endpoint":        "GET /api/research/run/{run_id}",
+            "poll_field":           "run_id",
+            "poll_status_field":    "status",
+            "poll_complete_value":  "complete",
             "poll_interval_seconds": 5,
-            "poll_timeout_seconds": 120,
+            "poll_timeout_seconds":  180,
             "output_key": "recon_result",
-            "requires_approval": False
+            "requires_approval": False,
+            "timeout_seconds": 200,
+        },
+        {
+            "id": "step_chief",
+            "name": "Synthesize Intelligence",
+            "operator": "chief",
+            "port": 8006,
+            "endpoint": "POST /api/synthesize",
+            "input_map": {
+                "objective": "Generate executive summary for sales proposal",
+                "context": [
+                    {
+                        "source":  "scout",
+                        "label":   "Lead Information",
+                        "content": "{scout_result.qualification}",
+                    },
+                    {
+                        "source":  "recon",
+                        "label":   "Company Research",
+                        "content": "{recon_result.result.summary}",
+                    },
+                ],
+            },
+            "output_key": "chief_result",
+            "requires_approval": False,
+            "timeout_seconds": 60,
         },
         {
             "id": "step_quote",
@@ -92,29 +126,22 @@ _SALES_FUNNEL_DEF = {
             "port": 8007,
             "endpoint": "POST /api/task",
             "input_map": {
-                "task": "Generate a professional proposal for {trigger.company_name}",
-                "context": "{recon_result.result.summary}"
+                "task": "Generate a professional sales proposal for {trigger.company_name}",
+                "context": {
+                    "company_name":  "{trigger.company_name}",
+                    "contact_name":  "{trigger.contact_name}",
+                    "contact_email": "{trigger.contact_email}",
+                    "synthesis_id":  "{chief_result.synthesis_id}",
+                    "summary":       "{chief_result.summary}",
+                    "opportunity":   "{chief_result.opportunity}",
+                    "approach":      "{chief_result.approach}",
+                },
             },
             "output_key": "quote_result",
-            "requires_approval": False,
-            "timeout_seconds": 60
-        },
-        {
-            "id": "step_sentinel",
-            "name": "Request Approval",
-            "operator": "sentinel",
-            "port": 5102,
-            "endpoint": "POST /check",
-            "input_map": {
-                "action": "email.send",
-                "autonomy_level": "semi_autonomous",
-                "context": "proposal for {trigger.company_name} to {trigger.contact_email}"
-            },
-            "output_key": "sentinel_result",
             "requires_approval": True,
-            "approval_label": "Approve sending proposal to {trigger.contact_email}?",
+            "approval_label": "Approve proposal for {trigger.company_name} ({trigger.contact_email})?",
             "approval_risk": "medium",
-            "timeout_seconds": 3600
+            "timeout_seconds": 3600,
         },
         {
             "id": "step_email",
@@ -122,19 +149,19 @@ _SALES_FUNNEL_DEF = {
             "operator": "email",
             "port": 8010,
             "endpoint": "POST /send",
-            "condition": "sentinel_result.verdict",
             "input_map": {
-                "to": "{trigger.contact_email}",
-                "subject": "Proposal for {trigger.company_name}",
-                "body": "Please find attached the proposal for {trigger.company_name}. {quote_result.reply}"
+                "to":        "{trigger.contact_email}",
+                "subject":   "Proposal for {trigger.company_name} — Zyrcon AI Labs",
+                "body":      "Dear {trigger.contact_name},\n\nThank you for your interest. Please find our proposal below.\n\n{quote_result.result.sections.executive_summary}\n\nWe look forward to working with you.\n\nBest regards,\nZyrcon AI Labs",
+                "from_name": "Zyrcon AI Labs",
             },
             "output_key": "email_result",
             "requires_approval": False,
-            "timeout_seconds": 30
-        }
+            "timeout_seconds": 30,
+        },
     ],
     "created_at": "",
-    "updated_at": ""
+    "updated_at": "",
 }
 
 
