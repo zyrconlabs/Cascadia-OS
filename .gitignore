@@ -38,3 +38,52 @@ cascadia/fleet/
 data/runtime/fleet.json
 data/runtime/audit.db
 operators/social/data/scheduled_posts.db
+
+# Environment variables (secrets)
+.env
+.env.local
+.env.*.local
+
+# License signing keys
+*.key
+*.pem
+signing_secret.txt
+
+# Stripe test data
+stripe_test_*.json
+
+# Additional database journal files
+*.db-journal
+*.db-wal
+
+# Additional editor artifacts
+*.swp
+*.swo
+*~
+
+# Logs directory
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Claude Code / AI Assistant artifacts
+CLAUDE_CODE_TASKS.md
+CLAUDE_CODE_*.md
+claude-code-*.md
+CLAUDE_*.md
+.claude/
+.claude-cache/
+claude_tasks/
+claude-tasks/
+task_*.md
+TASK_*.md
+TODO_CLAUDE.md
+INSTRUCTIONS_*.md
+ai-tasks/
+.ai/
+*_CLAUDE_*.md
+*-claude-*.md
+claude_*.tmp
