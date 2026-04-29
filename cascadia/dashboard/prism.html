@@ -578,6 +578,10 @@ input[type="file"]{display:none}
 .shp--healthy{background:rgba(52,211,153,.12);color:#059669}
 .shp--degraded{background:rgba(212,175,55,.14);color:#b45309}
 .shp--critical{background:rgba(248,113,113,.12);color:#dc2626}
+.sys-health-pill--clickable{cursor:pointer}
+.sys-health-pill--clickable:hover{filter:brightness(.88)}
+@keyframes approvals-flash{0%,100%{box-shadow:none}40%{box-shadow:0 0 0 3px rgba(248,113,113,.4)}}
+.approvals-flash{animation:approvals-flash .65s ease 2}
 /* ── HEALTH SURFACE — functions moved to script block below ── */
 </style>
 </head>
@@ -1286,6 +1290,18 @@ function updateNavBadges() {
   const existing=nb?.querySelector('.nav-badge');
   if (pending&&nb) { if(!existing){const b=document.createElement('span');b.className='nav-badge';nb.appendChild(b);} }
   else if (existing) existing.remove();
+}
+
+function highlightPendingApprovals() {
+  requestAnimationFrame(() => {
+    const panel = document.getElementById('main-panel');
+    if (panel) panel.scrollTop = 0;
+    document.querySelectorAll('.approval-card:not([style*="opacity"])').forEach(c => {
+      c.classList.remove('approvals-flash');
+      void c.offsetWidth; // force reflow to restart animation
+      c.classList.add('approvals-flash');
+    });
+  });
 }
 
 /* ═══ SIDEBAR ═══ */
@@ -2973,6 +2989,18 @@ function updateHealthIndicator(health) {
   pill.className = 'sys-health-pill ' + (clsMap[health]||'shp--degraded');
   pill.innerHTML = `<span style="width:5px;height:5px;border-radius:50%;background:${dotCol[health]||'var(--yellow)'};display:inline-block"></span>${label}`;
   pill.style.display = '';
+  if (health === 'critical') {
+    pill.classList.add('sys-health-pill--clickable');
+    pill.title = 'Click to view pending approvals';
+    pill.onclick = () => { switchSurface('approvals'); requestAnimationFrame(highlightPendingApprovals); };
+  } else if (health === 'degraded') {
+    pill.classList.add('sys-health-pill--clickable');
+    pill.title = 'Click to view health & observability';
+    pill.onclick = () => switchSurface('health');
+  } else {
+    pill.onclick = null;
+    pill.title = '';
+  }
 }
 
 function renderOverviewPanel(panel) {
@@ -3012,12 +3040,17 @@ function renderOverviewPanel(panel) {
 
   const healthCls = {healthy:'shp--healthy',degraded:'shp--degraded',critical:'shp--critical'}[ov.system_health]||'shp--degraded';
   const healthLabel = ov.system_health ? ov.system_health.charAt(0).toUpperCase()+ov.system_health.slice(1) : '—';
+  const healthClick = ov.system_health === 'critical'
+    ? `onclick="switchSurface('approvals');requestAnimationFrame(highlightPendingApprovals)" title="Click to view pending approvals"`
+    : ov.system_health === 'degraded'
+      ? `onclick="switchSurface('health')" title="Click to view health &amp; observability"`
+      : '';
 
   panel.innerHTML = `
     <div class="topbar">
       <div class="topbar__left"><div style="font-size:15px;font-weight:700;color:var(--navy-800)">Overview</div></div>
       <div class="topbar__right">
-        <span class="sys-health-pill ${healthCls}">${healthLabel}</span>
+        <span class="sys-health-pill ${healthCls}${healthClick?' sys-health-pill--clickable':''}" ${healthClick}>${healthLabel}</span>
         <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">auto-refresh 60s</span>
       </div>
     </div>
@@ -3053,6 +3086,15 @@ async function refreshWatchdogStatus() {
     el.style.display = '';
     el.textContent = `Watchdog: watching ${ops.length} operators, ${healthy} healthy, ${down} down`;
     el.style.color = down ? 'var(--yellow)' : 'var(--gray-400)';
+    if (down) {
+      el.style.cursor = 'pointer';
+      el.title = 'Click to view health & observability';
+      el.onclick = () => switchSurface('health');
+    } else {
+      el.style.cursor = '';
+      el.title = '';
+      el.onclick = null;
+    }
   } catch(_) {}
 }
 

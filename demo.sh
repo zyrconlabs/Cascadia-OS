@@ -108,6 +108,32 @@ for db in db_paths:
         pass
 "
 
+# PRISM caches the approvals count in memory — restart to force a fresh read
+# from the now-clean database so step 3 reports the correct pending count.
+info "Restarting Cascadia to flush PRISM in-memory cache..."
+pkill -f "cascadia" 2>/dev/null || true
+sleep 2
+bash "$REPO_DIR/start.sh" >> data/logs/flint.log 2>&1
+
+info "Waiting for FLINT on :${FLINT_PORT}..."
+for i in $(seq 1 30); do
+  if check_running; then break; fi
+  sleep 1
+done
+if ! check_running; then
+  echo "  ✗ Restart after cleanup failed. Check data/logs/flint.log"
+  exit 1
+fi
+
+info "Waiting for PRISM on :${PRISM_PORT}..."
+for i in $(seq 1 45); do
+  PRISM_STATE=$(curl -sf --max-time 2 "http://127.0.0.1:${PRISM_PORT}/health" 2>/dev/null \
+    | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))" 2>/dev/null || echo '')
+  if [[ "$PRISM_STATE" == "ready" ]]; then break; fi
+  sleep 1
+done
+ok "Cascadia restarted — PRISM cache cleared"
+
 # ── Step 2: Submit lead via BELL ──────────────────────────────────────────────
 step "2/6  Inbound lead arrives via BELL"
 info "A warehouse operator contacts Zyrcon Labs..."
