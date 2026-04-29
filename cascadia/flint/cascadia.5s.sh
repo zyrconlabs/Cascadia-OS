@@ -6,7 +6,7 @@
 # <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
 # <swiftbar.version>1.0.0</swiftbar.version>
 
-REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO_DIR="/Users/andy/Zyrcon/cascadia-os"
 LOG_DIR="$REPO_DIR/data/logs"
 VAULT_DIR="$REPO_DIR/data/vault"
 PRISM_PORT=6300
