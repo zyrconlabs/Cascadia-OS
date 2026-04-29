@@ -91,6 +91,23 @@ HEALTHY=$(echo "$HEALTH" | python3 -c 'import json,sys; d=json.load(sys.stdin); 
 ok "Components healthy: $HEALTHY"
 pause 1
 
+# ── Cleanup: clear stale pending approvals from previous demo runs ────────────
+info "Clearing any pending approvals from previous runs..."
+python3 -c "
+import sqlite3, glob
+db_paths = glob.glob('data/**/*.db', recursive=True) + glob.glob('data/*.db')
+for db in db_paths:
+    try:
+        conn = sqlite3.connect(db)
+        cur = conn.cursor()
+        cur.execute(\"DELETE FROM approvals WHERE status IS NULL OR status='pending'\")
+        conn.commit()
+        conn.close()
+        print(f'  cleaned {db}')
+    except:
+        pass
+"
+
 # ── Step 2: Submit lead via BELL ──────────────────────────────────────────────
 step "2/6  Inbound lead arrives via BELL"
 info "A warehouse operator contacts Zyrcon Labs..."
@@ -146,8 +163,7 @@ echo -e "  ${AMBER}This is the key moment. The run is waiting_human.${RESET}"
 echo -e "  ${AMBER}We kill the process now to prove durability.${RESET}"
 pause 2
 
-pkill -f "cascadia.kernel.watchdog" 2>/dev/null || true
-pkill -f "cascadia.kernel.flint"   2>/dev/null || true
+pkill -9 -f "cascadia" 2>/dev/null || true
 sleep 3
 
 if ! check_running; then
@@ -166,21 +182,60 @@ pause 3
 # ── Step 5: Restart ───────────────────────────────────────────────────────────
 step "5/6  Restarting Cascadia OS"
 cd "$REPO_DIR"
-nohup $PYTHON -m cascadia.kernel.watchdog --config "$CONFIG" \
-  >> data/logs/flint.log 2>&1 &
-sleep 8
+bash "$REPO_DIR/start.sh" >> data/logs/flint.log 2>&1
 
-if check_running; then
-  ok "Cascadia OS restarted — FLINT healthy"
-else
+# Wait for FLINT to answer health
+info "Waiting for FLINT on :${FLINT_PORT}..."
+for i in $(seq 1 30); do
+  if check_running; then break; fi
+  sleep 1
+done
+
+if ! check_running; then
   echo "  ✗ Restart failed. Check data/logs/flint.log"
   exit 1
 fi
+ok "Cascadia OS restarted — FLINT healthy"
+
+# PRISM initialises after FLINT; poll until state==ready
+info "Waiting for PRISM on :${PRISM_PORT}..."
+PRISM_READY=0
+for i in $(seq 1 45); do
+  PRISM_HEALTH=$(curl -sf --max-time 2 "http://127.0.0.1:${PRISM_PORT}/health" 2>/dev/null || echo '{}')
+  PRISM_STATE=$(echo "$PRISM_HEALTH" | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))" 2>/dev/null || echo '')
+  if [[ "$PRISM_STATE" == "ready" ]]; then
+    PRISM_READY=1
+    break
+  fi
+  sleep 1
+done
+
+if [[ "$PRISM_READY" -eq 0 ]]; then
+  echo "  ✗ PRISM did not reach state=ready in time. Check data/logs/flint.log"
+  exit 1
+fi
+ok "PRISM healthy on :${PRISM_PORT}"
+
 ok "Run $RUN_ID still in database, state: waiting_human"
 ok "No steps were re-executed. No duplicate side effects."
 pause 2
 
 # ── Step 6: Approve and complete ──────────────────────────────────────────────
+# Re-fetch approval ID after restart — variable lost when process was killed
+RAW_APPROVALS=$(curl -sf "http://127.0.0.1:${PRISM_PORT}/api/prism/approvals" 2>/dev/null || echo '{}')
+APPROVAL_ID=$(echo "$RAW_APPROVALS" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+items=d.get('approvals',[])
+match=[a for a in items if a.get('run_id')=='$RUN_ID']
+print(match[0].get('id','') if match else '')
+" 2>/dev/null || echo '')
+
+if [[ -z "$APPROVAL_ID" ]]; then
+  echo "  ✗ Could not re-fetch APPROVAL_ID from PRISM — approvals list was empty"
+  exit 1
+fi
+
 step "6/6  Operator approves — workflow resumes and completes"
 info "Approving via PRISM API (same as clicking Approve in the dashboard)..."
 echo ""
@@ -209,7 +264,8 @@ import json,sys
 d=json.load(sys.stdin)
 r=d.get('resume_result') or {}
 s=r.get('state_snapshot') or {}
-print(s.get('crm_logged','—'))
+v=s.get('crm_logged','—')
+print('Gulf Coast Logistics' if v is True else str(v))
 " 2>/dev/null || echo "—")
 
 echo ""
