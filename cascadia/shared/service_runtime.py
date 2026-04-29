@@ -142,6 +142,8 @@ class ServiceRuntime:
         runtime = self
 
         class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
             def _cors_headers(self) -> None:
                 origin = self.headers.get('Origin', '*')
                 self.send_header('Access-Control-Allow-Origin', origin)
