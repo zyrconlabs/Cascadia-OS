@@ -348,7 +348,7 @@ PROVIDER=\$(python3 -c "import json; c=json.load(open('${INSTALL_DIR}/config.jso
 [[ "\$PROVIDER" != "llamacpp" ]] && exit 0;
 [[ ! -f "\$MODEL" ]] && exit 0;
 [[ ! -f "\$BIN" ]] && exit 0;
-exec "\$BIN" --model "\$MODEL" --host 127.0.0.1 --port 8080 --ctx-size 4096 --n-gpu-layers "\$GPU"
+exec "\$BIN" --model "\$MODEL" --host 0.0.0.0 --port 8080 --ctx-size 4096 --n-gpu-layers "\$GPU"
         </string>
     </array>
     <key>WorkingDirectory</key>
