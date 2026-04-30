@@ -9,15 +9,38 @@
   "tier_required": "lite",
   "port": 9031,
   "entry_point": "connector.py",
-  "dependencies": ["nats-py"],
+  "dependencies": [
+    "nats-py"
+  ],
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "communication",
-  "industries": ["general"],
+  "industries": [
+    "general"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
   "auth_type": "oauth2",
-  "actions": ["list_events", "create_event", "update_event", "delete_event", "get_event"],
+  "actions": [
+    "list_events",
+    "create_event",
+    "update_event",
+    "delete_event",
+    "get_event"
+  ],
   "approval_required_for_writes": true,
-  "nats_subjects": ["cascadia.connectors.calendar-connector.>"]
+  "nats_subjects": [
+    "cascadia.connectors.calendar-connector.>"
+  ],
+  "risk_level": "low",
+  "permissions": [
+    "read_calendar",
+    "write_calendar"
+  ],
+  "requires_approval_for": [],
+  "data_access": [
+    "calendar_events"
+  ],
+  "writes_external_systems": false,
+  "network_access": false
 }

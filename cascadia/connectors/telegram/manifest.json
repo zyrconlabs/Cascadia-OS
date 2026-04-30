@@ -9,13 +9,33 @@
   "tier_required": "lite",
   "port": 9000,
   "entry_point": "connector.py",
-  "dependencies": ["nats-py"],
+  "dependencies": [
+    "nats-py"
+  ],
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "communication",
-  "industries": ["all"],
+  "industries": [
+    "all"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
   "auth_type": "api_key",
-  "nats_subjects": ["cascadia.connectors.telegram-connector.>"]
+  "nats_subjects": [
+    "cascadia.connectors.telegram-connector.>"
+  ],
+  "risk_level": "high",
+  "permissions": [
+    "send_message",
+    "read_message"
+  ],
+  "requires_approval_for": [
+    "message.send"
+  ],
+  "data_access": [
+    "message_content",
+    "contacts"
+  ],
+  "writes_external_systems": true,
+  "network_access": true
 }

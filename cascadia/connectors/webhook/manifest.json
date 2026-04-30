@@ -13,12 +13,24 @@
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "runtime",
-  "industries": ["all"],
+  "industries": [
+    "all"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
   "auth_type": "hmac",
   "nats_subjects": [
     "cascadia.connectors.webhook-broker.>"
   ],
-  "approval_required_for_writes": false
+  "approval_required_for_writes": false,
+  "risk_level": "low",
+  "permissions": [
+    "receive_webhook"
+  ],
+  "requires_approval_for": [],
+  "data_access": [
+    "webhook_payload"
+  ],
+  "writes_external_systems": false,
+  "network_access": false
 }

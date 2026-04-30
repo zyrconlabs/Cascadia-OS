@@ -47,6 +47,12 @@ VALID_MANIFEST = {
     'industries': ['all'],
     'installed_by_default': False,
     'safe_to_uninstall': True,
+    'risk_level': 'low',
+    'permissions': [],
+    'requires_approval_for': [],
+    'data_access': [],
+    'writes_external_systems': False,
+    'network_access': False,
 }
 
 

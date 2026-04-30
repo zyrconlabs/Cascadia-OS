@@ -9,13 +9,34 @@
   "tier_required": "lite",
   "port": 9003,
   "entry_point": "connector.py",
-  "dependencies": ["nats-py"],
+  "dependencies": [
+    "nats-py"
+  ],
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "communication",
-  "industries": ["all"],
+  "industries": [
+    "all"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
   "auth_type": "bearer",
-  "nats_subjects": ["cascadia.connectors.slack-connector.>"]
+  "nats_subjects": [
+    "cascadia.connectors.slack-connector.>"
+  ],
+  "risk_level": "high",
+  "permissions": [
+    "send_message",
+    "read_channel",
+    "manage_webhooks"
+  ],
+  "requires_approval_for": [
+    "message.send"
+  ],
+  "data_access": [
+    "message_content",
+    "channel_members"
+  ],
+  "writes_external_systems": true,
+  "network_access": true
 }

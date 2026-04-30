@@ -9,13 +9,33 @@
   "tier_required": "lite",
   "port": 9002,
   "entry_point": "connector.py",
-  "dependencies": ["nats-py"],
+  "dependencies": [
+    "nats-py"
+  ],
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "communication",
-  "industries": ["all"],
+  "industries": [
+    "all"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
   "auth_type": "basic",
-  "nats_subjects": ["cascadia.connectors.sms-connector.>"]
+  "nats_subjects": [
+    "cascadia.connectors.sms-connector.>"
+  ],
+  "risk_level": "high",
+  "permissions": [
+    "send_sms",
+    "read_sms_status"
+  ],
+  "requires_approval_for": [
+    "sms.send"
+  ],
+  "data_access": [
+    "message_content",
+    "phone_numbers"
+  ],
+  "writes_external_systems": true,
+  "network_access": true
 }

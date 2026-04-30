@@ -13,10 +13,22 @@
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "runtime",
-  "industries": ["all"],
+  "industries": [
+    "all"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
   "nats_subjects": [
     "cascadia.connectors.scheduler-connector.>"
-  ]
+  ],
+  "risk_level": "low",
+  "permissions": [
+    "schedule_task"
+  ],
+  "requires_approval_for": [],
+  "data_access": [
+    "task_schedule"
+  ],
+  "writes_external_systems": false,
+  "network_access": false
 }

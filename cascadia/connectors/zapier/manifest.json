@@ -9,14 +9,37 @@
   "tier_required": "lite",
   "port": 9030,
   "entry_point": "connector.py",
-  "dependencies": ["nats-py"],
+  "dependencies": [
+    "nats-py"
+  ],
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "integration",
-  "industries": ["general"],
+  "industries": [
+    "general"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
-  "actions": ["receive_webhook", "send_to_zapier", "list_hooks", "register_hook", "delete_hook"],
+  "actions": [
+    "receive_webhook",
+    "send_to_zapier",
+    "list_hooks",
+    "register_hook",
+    "delete_hook"
+  ],
   "approval_required_for_writes": true,
-  "nats_subjects": ["cascadia.connectors.zapier-connector.>"]
+  "nats_subjects": [
+    "cascadia.connectors.zapier-connector.>"
+  ],
+  "risk_level": "medium",
+  "permissions": [
+    "send_webhook",
+    "receive_webhook"
+  ],
+  "requires_approval_for": [],
+  "data_access": [
+    "webhook_payload"
+  ],
+  "writes_external_systems": true,
+  "network_access": true
 }

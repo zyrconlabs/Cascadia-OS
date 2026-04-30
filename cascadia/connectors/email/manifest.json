@@ -30,5 +30,18 @@
   "approval_required_for_writes": true,
   "nats_subjects": [
     "cascadia.connectors.email-connector.>"
-  ]
+  ],
+  "risk_level": "high",
+  "permissions": [
+    "send_email"
+  ],
+  "requires_approval_for": [
+    "email.send"
+  ],
+  "data_access": [
+    "email_content",
+    "contacts"
+  ],
+  "writes_external_systems": true,
+  "network_access": true
 }

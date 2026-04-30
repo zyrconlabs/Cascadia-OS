@@ -9,14 +9,35 @@
   "tier_required": "lite",
   "port": 9980,
   "entry_point": "connector.py",
-  "dependencies": ["nats-py"],
+  "dependencies": [
+    "nats-py"
+  ],
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "runtime",
-  "industries": ["general"],
+  "industries": [
+    "general"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
   "auth_type": "api_key",
   "approval_required_for_writes": true,
-  "nats_subjects": ["cascadia.connectors.rest.>"]
+  "nats_subjects": [
+    "cascadia.connectors.rest.>"
+  ],
+  "risk_level": "medium",
+  "permissions": [
+    "http_request"
+  ],
+  "requires_approval_for": [
+    "rest.post",
+    "rest.put",
+    "rest.delete"
+  ],
+  "data_access": [
+    "request_payload",
+    "response_data"
+  ],
+  "writes_external_systems": true,
+  "network_access": true
 }

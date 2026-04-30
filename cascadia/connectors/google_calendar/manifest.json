@@ -9,14 +9,36 @@
   "tier_required": "lite",
   "port": 9502,
   "entry_point": "connector.py",
-  "dependencies": ["nats-py"],
+  "dependencies": [
+    "nats-py"
+  ],
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "productivity",
-  "industries": ["all"],
+  "industries": [
+    "all"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
   "auth_type": "oauth2",
-  "nats_subjects": ["cascadia.connectors.google-calendar-connector.>"],
-  "approval_required_for_writes": true
+  "nats_subjects": [
+    "cascadia.connectors.google-calendar-connector.>"
+  ],
+  "approval_required_for_writes": true,
+  "risk_level": "medium",
+  "permissions": [
+    "read_calendar",
+    "write_calendar",
+    "manage_events"
+  ],
+  "requires_approval_for": [
+    "event.create",
+    "event.delete"
+  ],
+  "data_access": [
+    "calendar_events",
+    "attendees"
+  ],
+  "writes_external_systems": true,
+  "network_access": true
 }

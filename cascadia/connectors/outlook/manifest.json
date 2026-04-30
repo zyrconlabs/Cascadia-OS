@@ -9,13 +9,35 @@
   "tier_required": "lite",
   "port": 9501,
   "entry_point": "connector.py",
-  "dependencies": ["nats-py"],
+  "dependencies": [
+    "nats-py"
+  ],
   "install_hook": "install.sh",
   "uninstall_hook": "uninstall.sh",
   "category": "communication",
-  "industries": ["all"],
+  "industries": [
+    "all"
+  ],
   "installed_by_default": false,
   "safe_to_uninstall": true,
   "auth_type": "oauth2",
-  "nats_subjects": ["cascadia.connectors.outlook-connector.>"]
+  "nats_subjects": [
+    "cascadia.connectors.outlook-connector.>"
+  ],
+  "risk_level": "high",
+  "permissions": [
+    "send_email",
+    "read_email",
+    "manage_folders"
+  ],
+  "requires_approval_for": [
+    "email.send"
+  ],
+  "data_access": [
+    "email_content",
+    "attachments",
+    "contacts"
+  ],
+  "writes_external_systems": true,
+  "network_access": true
 }
