@@ -219,7 +219,7 @@ class CrewService:
         operator_id = payload.get('operator_id', '')
         package_url = payload.get('package_url', '')
         manifest_in = payload.get('manifest', {})
-        source      = payload.get('source', 'depot')
+        source      = payload.get('source', 'installed')
         dry_run     = payload.get('dry_run', False)
 
         # Determine zip bytes
@@ -262,7 +262,7 @@ class CrewService:
 
         # Tier check
         tier_required = manifest.get('tier_required', 'lite')
-        tier_ok, tier_reason = _check_tier(self._config, tier_required)
+        tier_ok, tier_reason = _check_tier(getattr(self, '_config', {}), tier_required)
         if not tier_ok:
             return 403, {
                 'error': 'tier_required',
@@ -273,8 +273,9 @@ class CrewService:
 
         # Port conflict check
         port = manifest.get('port')
+        _cfg = getattr(self, '_config', {})
         if port:
-            reg_path = _registry_path(self._config)
+            reg_path = _registry_path(_cfg)
             reg = _load_registry(reg_path)
             for existing_op in reg.get('operators', []):
                 if existing_op.get('port') == port and existing_op.get('id') != op_id:
@@ -297,7 +298,7 @@ class CrewService:
                 return 500, {'error': f'extraction failed: {exc}'}
 
         # Register in operators registry.json
-        reg_path = _registry_path(self._config)
+        reg_path = _registry_path(_cfg)
         reg = _load_registry(reg_path)
         existing_ids = [op.get('id') for op in reg.get('operators', [])]
         new_entry = {
@@ -360,8 +361,7 @@ class CrewService:
             'health_ok': health_ok,
             'installed_at': _now_iso(),
         }
-        _append_install_log(self._config, log_entry)
-
+        _append_install_log(_cfg, log_entry)
         self.runtime.logger.info('CREW installed operator: %s v%s health=%s', op_id, manifest.get('version'), health_ok)
         return 201, {
             'installed': op_id,
