@@ -2764,20 +2764,50 @@ document.getElementById('key').addEventListener('keydown', function(e){
         return SettingsEngine(settings_db=settings_db, vault_db=vault_db)
 
     def _load_setup_manifest(self, target_type: str, target_id: str):
-        """Load manifest for target and return Manifest or None."""
-        from cascadia.shared.manifest_schema import load_manifest
+        """Load manifest for target and return Manifest or None.
+
+        Uses a lenient loader that only requires setup_fields — works for both
+        DEPOT-format manifests (type: operator) and runtime manifests (type: service/skill).
+        """
+        import json as _json
         import pathlib
+        from cascadia.shared.manifest_schema import (
+            Manifest, _coerce_setup_field, VALID_TYPES,
+        )
         base = pathlib.Path(__file__).parent.parent
         candidates = [
             base / "operators"  / target_id / "manifest.json",
             base / "connectors" / target_id / "manifest.json",
         ]
         for p in candidates:
-            if p.exists():
-                try:
-                    return load_manifest(p)
-                except Exception:
-                    pass
+            if not p.exists():
+                continue
+            try:
+                data = _json.loads(p.read_text(encoding="utf-8"))
+                # Coerce type to a runtime-valid value if needed
+                mtype = data.get("type", "service")
+                if mtype not in VALID_TYPES:
+                    mtype = "service"
+                setup_fields = [
+                    _coerce_setup_field(f)
+                    for f in data.get("setup_fields", [])
+                ]
+                return Manifest(
+                    id=data.get("id", target_id),
+                    name=data.get("name", target_id),
+                    version=data.get("version", "1.0.0"),
+                    type=mtype,
+                    capabilities=data.get("capabilities", []),
+                    required_dependencies=data.get("required_dependencies", []),
+                    requested_permissions=data.get("requested_permissions", []),
+                    autonomy_level=data.get("autonomy_level", "manual_only"),
+                    health_hook=data.get("health_hook", "/health"),
+                    description=data.get("description", ""),
+                    risk_level=data.get("risk_level", "low"),
+                    setup_fields=setup_fields,
+                )
+            except Exception:
+                pass
         return None
 
     def cfg_resources(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
