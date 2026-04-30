@@ -1,0 +1,22 @@
+{
+  "id": "rest-connector",
+  "name": "REST / OpenAPI Connector",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Makes authenticated HTTP/REST calls to any external API. Supports bearer token, API key, basic auth, and HMAC signing. Used by all operators that call external services.",
+  "author": "Zyrcon Labs",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 9980,
+  "entry_point": "connector.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "runtime",
+  "industries": ["general"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "auth_type": "api_key",
+  "approval_required_for_writes": true,
+  "nats_subjects": ["cascadia.connectors.rest.>"]
+}
