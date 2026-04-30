@@ -1,5 +1,6 @@
-<!-- IoT Sensor Widget — PRISM Dashboard embed
-     Polls GET http://127.0.0.1:8300/readings?limit=20 every 10 seconds.
+<!-- Sensors (beta) — PRISM Dashboard embed
+     Polls GET http://127.0.0.1:8300/iot/readings?limit=20 every 10 seconds.
+     Experimental local sensor monitoring. Not production IoT.
      Self-contained: no external dependencies.
 -->
 <style>
@@ -220,7 +221,7 @@
       <div class="iot-widget__title-icon">
         <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
       </div>
-      IoT Sensor Readings
+      Sensors <span style="font-size:9px;background:rgba(167,139,250,.25);color:#c4b5fd;border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:600;letter-spacing:.04em">beta</span>
     </div>
     <div class="iot-widget__status-bar" id="iot-status-bar">Loading...</div>
   </div>
@@ -236,7 +237,7 @@
 (function () {
   'use strict';
 
-  var ENDPOINT = 'http://127.0.0.1:8300/readings?limit=20';
+  var ENDPOINT = 'http://127.0.0.1:8300/iot/readings?limit=20';
   var POLL_INTERVAL = 10000; // 10 seconds
   var _timer = null;
   var _isOffline = false;

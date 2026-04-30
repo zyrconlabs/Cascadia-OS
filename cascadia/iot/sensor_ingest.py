@@ -1,9 +1,9 @@
 """
 sensor_ingest.py — Cascadia OS IoT
-Receives sensor readings and publishes to NATS.
-Owns: HTTP ingest, payload validation, NATS publish.
-Does not own: threshold evaluation, alerting, device registry.
-Port: 8300
+Pure library: sensor reading validation, normalization, NATS publish.
+Owns: validate_reading(), normalize_timestamp(), build_subject(), publish_reading(), _Handler.
+Does not own: port binding, process startup, threshold evaluation, alerting, device registry.
+Port binding is owned by cascadia/operators/iot_ingest/operator.py.
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from urllib.parse import urlparse
 
 NAME = "sensor_ingest"
 VERSION = "1.0.0"
-PORT = 8300
 NATS_URL = os.environ.get("NATS_URL", "nats://localhost:4222")
 
 VALID_SENSOR_TYPES = frozenset([
@@ -115,7 +114,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/iot/health":
-            self._send(200, {"status": "healthy", "component": "sensor_ingest", "port": PORT})
+            self._send(200, {"status": "healthy", "component": "sensor_ingest"})
         elif path == "/iot/sensor/types":
             self._send(200, {"sensor_types": sorted(VALID_SENSOR_TYPES)})
         else:
@@ -146,11 +145,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(200, {"accepted": True, "subject": subject})
 
 
-def start(port: int = PORT) -> None:
-    server = HTTPServer(("0.0.0.0", port), _Handler)
-    log.info("sensor_ingest listening on port %d", port)
-    server.serve_forever()
-
-
-if __name__ == "__main__":
-    start()
+# Public aliases for operator use
+validate_reading    = _validate_reading
+normalize_timestamp = _normalize_timestamp
+build_subject       = _nats_subject
+publish_reading     = _publish_to_nats

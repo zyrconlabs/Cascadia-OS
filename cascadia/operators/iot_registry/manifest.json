@@ -1,0 +1,22 @@
+{
+  "operator_id": "iot_registry",
+  "name": "IoT Device Registry",
+  "version": "1.0.0",
+  "description": "Experimental local device registry (beta). Manages IoT device registration, configuration, threshold settings, and last-seen tracking.",
+  "category": "iot",
+  "type": "operator",
+  "port": 8301,
+  "capabilities": ["iot.device.register", "iot.device.query", "iot.device.update"],
+  "autonomy_level": "assistive",
+  "requires_sentinel": false,
+  "tags": ["iot", "devices", "registry", "beta"],
+  "maturity": "beta",
+  "endpoints": {
+    "health": "GET /iot/health",
+    "register": "POST /iot/devices/register",
+    "list": "GET /iot/devices",
+    "get": "GET /iot/devices/{id}",
+    "update": "PUT /iot/devices/{id}",
+    "deregister": "POST /iot/devices/{id}/deregister"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "operator_id": "iot_ingest",
+  "name": "IoT Sensor Ingest",
+  "version": "1.0.0",
+  "description": "Experimental local sensor monitoring (beta). Receives sensor readings via HTTP, validates and normalizes them, publishes to NATS cascadia.iot.sensor.{type}.{device_id}.",
+  "category": "iot",
+  "type": "operator",
+  "port": 8300,
+  "capabilities": ["iot.sensor.ingest", "iot.readings.query"],
+  "autonomy_level": "assistive",
+  "requires_sentinel": false,
+  "tags": ["iot", "sensors", "beta", "ingest"],
+  "maturity": "beta",
+  "endpoints": {
+    "health": "GET /iot/health",
+    "ingest": "POST /iot/sensor/reading",
+    "types": "GET /iot/sensor/types",
+    "readings": "GET /iot/readings?limit=20"
+  }
+}

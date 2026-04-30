@@ -1,9 +1,9 @@
 """
 device_registry.py — Cascadia OS IoT
-Manages registered IoT devices and their configuration.
-Owns: device CRUD, last-seen updates, threshold config.
-Does not own: sensor ingest, alerting, operator logic.
-Port: 8301
+Pure library: device CRUD, last-seen updates, threshold config.
+Owns: DeviceStore, _Handler (importable HTTP handler).
+Does not own: port binding, process startup, sensor ingest, alerting.
+Port binding is owned by cascadia/operators/iot_registry/operator.py.
 """
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ from urllib.parse import urlparse
 
 NAME = "device_registry"
 VERSION = "1.0.0"
-PORT = 8301
 DB_PATH = os.environ.get("IOT_DB_PATH", "data/iot/devices.db")
 
 logging.basicConfig(
@@ -129,7 +128,11 @@ class DeviceStore:
             )
 
     def deregister_note(self, device_id: str) -> str:
-        suggestions_path = Path("~/dev/work3/SUGGESTIONS_SESSION3.md").expanduser()
+        path = os.getenv(
+            "ZYRCON_SUGGESTIONS_PATH",
+            "data/suggestions/iot_suggestions.md"
+        )
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         note = (
             f"\n### [{_now_utc()}] — Deregister request: {device_id}\n"
             f"Affects: data/iot/devices.db\n"
@@ -137,13 +140,13 @@ class DeviceStore:
             f"Description: User requested deregistration of device {device_id}. "
             f"Deletion is intentionally not automatic — requires manual review.\n"
             f"Proposed change: DELETE FROM devices WHERE device_id='{device_id}';\n"
-            f"Andy's decision: [leave blank]\n"
+            f"Decision: [leave blank]\n"
         )
         try:
-            with open(suggestions_path, "a") as f:
+            with open(path, "a") as f:
                 f.write(note)
         except OSError as exc:
-            log.warning("could not write to SUGGESTIONS file: %s", exc)
+            log.warning("could not write to suggestions file: %s", exc)
         return note
 
 
@@ -189,7 +192,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/iot/health":
-            self._send(200, {"status": "healthy", "component": "device_registry", "port": PORT})
+            self._send(200, {"status": "healthy", "component": "device_registry"})
             return
         if path == "/iot/devices":
             self._send(200, {"devices": _get_store().list_all()})
@@ -251,13 +254,3 @@ class _Handler(BaseHTTPRequestHandler):
 
 def touch_last_seen(device_id: str) -> None:
     _get_store().touch_last_seen(device_id)
-
-
-def start(port: int = PORT) -> None:
-    server = HTTPServer(("0.0.0.0", port), _Handler)
-    log.info("device_registry listening on port %d", port)
-    server.serve_forever()
-
-
-if __name__ == "__main__":
-    start()

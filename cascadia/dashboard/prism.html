@@ -608,6 +608,7 @@ input[type="file"]{display:none}
     <button class="nav-btn" onclick="switchSurface('health')" id="nav-health"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span class="nav-tooltip">Health & Observability</span></button>
     <button class="nav-btn" onclick="switchSurface('terminal')" id="nav-terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="nav-tooltip">Terminal</span></button>
     <button class="nav-btn" onclick="switchSurface('workflows')" id="nav-workflows"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/><path d="M6.5 8v4M17.5 8v4M10.5 13h3" stroke-linecap="round"/></svg><span class="nav-tooltip">Workflows</span></button>
+    <button class="nav-btn" onclick="switchSurface('sensors')" id="nav-sensors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nav-tooltip">Sensors (beta)</span></button>
     <div class="nav-divider"></div>
     <button class="nav-btn" onclick="toggleAlmanac()" id="nav-almanac" style="margin-top:auto"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="17" x2="12" y2="17" stroke-linecap="round" stroke-width="2.5"/></svg><span class="nav-tooltip">Almanac — AI Help</span></button>
   </nav>
@@ -2230,6 +2231,7 @@ function switchSurface(surface) {
   else if (surface==='health') renderHealthSurface();
   else if (surface==='terminal') renderTerminalSurface();
   else if (surface==='workflows') { renderWorkflowsSurface(); WF.init(); }
+  else if (surface==='sensors') renderSensorsSurface();
 }
 function switchToRuns(id) { S.selected=id; S.surface='runs'; switchSurface('runs'); }
 
@@ -3536,6 +3538,125 @@ async function loadBackupStatus() {
   refreshWatchdogStatus();
   setInterval(refreshWatchdogStatus, 60000);
 })();
+
+/* ═══ SENSORS SURFACE ═══ */
+function renderSensorsSurface() {
+  const main = document.getElementById('main-panel');
+  if (!main) return;
+  main.innerHTML = `
+<div style="padding:20px 24px;height:100%;overflow:auto;box-sizing:border-box">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+    <div style="font-size:16px;font-weight:700;color:#111827">Sensors</div>
+    <span style="font-size:10px;background:rgba(167,139,250,.2);color:#a78bfa;border:1px solid rgba(167,139,250,.3);border-radius:5px;padding:2px 8px;font-weight:600">beta</span>
+    <span style="font-size:11px;color:#9ca3af;margin-left:4px">IoT sensor primitives in development — not production IoT</span>
+    <div style="margin-left:auto;font-size:11px;color:#9ca3af" id="sensors-last-update"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px" id="sensors-device-grid">
+    <div style="grid-column:1/-1;text-align:center;padding:24px;color:#9ca3af;font-size:13px">Loading devices…</div>
+  </div>
+  <div style="background:#fff;border:1px solid rgba(0,0,0,.07);border-radius:10px;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:13px;font-weight:600;color:#111827">Recent Readings</div>
+      <div style="font-size:11px;color:#9ca3af">last 20</div>
+    </div>
+    <div id="sensors-readings-list" style="max-height:320px;overflow-y:auto">
+      <div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px">Loading…</div>
+    </div>
+  </div>
+</div>`;
+  _pollSensors();
+  if (window._sensorsPollTimer) clearInterval(window._sensorsPollTimer);
+  window._sensorsPollTimer = setInterval(_pollSensors, 10000);
+}
+
+async function _pollSensors() {
+  try {
+    const resp = await fetch('http://127.0.0.1:8300/iot/readings?limit=20');
+    if (!resp.ok) throw new Error('offline');
+    const data = await resp.json();
+    _renderSensorsData(data.readings || []);
+    const el = document.getElementById('sensors-last-update');
+    if (el) el.textContent = 'Updated ' + new Date().toTimeString().slice(0,8);
+  } catch {
+    const grid = document.getElementById('sensors-device-grid');
+    if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:24px;color:#f87171;font-size:13px">⚠ iot_ingest not reachable on port 8300</div>';
+  }
+}
+
+function _renderSensorsData(readings) {
+  const grid  = document.getElementById('sensors-device-grid');
+  const list  = document.getElementById('sensors-readings-list');
+  if (!grid || !list) return;
+
+  // Build per-device latest reading map
+  const deviceMap = {};
+  readings.forEach(r => {
+    const id = r.device_id || r.device_id;
+    if (!deviceMap[id] || (r.recorded_at || r.timestamp) > (deviceMap[id].recorded_at || deviceMap[id].timestamp))
+      deviceMap[id] = r;
+  });
+
+  const devices = Object.values(deviceMap);
+  if (!devices.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:24px;color:#9ca3af;font-size:13px">No devices with readings yet</div>';
+  } else {
+    grid.innerHTML = devices.map(d => {
+      const val = parseFloat(d.value);
+      const num = isNaN(val) ? d.value : (Number.isInteger(val) ? val : val.toFixed(2));
+      const ago = _sensorAgo(d.recorded_at || d.timestamp);
+      const status = _sensorStatus(d);
+      const dot = status==='alert' ? '#f87171' : status==='warning' ? '#fbbf24' : '#34d399';
+      return `<div style="background:#fff;border:1px solid rgba(0,0,0,.07);border-radius:9px;padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0"></div>
+          <div style="font-size:12px;font-weight:600;color:#111827;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(d.device_id)}</div>
+          ${status!=='ok' ? `<span style="font-size:9px;font-weight:700;background:${status==='alert'?'rgba(248,113,113,.12)':'rgba(251,191,36,.12)'};color:${status==='alert'?'#ef4444':'#d97706'};border-radius:4px;padding:1px 6px;text-transform:uppercase">${status}</span>` : ''}
+        </div>
+        <div style="font-family:monospace;font-size:20px;font-weight:700;color:#111827;line-height:1">${_esc(String(num))}<span style="font-size:11px;color:#9ca3af;margin-left:4px">${_esc(d.unit||'')}</span></div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:6px">${_esc(d.sensor_type||'')} · ${ago}</div>
+      </div>`;
+    }).join('');
+  }
+
+  if (!readings.length) {
+    list.innerHTML = '<div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px">No readings yet</div>';
+    return;
+  }
+  const sorted = readings.slice().sort((a,b) => ((b.recorded_at||b.timestamp)||'').localeCompare((a.recorded_at||a.timestamp)||''));
+  list.innerHTML = sorted.map(r => {
+    const val = parseFloat(r.value);
+    const num = isNaN(val) ? r.value : (Number.isInteger(val) ? val : val.toFixed(2));
+    const ago = _sensorAgo(r.recorded_at || r.timestamp);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid #f9fafb">
+      <span style="font-size:10px;font-weight:600;background:#f3f4f6;color:#6b7280;border-radius:4px;padding:2px 7px;min-width:70px;text-align:center">${_esc(r.sensor_type||'?')}</span>
+      <span style="font-size:12px;font-weight:600;color:#111827;flex:1">${_esc(r.device_id)}</span>
+      <span style="font-family:monospace;font-size:13px;font-weight:700;color:#111827">${_esc(String(num))} <span style="color:#9ca3af;font-size:10px">${_esc(r.unit||'')}</span></span>
+      <span style="font-size:10px;color:#9ca3af;min-width:56px;text-align:right">${ago}</span>
+    </div>`;
+  }).join('');
+}
+
+function _sensorStatus(r) {
+  const payload = (typeof r.payload === 'object' && r.payload) ? r.payload : {};
+  if (payload.alert_threshold_max != null && parseFloat(r.value) > payload.alert_threshold_max) return 'alert';
+  if (payload.alert_threshold_min != null && parseFloat(r.value) < payload.alert_threshold_min) return 'alert';
+  return 'ok';
+}
+
+function _sensorAgo(iso) {
+  if (!iso) return '—';
+  try {
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 5)  return 'just now';
+    if (diff < 60) return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    return Math.floor(diff/3600) + 'h ago';
+  } catch { return iso; }
+}
+
+function _esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 </script>
 <!-- ALMANAC OVERLAY -->
 <div class="welcome-backdrop" id="welcome-backdrop">
