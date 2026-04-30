@@ -1,0 +1,21 @@
+{
+  "id": "discord-connector",
+  "name": "Discord Connector",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Send messages to Discord channels via bot token.",
+  "author": "Zyrcon Labs",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 9004,
+  "entry_point": "connector.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "communication",
+  "industries": ["all"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "auth_type": "bearer",
+  "nats_subjects": ["cascadia.connectors.discord-connector.>"]
+}
