@@ -141,6 +141,20 @@ class BellService:
                 return 404, {'error': 'session not found'}
             session.add_message('user', content, payload.get('metadata'))
 
+        # ── Guided Configuration: intercept /settings commands ──
+        if content.startswith('/settings'):
+            try:
+                from cascadia.settings.chat_assistant import SettingsChatAssistant
+                context = {
+                    'operator': payload.get('operator_id', session_id),
+                    'business_type': payload.get('business_type', 'general'),
+                }
+                result = SettingsChatAssistant().handle(content, context)
+                return 200, result
+            except Exception as _exc:
+                self.runtime.logger.warning('SettingsChatAssistant error: %s', _exc)
+                # Fall through to normal workflow handling
+
         workflow_id = payload.get('workflow_id', 'lead_follow_up')
         definition = self._stitch.get_definition(workflow_id)
         if definition is None:

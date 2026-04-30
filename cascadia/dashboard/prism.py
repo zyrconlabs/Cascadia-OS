@@ -209,6 +209,14 @@ class PrismService:
         self.runtime.register_route('POST', '/api/config/chat',                          self.config_chat)
         self.runtime.register_route('GET',  '/api/prism/operator/{id}/settings',         self.operator_settings_get)
         self.runtime.register_route('POST', '/api/prism/operator/{id}/settings',         self.operator_settings_post)
+        # Guided Configuration — settings engine API (feature-flagged)
+        self.runtime.register_route('GET',  '/api/config/resources',                                self.cfg_resources)
+        self.runtime.register_route('GET',  '/api/config/{target_type}/{target_id}',                self.cfg_get)
+        self.runtime.register_route('GET',  '/api/config/{target_type}/{target_id}/schema',         self.cfg_schema)
+        self.runtime.register_route('POST', '/api/config/{target_type}/{target_id}/preview',        self.cfg_preview)
+        self.runtime.register_route('POST', '/api/config/{target_type}/{target_id}/save',           self.cfg_save)
+        self.runtime.register_route('POST', '/api/config/{target_type}/{target_id}/reset',          self.cfg_reset)
+        self.runtime.register_route('POST', '/api/config/{target_type}/{target_id}/test',           self.cfg_test)
 
         # Start operator watchdog
         try:
@@ -2740,6 +2748,159 @@ document.getElementById('key').addEventListener('keydown', function(e){
             'operator_id': op_id,
             'message': 'Settings saved (demo mode)',
         }
+
+    # ------------------------------------------------------------------
+    # Guided Configuration API (feature-flagged)
+    # ------------------------------------------------------------------
+
+    def _guided_config_enabled(self) -> bool:
+        return bool(self.config.get("guided_configuration_enabled", False))
+
+    def _cfg_engine(self):
+        from cascadia.settings.engine import SettingsEngine
+        db_path = self.config.get("database_path", "data/runtime/cascadia.db")
+        settings_db = db_path.replace("cascadia.db", "settings.db")
+        vault_db    = db_path.replace(".db", "_vault.db")
+        return SettingsEngine(settings_db=settings_db, vault_db=vault_db)
+
+    def _load_setup_manifest(self, target_type: str, target_id: str):
+        """Load manifest for target and return Manifest or None."""
+        from cascadia.shared.manifest_schema import load_manifest
+        import pathlib
+        base = pathlib.Path(__file__).parent.parent
+        candidates = [
+            base / "operators"  / target_id / "manifest.json",
+            base / "connectors" / target_id / "manifest.json",
+        ]
+        for p in candidates:
+            if p.exists():
+                try:
+                    return load_manifest(p)
+                except Exception:
+                    pass
+        return None
+
+    def cfg_resources(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/config/resources — list installed + available connectors with status."""
+        if not self._guided_config_enabled():
+            return 404, {"error": "guided_configuration_enabled is false"}
+        from cascadia.settings.resource_resolver import get_installed_connectors, resolve_resource
+        installed = get_installed_connectors()
+        result = []
+        seen = set()
+        for m in installed:
+            rid = m.get("id", m.get("operator_id", ""))
+            if rid and rid not in seen:
+                seen.add(rid)
+                result.append(resolve_resource(rid, installed))
+        return 200, {"resources": result, "count": len(result)}
+
+    def cfg_get(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/config/{target_type}/{target_id} — current settings merged with defaults."""
+        if not self._guided_config_enabled():
+            return 404, {"error": "guided_configuration_enabled is false"}
+        target_type = payload.get("target_type", "")
+        target_id   = payload.get("target_id", "")
+        manifest = self._load_setup_manifest(target_type, target_id)
+        try:
+            settings = self._cfg_engine().get_settings(target_type, target_id, manifest)
+            return 200, {"target_type": target_type, "target_id": target_id,
+                         "settings": settings}
+        except Exception as exc:
+            return 500, {"error": str(exc)}
+
+    def cfg_schema(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/config/{target_type}/{target_id}/schema — setup_fields from manifest."""
+        if not self._guided_config_enabled():
+            return 404, {"error": "guided_configuration_enabled is false"}
+        target_type = payload.get("target_type", "")
+        target_id   = payload.get("target_id", "")
+        manifest = self._load_setup_manifest(target_type, target_id)
+        if manifest is None:
+            return 404, {"error": f"No manifest found for {target_type}/{target_id}"}
+        fields = [
+            {
+                "name": f.name, "label": f.label, "type": f.type,
+                "required": f.required, "default": f.default,
+                "help_text": f.help_text, "placeholder": f.placeholder,
+                "simple_mode": f.simple_mode, "advanced_mode": f.advanced_mode,
+                "developer_mode": f.developer_mode, "options": f.options,
+                "min": f.min, "max": f.max, "secret": f.secret,
+                "vault_key": f.vault_key,
+            }
+            for f in manifest.setup_fields
+        ]
+        return 200, {"target_type": target_type, "target_id": target_id,
+                     "setup_fields": fields}
+
+    def cfg_preview(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/config/{target_type}/{target_id}/preview — preview without saving."""
+        if not self._guided_config_enabled():
+            return 404, {"error": "guided_configuration_enabled is false"}
+        target_type = payload.get("target_type", "")
+        target_id   = payload.get("target_id", "")
+        changes     = payload.get("changes", {})
+        if not isinstance(changes, dict):
+            return 400, {"error": "changes must be an object"}
+        manifest = self._load_setup_manifest(target_type, target_id)
+        try:
+            preview = self._cfg_engine().preview_patch(target_type, target_id, changes, manifest)
+            return 200, preview
+        except Exception as exc:
+            return 500, {"error": str(exc)}
+
+    def cfg_save(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/config/{target_type}/{target_id}/save — save settings (confirmed=true required)."""
+        if not self._guided_config_enabled():
+            return 404, {"error": "guided_configuration_enabled is false"}
+        target_type = payload.get("target_type", "")
+        target_id   = payload.get("target_id", "")
+        changes     = payload.get("changes", {})
+        confirmed   = payload.get("confirmed", False)
+        source      = payload.get("source", "prism")
+        if not isinstance(changes, dict):
+            return 400, {"error": "changes must be an object"}
+        manifest = self._load_setup_manifest(target_type, target_id)
+        try:
+            result = self._cfg_engine().save_patch(
+                target_type, target_id, changes, confirmed, source, manifest
+            )
+            return 200, result
+        except Exception as exc:
+            return 500, {"error": str(exc)}
+
+    def cfg_reset(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/config/{target_type}/{target_id}/reset — reset settings to defaults."""
+        if not self._guided_config_enabled():
+            return 404, {"error": "guided_configuration_enabled is false"}
+        target_type = payload.get("target_type", "")
+        target_id   = payload.get("target_id", "")
+        mode        = payload.get("mode", "recommended")
+        confirmed   = payload.get("confirmed", False)
+        manifest = self._load_setup_manifest(target_type, target_id)
+        if manifest is None:
+            return 404, {"error": f"No manifest found for {target_type}/{target_id}"}
+        try:
+            result = self._cfg_engine().reset_settings(
+                target_type, target_id, manifest, mode=mode,
+                confirmed=confirmed, source="prism_reset",
+            )
+            return 200, result
+        except Exception as exc:
+            return 500, {"error": str(exc)}
+
+    def cfg_test(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/config/{target_type}/{target_id}/test — health check with current settings."""
+        if not self._guided_config_enabled():
+            return 404, {"error": "guided_configuration_enabled is false"}
+        target_type = payload.get("target_type", "")
+        target_id   = payload.get("target_id", "")
+        manifest = self._load_setup_manifest(target_type, target_id)
+        try:
+            result = self._cfg_engine().test_settings(target_type, target_id, manifest)
+            return 200, result
+        except Exception as exc:
+            return 500, {"error": str(exc)}
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')
