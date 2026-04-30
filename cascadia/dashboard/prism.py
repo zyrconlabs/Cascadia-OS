@@ -1477,6 +1477,21 @@ class PrismService:
         """Return True if request is within rate limit, False if exceeded."""
         return self._rate_limiter.check(remote_addr, limit=limit, window=window)
 
+    @staticmethod
+    def _get_category(operator_id: str, manifest_type: str = '') -> str:
+        if manifest_type in ('orchestrator', 'channel', 'connector', 'operator'):
+            return manifest_type
+        return {
+            'vanguard': 'orchestrator', 'stitch': 'orchestrator',
+            'chief': 'orchestrator', 'crew': 'orchestrator',
+            'beacon': 'channel', 'herald': 'channel',
+            'connect': 'connector', 'social': 'connector',
+        }.get(operator_id, 'operator')
+
+    @staticmethod
+    def _get_operator_mode(op: Dict[str, Any]) -> str:
+        return op.get('autonomy_level', 'semi_autonomous')
+
     def operator_overview(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """GET /api/overview — operator-centric dashboard snapshot with ROI + secondary stats."""
         configured = self.config.get('operators_registry_path', '')
@@ -1529,7 +1544,8 @@ class PrismService:
             result_ops.append({
                 'id':          op_id,
                 'name':        op.get('name', op_id),
-                'category':    op.get('category', ''),
+                'category':    self._get_category(op_id, op.get('type', '')),
+                'mode':        self._get_operator_mode(op),
                 'status':      status,
                 'port':        port,
                 'runs_today':  runs_today,
@@ -1537,6 +1553,18 @@ class PrismService:
                 'extra_label': extra_label,
                 'last_run':    last_run,
             })
+
+        categories: Dict[str, Dict[str, int]] = {
+            cat: {'total': 0, 'healthy': 0}
+            for cat in ('orchestrator', 'operator', 'connector', 'channel')
+        }
+        for r in result_ops:
+            cat = r.get('category', 'operator')
+            if cat not in categories:
+                cat = 'operator'
+            categories[cat]['total'] += 1
+            if r['status'] == 'online':
+                categories[cat]['healthy'] += 1
 
         if offline_count == 0:
             system_health = 'healthy'
@@ -1559,6 +1587,7 @@ class PrismService:
             'system_health': system_health,
             'operators':     result_ops,
             'roi':           roi,
+            'categories':    categories,
         }
 
     # ------------------------------------------------------------------
