@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Operator — DEPOT</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --font:'Inter',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace;
+    --navy-900:#111827;--navy-800:#374151;--navy-700:#4a5568;
+    --navy-400:#94a3b8;--navy-200:#e8edf4;--navy-100:#f0f4f8;--navy-50:#f5f7fa;
+    --white:#fff;
+    --prism-a:#4facfe;--prism-b:#a78bfa;--prism-c:#34d399;--prism-d:#f472b6;
+    --green:#34d399;--green-soft:rgba(52,211,153,.12);
+    --red:#f87171;--red-soft:rgba(248,113,113,.1);
+    --violet:#7c3aed;--violet-soft:rgba(124,58,237,.1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--navy-50);color:var(--navy-900);min-height:100vh}
+  .topbar{background:var(--navy-900);padding:12px 24px;display:flex;align-items:center;gap:16px}
+  .topbar-brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+  .topbar-logo-bar{width:28px;height:2px;background:linear-gradient(90deg,var(--prism-a),var(--prism-b),var(--prism-c),var(--prism-d));border-radius:2px}
+  .topbar-name{font-size:13px;font-weight:800;letter-spacing:.18em;color:#fff;text-transform:uppercase}
+  .back-link{color:rgba(255,255,255,.6);font-size:13px;text-decoration:none;padding:6px 12px;border-radius:6px}
+  .back-link:hover{background:rgba(255,255,255,.1);color:#fff}
+  .page{max-width:900px;margin:0 auto;padding:32px 24px}
+
+  /* Hero section */
+  .op-hero{background:var(--white);border:1px solid var(--navy-200);border-radius:16px;padding:32px;margin-bottom:24px;display:flex;gap:24px;align-items:flex-start}
+  .op-icon{width:72px;height:72px;border-radius:16px;background:linear-gradient(135deg,var(--prism-a),var(--prism-b));display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0}
+  .op-info{flex:1}
+  .op-name{font-size:24px;font-weight:700;margin-bottom:6px}
+  .op-desc{font-size:15px;color:var(--navy-400);line-height:1.6;margin-bottom:16px}
+  .op-tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+  .tag{display:inline-flex;align-items:center;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500}
+  .tag--type{background:var(--violet-soft);color:var(--violet)}
+  .tag--tier{background:var(--navy-100);color:var(--navy-700)}
+  .tag--category{background:var(--green-soft);color:#059669}
+  .tag--free{background:var(--green-soft);color:#059669;font-weight:600}
+  .tag--price{background:var(--navy-100);color:var(--navy-800);font-weight:600}
+  .op-install-row{display:flex;align-items:center;gap:12px}
+  .btn-install{padding:10px 24px;border-radius:9px;border:none;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
+  .btn-install--ready{background:var(--violet);color:#fff}
+  .btn-install--ready:hover{background:#6d28d9}
+  .btn-install--installed{background:var(--green-soft);color:#059669;cursor:default}
+  .btn-install--loading{background:var(--navy-100);color:var(--navy-400);cursor:wait}
+  .btn-uninstall{padding:10px 20px;border-radius:9px;border:1px solid var(--navy-200);font-family:var(--font);font-size:13px;font-weight:500;background:var(--white);color:var(--navy-700);cursor:pointer;transition:all .15s;display:none}
+  .btn-uninstall:hover{border-color:var(--red);color:var(--red)}
+
+  /* Details grid */
+  .details-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+  .detail-card{background:var(--white);border:1px solid var(--navy-200);border-radius:12px;padding:20px}
+  .detail-card h3{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--navy-400);margin-bottom:12px}
+  .detail-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--navy-100)}
+  .detail-row:last-child{border-bottom:none}
+  .detail-label{font-size:13px;color:var(--navy-400)}
+  .detail-value{font-size:13px;font-weight:500;color:var(--navy-900)}
+  .detail-value.mono{font-family:var(--mono);font-size:12px}
+
+  /* NATS subjects */
+  .subjects-card{background:var(--white);border:1px solid var(--navy-200);border-radius:12px;padding:20px;margin-bottom:24px}
+  .subjects-card h3{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--navy-400);margin-bottom:12px}
+  .subject-pill{display:inline-block;font-family:var(--mono);font-size:12px;background:var(--navy-50);border:1px solid var(--navy-200);border-radius:6px;padding:4px 10px;margin:3px}
+
+  /* Related */
+  .related-section{margin-top:8px}
+  .related-section h3{font-size:15px;font-weight:600;margin-bottom:14px}
+  .related-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+  .related-card{background:var(--white);border:1px solid var(--navy-200);border-radius:10px;padding:14px;text-decoration:none;color:inherit;display:block;transition:all .12s}
+  .related-card:hover{box-shadow:0 2px 12px rgba(0,0,0,.06);transform:translateY(-1px)}
+  .related-name{font-size:13px;font-weight:600;margin-bottom:3px}
+  .related-desc{font-size:11px;color:var(--navy-400)}
+
+  .loading{padding:48px;text-align:center;color:var(--navy-400)}
+  .toast-container{position:fixed;bottom:24px;right:24px;z-index:999}
+  .toast{padding:12px 16px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.12);margin-top:8px;animation:slide-in .2s ease}
+  .toast--ok{background:var(--navy-900);color:#fff}
+  .toast--err{background:var(--red);color:#fff}
+  @keyframes slide-in{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+</style>
+</head>
+<body>
+<nav class="topbar">
+  <a class="topbar-brand" href="index.html">
+    <div class="topbar-logo-bar"></div>
+    <span class="topbar-name">DEPOT</span>
+  </a>
+  <a class="back-link" href="index.html">← Back to marketplace</a>
+</nav>
+
+<div class="page" id="page">
+  <div class="loading">Loading…</div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const DEPOT = 'http://127.0.0.1:6208';
+const CATEGORY_ICONS = {
+  sales:'💼', marketing:'📣', support:'🎧', finance:'💰', operations:'⚙️',
+  runtime:'🔌', communication:'💬', data:'📊', iot:'🌐', hr:'👥',
+  legal:'⚖️', devops:'🛠️', ecommerce:'🛒', analytics:'📈', integration:'🔗',
+};
+const params = new URLSearchParams(location.search);
+const id = params.get('id') || '';
+
+async function load() {
+  if(!id) { document.getElementById('page').innerHTML='<p>No operator ID specified.</p>'; return; }
+  try {
+    const [opR, allR] = await Promise.all([
+      fetch(`${DEPOT}/v1/operators/${encodeURIComponent(id)}`),
+      fetch(`${DEPOT}/v1/operators`),
+    ]);
+    const opD = await opR.json();
+    const allD = await allR.json();
+    if(!opD.ok) { document.getElementById('page').innerHTML=`<p>Operator "${id}" not found.</p>`; return; }
+    render(opD.operator, allD.operators||[]);
+    document.title = `${opD.operator.name} — DEPOT`;
+  } catch(e) {
+    document.getElementById('page').innerHTML='<p>DEPOT API offline.</p>';
+  }
+}
+
+function render(op, all) {
+  const icon = CATEGORY_ICONS[op.category]||'🔧';
+  const price = parseFloat(op.price||0)===0?'Free':`$${op.price}/mo`;
+  const installed = op.installed_by_default;
+  const related = all.filter(o=>o.category===op.category && o.id!==op.id).slice(0,3);
+  const subjects = op.nats_subjects||[];
+
+  document.getElementById('page').innerHTML = `
+    <div class="op-hero">
+      <div class="op-icon">${icon}</div>
+      <div class="op-info">
+        <div class="op-name">${op.name}</div>
+        <div class="op-desc">${op.description||''}</div>
+        <div class="op-tags">
+          <span class="tag tag--type">${op.type}</span>
+          <span class="tag tag--category">${op.category||''}</span>
+          <span class="tag tag--tier">${op.tier_required||'lite'}+</span>
+          <span class="tag ${parseFloat(op.price||0)===0?'tag--free':'tag--price'}">${price}</span>
+        </div>
+        <div class="op-install-row">
+          <button id="btn-install"
+            class="btn-install ${installed?'btn-install--installed':'btn-install--ready'}"
+            onclick="install('${op.id}')" ${installed?'disabled':''}>
+            ${installed?'✓ Installed':'Install'}
+          </button>
+          <button id="btn-uninstall" class="btn-uninstall" onclick="uninstall('${op.id}')"
+            style="${installed?'display:inline-flex':'display:none'}">
+            Uninstall
+          </button>
+          <span style="font-size:12px;color:var(--navy-400)">Port ${op.port||'—'} · v${op.version}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="details-grid">
+      <div class="detail-card">
+        <h3>Details</h3>
+        <div class="detail-row"><span class="detail-label">ID</span><span class="detail-value mono">${op.id}</span></div>
+        <div class="detail-row"><span class="detail-label">Version</span><span class="detail-value">${op.version}</span></div>
+        <div class="detail-row"><span class="detail-label">Author</span><span class="detail-value">${op.author||'Zyrcon Labs'}</span></div>
+        <div class="detail-row"><span class="detail-label">Port</span><span class="detail-value mono">${op.port||'—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Safe to uninstall</span><span class="detail-value">${op.safe_to_uninstall?'Yes':'No'}</span></div>
+      </div>
+      <div class="detail-card">
+        <h3>Requirements</h3>
+        <div class="detail-row"><span class="detail-label">Tier required</span><span class="detail-value">${(op.tier_required||'lite').charAt(0).toUpperCase()+(op.tier_required||'lite').slice(1)}+</span></div>
+        <div class="detail-row"><span class="detail-label">Industries</span><span class="detail-value">${(op.industries||['all']).join(', ')}</span></div>
+        <div class="detail-row"><span class="detail-label">Approval gate</span><span class="detail-value">${op.approval_required_for_writes?'Required':'Not required'}</span></div>
+        ${op.auth_type?`<div class="detail-row"><span class="detail-label">Auth</span><span class="detail-value">${op.auth_type}</span></div>`:''}
+      </div>
+    </div>
+
+    ${subjects.length?`
+    <div class="subjects-card">
+      <h3>NATS Subjects</h3>
+      ${subjects.map(s=>`<span class="subject-pill">${s}</span>`).join('')}
+    </div>`:''}
+
+    ${related.length?`
+    <div class="related-section">
+      <h3>Related in ${op.category}</h3>
+      <div class="related-grid">
+        ${related.map(r=>`
+          <a class="related-card" href="operator.html?id=${r.id}">
+            <div class="related-name">${r.name}</div>
+            <div class="related-desc">${(r.description||'').slice(0,80)}</div>
+          </a>`).join('')}
+      </div>
+    </div>`:''}
+  `;
+}
+
+async function install(id) {
+  const btn = document.getElementById('btn-install');
+  btn.textContent='Installing…'; btn.className='btn-install btn-install--loading'; btn.disabled=true;
+  try {
+    const r = await fetch(`${DEPOT}/v1/operators/${id}/install`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requested_by:'prism'})});
+    const d = await r.json();
+    if(d.ok){
+      btn.textContent='✓ Installed'; btn.className='btn-install btn-install--installed';
+      document.getElementById('btn-uninstall').style.display='inline-flex';
+      toast(`${id} installed`,'ok');
+    } else {
+      btn.textContent='Install'; btn.className='btn-install btn-install--ready'; btn.disabled=false;
+      toast(d.error||'Install failed','err');
+    }
+  } catch(e){ btn.textContent='Install'; btn.className='btn-install btn-install--ready'; btn.disabled=false; toast('API offline','err'); }
+}
+
+async function uninstall(id) {
+  if(!confirm(`Uninstall ${id}?`)) return;
+  toast(`Uninstalling ${id}…`,'ok');
+}
+
+function toast(msg,type){
+  const t=document.createElement('div');
+  t.className=`toast toast--${type}`;t.textContent=msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(()=>t.remove(),3500);
+}
+
+load();
+</script>
+</body>
+</html>

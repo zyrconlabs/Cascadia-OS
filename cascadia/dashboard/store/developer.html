@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Publish to DEPOT — Zyrcon Developer Program</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --font:'Inter',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace;
+    --navy-900:#111827;--navy-800:#374151;--navy-700:#4a5568;
+    --navy-400:#94a3b8;--navy-200:#e8edf4;--navy-100:#f0f4f8;--navy-50:#f5f7fa;
+    --white:#fff;
+    --prism-a:#4facfe;--prism-b:#a78bfa;--prism-c:#34d399;--prism-d:#f472b6;
+    --green:#34d399;--green-soft:rgba(52,211,153,.12);
+    --violet:#7c3aed;--violet-soft:rgba(124,58,237,.1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--navy-50);color:var(--navy-900);min-height:100vh}
+  .topbar{background:var(--navy-900);padding:12px 24px;display:flex;align-items:center;gap:16px}
+  .topbar-brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+  .topbar-logo-bar{width:28px;height:2px;background:linear-gradient(90deg,var(--prism-a),var(--prism-b),var(--prism-c),var(--prism-d));border-radius:2px}
+  .topbar-name{font-size:13px;font-weight:800;letter-spacing:.18em;color:#fff;text-transform:uppercase}
+  .back-link{color:rgba(255,255,255,.6);font-size:13px;text-decoration:none;padding:6px 12px;border-radius:6px}
+  .back-link:hover{background:rgba(255,255,255,.1);color:#fff}
+
+  .page{max-width:860px;margin:0 auto;padding:40px 24px}
+  .hero{text-align:center;margin-bottom:48px}
+  .hero h1{font-size:30px;font-weight:700;margin-bottom:10px}
+  .hero h1 span{background:linear-gradient(90deg,var(--prism-a),var(--prism-b));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hero p{font-size:15px;color:var(--navy-400);max-width:540px;margin:0 auto}
+
+  /* Revenue highlight */
+  .revenue-box{background:linear-gradient(135deg,#1e1b4b,#2e1065);border-radius:16px;padding:32px;margin-bottom:40px;text-align:center;color:#fff}
+  .revenue-box h2{font-size:22px;font-weight:700;margin-bottom:8px}
+  .revenue-box p{color:rgba(255,255,255,.7);font-size:14px;max-width:480px;margin:0 auto 20px}
+  .revenue-tiers{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+  .rev-tier{background:rgba(255,255,255,.1);border-radius:10px;padding:16px 24px;min-width:150px}
+  .rev-tier-pct{font-size:28px;font-weight:800;margin-bottom:4px}
+  .rev-tier-label{font-size:12px;color:rgba(255,255,255,.65)}
+
+  /* Steps */
+  .steps-section{margin-bottom:40px}
+  .steps-section h2{font-size:18px;font-weight:700;margin-bottom:20px}
+  .steps{display:flex;flex-direction:column;gap:12px}
+  .step{display:flex;gap:16px;background:var(--white);border:1px solid var(--navy-200);border-radius:12px;padding:20px}
+  .step-num{width:32px;height:32px;border-radius:8px;background:var(--violet-soft);color:var(--violet);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .step-body h3{font-size:14px;font-weight:600;margin-bottom:4px}
+  .step-body p{font-size:13px;color:var(--navy-400);line-height:1.5}
+
+  /* Requirements */
+  .req-section{margin-bottom:40px}
+  .req-section h2{font-size:18px;font-weight:700;margin-bottom:16px}
+  .req-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .req-card{background:var(--white);border:1px solid var(--navy-200);border-radius:12px;padding:18px}
+  .req-card h3{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .req-card ul{list-style:none;padding:0}
+  .req-card li{font-size:12px;color:var(--navy-400);padding:3px 0;border-bottom:1px solid var(--navy-100);display:flex;align-items:center;gap:6px}
+  .req-card li:last-child{border-bottom:none}
+  .req-card li::before{content:'✓';color:var(--green);font-weight:700;font-size:11px}
+
+  /* Manifest snippet */
+  .code-section{margin-bottom:40px}
+  .code-section h2{font-size:18px;font-weight:700;margin-bottom:16px}
+  .code-block{background:var(--navy-900);border-radius:12px;padding:20px;overflow-x:auto}
+  .code-block pre{font-family:var(--mono);font-size:12px;color:#e2e8f0;line-height:1.6}
+  .code-block pre .key{color:var(--prism-a)}
+  .code-block pre .val{color:var(--prism-c)}
+  .code-block pre .str{color:var(--prism-d)}
+
+  /* Submission form */
+  .form-section{background:var(--white);border:1px solid var(--navy-200);border-radius:16px;padding:32px;margin-bottom:40px}
+  .form-section h2{font-size:18px;font-weight:700;margin-bottom:20px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .form-field{display:flex;flex-direction:column;gap:6px}
+  .form-field label{font-size:12px;font-weight:600;color:var(--navy-700)}
+  .form-field input,.form-field select,.form-field textarea{padding:9px 12px;border:1px solid var(--navy-200);border-radius:8px;font-family:var(--font);font-size:13px;color:var(--navy-900);outline:none;transition:border-color .12s}
+  .form-field input:focus,.form-field select:focus,.form-field textarea:focus{border-color:var(--violet)}
+  .form-field textarea{resize:vertical;min-height:80px}
+  .form-note{font-size:12px;color:var(--navy-400);margin-bottom:16px}
+  .btn-submit{padding:12px 28px;border-radius:9px;border:none;background:var(--violet);color:#fff;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
+  .btn-submit:hover{background:#6d28d9}
+  .form-success{display:none;padding:16px;background:var(--green-soft);border-radius:8px;color:#059669;font-size:14px;font-weight:500;text-align:center}
+</style>
+</head>
+<body>
+<nav class="topbar">
+  <a class="topbar-brand" href="index.html">
+    <div class="topbar-logo-bar"></div>
+    <span class="topbar-name">DEPOT</span>
+  </a>
+  <a class="back-link" href="index.html">← Marketplace</a>
+</nav>
+
+<div class="page">
+  <div class="hero">
+    <h1>Publish to <span>DEPOT</span></h1>
+    <p>Build AI operators and connectors for the Zyrcon marketplace. Reach thousands of businesses running Cascadia OS.</p>
+  </div>
+
+  <!-- Revenue -->
+  <div class="revenue-box">
+    <h2>Developer Revenue Share</h2>
+    <p>Earn from every install. The more your operators earn, the higher your share.</p>
+    <div class="revenue-tiers">
+      <div class="rev-tier">
+        <div class="rev-tier-pct">100%</div>
+        <div class="rev-tier-label">Until $25K lifetime</div>
+      </div>
+      <div class="rev-tier">
+        <div class="rev-tier-pct">80%</div>
+        <div class="rev-tier-label">After $25K</div>
+      </div>
+      <div class="rev-tier">
+        <div class="rev-tier-pct">$0</div>
+        <div class="rev-tier-label">Platform fee to start</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <div class="steps-section">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h3>Build your operator</h3>
+          <p>Use the Cascadia OS operator template. Your operator needs: <code>operator.py</code>, <code>manifest.json</code>, <code>install.sh</code>, <code>uninstall.sh</code>, <code>health.py</code>, and tests. It runs locally on the user's machine — you never receive their data.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h3>Submit for review</h3>
+          <p>Fill in the form below with your name, email, and GitHub repository. Our team reviews within 5 business days. We check for quality, security, and manifest compliance.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h3>Publish and earn</h3>
+          <p>Once approved, your operator appears in DEPOT. Users can one-click install it. You receive monthly payouts via Stripe for all purchases and subscriptions.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Requirements -->
+  <div class="req-section">
+    <h2>Quality requirements</h2>
+    <div class="req-grid">
+      <div class="req-card">
+        <h3>📋 Every operator must have</h3>
+        <ul>
+          <li>Valid manifest.json (schema v1)</li>
+          <li>install.sh and uninstall.sh</li>
+          <li>health.py endpoint</li>
+          <li>Test suite with ≥80% pass rate</li>
+          <li>README.md with usage docs</li>
+          <li>Approval gate for external actions</li>
+        </ul>
+      </div>
+      <div class="req-card">
+        <h3>🚫 Not permitted</h3>
+        <ul>
+          <li>Sending user data to external servers</li>
+          <li>Requiring cloud accounts without disclosure</li>
+          <li>Modifying other operators' files</li>
+          <li>Accessing system credentials directly</li>
+          <li>Bypassing the PRISM approval flow</li>
+          <li>Malicious code of any kind</li>
+        </ul>
+      </div>
+      <div class="req-card">
+        <h3>✅ Content standards</h3>
+        <ul>
+          <li>Business purpose clearly stated</li>
+          <li>No spam or bulk-message automation</li>
+          <li>No surveillance or tracking operators</li>
+          <li>Compliant with GDPR and CCPA</li>
+        </ul>
+      </div>
+      <div class="req-card">
+        <h3>💰 Pricing rules</h3>
+        <ul>
+          <li>Free operators: always free</li>
+          <li>Paid operators: monthly subscription</li>
+          <li>Payments via Stripe (we handle billing)</li>
+          <li>Refunds: 7-day policy applies</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manifest snippet -->
+  <div class="code-section">
+    <h2>Minimal manifest.json</h2>
+    <div class="code-block"><pre>{
+  <span class="key">"id"</span>: <span class="str">"my-operator"</span>,
+  <span class="key">"name"</span>: <span class="str">"My Operator"</span>,
+  <span class="key">"type"</span>: <span class="str">"operator"</span>,
+  <span class="key">"version"</span>: <span class="str">"1.0.0"</span>,
+  <span class="key">"description"</span>: <span class="str">"One sentence description."</span>,
+  <span class="key">"author"</span>: <span class="str">"Your Name"</span>,
+  <span class="key">"price"</span>: <span class="val">0</span>,
+  <span class="key">"tier_required"</span>: <span class="str">"lite"</span>,
+  <span class="key">"port"</span>: <span class="val">8XXX</span>,
+  <span class="key">"entry_point"</span>: <span class="str">"operator.py"</span>,
+  <span class="key">"dependencies"</span>: [<span class="str">"nats-py"</span>],
+  <span class="key">"install_hook"</span>: <span class="str">"install.sh"</span>,
+  <span class="key">"uninstall_hook"</span>: <span class="str">"uninstall.sh"</span>,
+  <span class="key">"category"</span>: <span class="str">"operations"</span>,
+  <span class="key">"industries"</span>: [<span class="str">"general"</span>],
+  <span class="key">"installed_by_default"</span>: <span class="val">false</span>,
+  <span class="key">"safe_to_uninstall"</span>: <span class="val">true</span>
+}</pre></div>
+  </div>
+
+  <!-- Submission form -->
+  <div class="form-section">
+    <h2>Submit your operator</h2>
+    <p class="form-note">We review all submissions within 5 business days. You'll receive a response at the email you provide.</p>
+    <div class="form-row">
+      <div class="form-field">
+        <label>Full name *</label>
+        <input type="text" id="f-name" placeholder="Jane Smith">
+      </div>
+      <div class="form-field">
+        <label>Email *</label>
+        <input type="email" id="f-email" placeholder="jane@example.com">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-field">
+        <label>GitHub repository URL *</label>
+        <input type="url" id="f-github" placeholder="https://github.com/you/my-operator">
+      </div>
+      <div class="form-field">
+        <label>Operator category</label>
+        <select id="f-category">
+          <option value="">Select category</option>
+          <option>sales</option><option>marketing</option><option>support</option>
+          <option>finance</option><option>operations</option><option>communication</option>
+          <option>data</option><option>iot</option><option>hr</option><option>legal</option>
+          <option>devops</option><option>ecommerce</option><option>integration</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-field" style="margin-bottom:16px">
+      <label>Brief description</label>
+      <textarea id="f-desc" placeholder="What does your operator do? What problem does it solve?"></textarea>
+    </div>
+    <button class="btn-submit" onclick="submit()">Submit for Review</button>
+    <div class="form-success" id="form-success">
+      ✓ Submission received! We'll review your operator and reply to your email within 5 business days.
+    </div>
+  </div>
+</div>
+
+<script>
+function submit() {
+  const name = document.getElementById('f-name').value.trim();
+  const email = document.getElementById('f-email').value.trim();
+  const github = document.getElementById('f-github').value.trim();
+  if(!name||!email||!github){ alert('Please fill in name, email, and GitHub URL.'); return; }
+
+  // Send to depot@zyrcon.ai via mailto (production will use a backend endpoint)
+  const subject = encodeURIComponent(`DEPOT Submission: ${name}`);
+  const body = encodeURIComponent(
+    `Name: ${name}\nEmail: ${email}\nGitHub: ${github}\n`+
+    `Category: ${document.getElementById('f-category').value}\n`+
+    `Description:\n${document.getElementById('f-desc').value}`
+  );
+  window.location.href = `mailto:depot@zyrcon.ai?subject=${subject}&body=${body}`;
+  document.getElementById('form-success').style.display = 'block';
+}
+</script>
+</body>
+</html>

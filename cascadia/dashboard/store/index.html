@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DEPOT — Zyrcon Operator Marketplace</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --font:'Inter',-apple-system,sans-serif;
+    --mono:'JetBrains Mono','SF Mono',monospace;
+    --navy-900:#111827;--navy-800:#374151;--navy-700:#4a5568;
+    --navy-400:#94a3b8;--navy-200:#e8edf4;--navy-100:#f0f4f8;--navy-50:#f5f7fa;
+    --white:#fff;
+    --prism-a:#4facfe;--prism-b:#a78bfa;--prism-c:#34d399;--prism-d:#f472b6;
+    --green:#34d399;--green-soft:rgba(52,211,153,.12);
+    --red:#f87171;--red-soft:rgba(248,113,113,.1);
+    --violet:#7c3aed;--violet-soft:rgba(124,58,237,.1);
+    --depot-api:'/v1';
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--navy-50);color:var(--navy-900);min-height:100vh}
+
+  /* ── Top bar ── */
+  .topbar{background:var(--navy-900);padding:12px 24px;display:flex;align-items:center;gap:16px}
+  .topbar-brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+  .topbar-logo-bar{width:28px;height:2px;background:linear-gradient(90deg,var(--prism-a),var(--prism-b),var(--prism-c),var(--prism-d));border-radius:2px}
+  .topbar-name{font-size:13px;font-weight:800;letter-spacing:.18em;color:#fff;text-transform:uppercase}
+  .topbar-tag{font-size:11px;color:rgba(255,255,255,.5);margin-left:4px}
+  .topbar-search{flex:1;max-width:460px;margin:0 auto;position:relative}
+  .topbar-search input{width:100%;padding:8px 14px 8px 36px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;font-family:var(--font);font-size:13px;outline:none}
+  .topbar-search input::placeholder{color:rgba(255,255,255,.4)}
+  .topbar-search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:rgba(255,255,255,.4);fill:none;stroke-width:2}
+  .topbar-actions{display:flex;gap:8px;align-items:center}
+  .topbar-link{color:rgba(255,255,255,.7);font-size:13px;font-weight:500;text-decoration:none;padding:6px 12px;border-radius:6px;transition:all .15s}
+  .topbar-link:hover{background:rgba(255,255,255,.1);color:#fff}
+  .topbar-link--cta{background:var(--violet);color:#fff;padding:6px 14px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none}
+
+  /* ── Hero ── */
+  .hero{background:linear-gradient(135deg,var(--navy-900) 0%,#1e1b4b 100%);padding:48px 24px 40px;text-align:center}
+  .hero h1{font-size:32px;font-weight:700;color:#fff;margin-bottom:8px}
+  .hero h1 span{background:linear-gradient(90deg,var(--prism-a),var(--prism-b));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hero p{color:rgba(255,255,255,.65);font-size:15px;max-width:520px;margin:0 auto 24px}
+  .hero-stats{display:flex;gap:32px;justify-content:center}
+  .hero-stat{text-align:center}
+  .hero-stat-num{font-size:22px;font-weight:700;color:#fff}
+  .hero-stat-label{font-size:11px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.08em}
+
+  /* ── Layout ── */
+  .layout{display:flex;gap:0;max-width:1200px;margin:0 auto;padding:24px}
+  .sidebar{width:200px;flex-shrink:0}
+  .main{flex:1;min-width:0}
+
+  /* ── Filter sidebar ── */
+  .filter-section{margin-bottom:24px}
+  .filter-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--navy-400);margin-bottom:10px}
+  .filter-btn{display:block;width:100%;text-align:left;padding:7px 10px;border:none;background:none;border-radius:7px;font-family:var(--font);font-size:13px;color:var(--navy-700);cursor:pointer;transition:all .12s}
+  .filter-btn:hover{background:var(--navy-100)}
+  .filter-btn.active{background:var(--violet-soft);color:var(--violet);font-weight:500}
+  .filter-count{float:right;font-size:11px;color:var(--navy-400)}
+
+  /* ── Toolbar ── */
+  .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .toolbar-count{font-size:13px;color:var(--navy-400)}
+  .sort-select{padding:6px 10px;border:1px solid var(--navy-200);border-radius:7px;font-family:var(--font);font-size:13px;color:var(--navy-700);background:var(--white);cursor:pointer;outline:none}
+
+  /* ── Grid ── */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+  .card{background:var(--white);border:1px solid var(--navy-200);border-radius:12px;padding:18px;transition:all .15s;cursor:pointer;text-decoration:none;color:inherit;display:block}
+  .card:hover{box-shadow:0 4px 20px rgba(0,0,0,.08);transform:translateY(-1px);border-color:var(--prism-b)}
+  .card-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+  .card-icon{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--prism-a),var(--prism-b));display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+  .card-badges{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+  .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:5px;font-size:11px;font-weight:500}
+  .badge--installed{background:var(--green-soft);color:#059669}
+  .badge--tier{background:var(--violet-soft);color:var(--violet)}
+  .badge--free{background:var(--green-soft);color:#059669}
+  .badge--price{background:var(--navy-100);color:var(--navy-700)}
+  .card-name{font-size:14px;font-weight:600;color:var(--navy-900);margin-bottom:4px}
+  .card-desc{font-size:12px;color:var(--navy-400);line-height:1.5;margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .card-footer{display:flex;align-items:center;justify-content:space-between}
+  .card-meta{font-size:11px;color:var(--navy-400)}
+  .btn-install{padding:6px 14px;border-radius:7px;border:none;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+  .btn-install--ready{background:var(--violet);color:#fff}
+  .btn-install--ready:hover{background:#6d28d9}
+  .btn-install--installed{background:var(--green-soft);color:#059669;cursor:default}
+  .btn-install--loading{background:var(--navy-100);color:var(--navy-400);cursor:wait}
+
+  /* ── Loading / empty ── */
+  .loading{text-align:center;padding:48px;color:var(--navy-400)}
+  .empty{text-align:center;padding:48px}
+  .empty-icon{font-size:40px;margin-bottom:12px}
+  .empty-text{font-size:14px;color:var(--navy-400)}
+
+  /* ── Toast ── */
+  .toast-container{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:999}
+  .toast{padding:12px 16px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.12);animation:slide-in .2s ease}
+  .toast--ok{background:var(--navy-900);color:#fff}
+  .toast--err{background:var(--red);color:#fff}
+  @keyframes slide-in{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<nav class="topbar">
+  <a class="topbar-brand" href="index.html">
+    <div class="topbar-logo-bar"></div>
+    <span class="topbar-name">DEPOT</span>
+    <span class="topbar-tag">by Zyrcon</span>
+  </a>
+  <div class="topbar-search">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input id="search-input" type="text" placeholder="Search operators and connectors…">
+  </div>
+  <div class="topbar-actions">
+    <a class="topbar-link" href="developer.html">Publish</a>
+    <a class="topbar-link--cta" href="../prism.html">← Dashboard</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<div class="hero">
+  <h1>The <span>Operator Marketplace</span></h1>
+  <p>One-click install for AI operators and connectors. Everything runs locally — your data never leaves.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num" id="stat-total">—</div><div class="hero-stat-label">Available</div></div>
+    <div class="hero-stat"><div class="hero-stat-num" id="stat-installed">—</div><div class="hero-stat-label">Installed</div></div>
+    <div class="hero-stat"><div class="hero-stat-num" id="stat-free">—</div><div class="hero-stat-label">Free</div></div>
+  </div>
+</div>
+
+<!-- Main layout -->
+<div class="layout">
+  <!-- Sidebar filters -->
+  <aside class="sidebar">
+    <div class="filter-section">
+      <div class="filter-title">Category</div>
+      <button class="filter-btn active" data-filter="category" data-value="">All <span class="filter-count" id="count-all">—</span></button>
+      <button class="filter-btn" data-filter="category" data-value="sales">Sales <span class="filter-count" id="count-sales">—</span></button>
+      <button class="filter-btn" data-filter="category" data-value="marketing">Marketing <span class="filter-count" id="count-marketing">—</span></button>
+      <button class="filter-btn" data-filter="category" data-value="support">Support <span class="filter-count" id="count-support">—</span></button>
+      <button class="filter-btn" data-filter="category" data-value="finance">Finance <span class="filter-count" id="count-finance">—</span></button>
+      <button class="filter-btn" data-filter="category" data-value="operations">Operations <span class="filter-count" id="count-operations">—</span></button>
+      <button class="filter-btn" data-filter="category" data-value="runtime">Runtime <span class="filter-count" id="count-runtime">—</span></button>
+      <button class="filter-btn" data-filter="category" data-value="communication">Communication <span class="filter-count" id="count-communication">—</span></button>
+      <button class="filter-btn" data-filter="category" data-value="data">Data</button>
+      <button class="filter-btn" data-filter="category" data-value="iot">IoT</button>
+    </div>
+    <div class="filter-section">
+      <div class="filter-title">Type</div>
+      <button class="filter-btn" data-filter="type" data-value="">All</button>
+      <button class="filter-btn" data-filter="type" data-value="operator">Operators</button>
+      <button class="filter-btn" data-filter="type" data-value="connector">Connectors</button>
+    </div>
+    <div class="filter-section">
+      <div class="filter-title">Price</div>
+      <button class="filter-btn" data-filter="free_only" data-value="">All</button>
+      <button class="filter-btn" data-filter="free_only" data-value="1">Free only</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main">
+    <div class="toolbar">
+      <span class="toolbar-count" id="results-count"></span>
+      <select class="sort-select" id="sort-select">
+        <option value="priority">Most Popular</option>
+        <option value="name">Name A–Z</option>
+        <option value="price">Price: Low to High</option>
+      </select>
+    </div>
+    <div class="grid" id="grid">
+      <div class="loading">Loading operators…</div>
+    </div>
+  </main>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const DEPOT = 'http://127.0.0.1:6208';
+const CATEGORY_ICONS = {
+  sales:'💼', marketing:'📣', support:'🎧', finance:'💰', operations:'⚙️',
+  runtime:'🔌', communication:'💬', data:'📊', iot:'🌐', hr:'👥',
+  legal:'⚖️', devops:'🛠️', ecommerce:'🛒', analytics:'📈', integration:'🔗',
+  productivity:'✅', identity:'🔐', industry:'🏭',
+};
+
+let _all = [], _filters = {category:'', type:'', free_only:''};
+
+async function load() {
+  try {
+    const r = await fetch(`${DEPOT}/v1/operators`);
+    const d = await r.json();
+    _all = d.operators || [];
+    updateStats();
+    render();
+  } catch(e) {
+    document.getElementById('grid').innerHTML =
+      '<div class="empty"><div class="empty-icon">🔌</div><div class="empty-text">DEPOT API offline — start the depot-api service</div></div>';
+  }
+}
+
+function updateStats() {
+  document.getElementById('stat-total').textContent = _all.length;
+  document.getElementById('stat-installed').textContent = _all.filter(o=>o.installed_by_default).length;
+  document.getElementById('stat-free').textContent = _all.filter(o=>parseFloat(o.price||0)===0).length;
+  const cats = ['all','sales','marketing','support','finance','operations','runtime','communication'];
+  for(const c of cats) {
+    const el = document.getElementById(`count-${c}`);
+    if(el) el.textContent = c==='all' ? _all.length : _all.filter(o=>o.category===c).length;
+  }
+}
+
+function filtered() {
+  let items = _all.slice();
+  if(_filters.category) items = items.filter(o=>o.category===_filters.category);
+  if(_filters.type) items = items.filter(o=>o.type===_filters.type);
+  if(_filters.free_only) items = items.filter(o=>parseFloat(o.price||0)===0);
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  if(q) items = items.filter(o=>(o.name+o.description+o.id).toLowerCase().includes(q));
+  return items;
+}
+
+function render() {
+  const sort = document.getElementById('sort-select').value;
+  let items = filtered();
+  if(sort==='name') items.sort((a,b)=>a.name.localeCompare(b.name));
+  else if(sort==='price') items.sort((a,b)=>parseFloat(a.price||0)-parseFloat(b.price||0));
+
+  document.getElementById('results-count').textContent = `${items.length} result${items.length!==1?'s':''}`;
+
+  if(!items.length) {
+    document.getElementById('grid').innerHTML =
+      '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">No results. Try a different filter.</div></div>';
+    return;
+  }
+
+  document.getElementById('grid').innerHTML = items.map(op => {
+    const icon = CATEGORY_ICONS[op.category] || '🔧';
+    const price = parseFloat(op.price||0)===0 ? 'Free' : `$${op.price}/mo`;
+    const installed = op.installed_by_default;
+    return `
+      <a class="card" href="operator.html?id=${encodeURIComponent(op.id)}">
+        <div class="card-header">
+          <div class="card-icon">${icon}</div>
+          <div class="card-badges">
+            ${installed?'<span class="badge badge--installed">✓ Installed</span>':''}
+            <span class="badge ${parseFloat(op.price||0)===0?'badge--free':'badge--price'}">${price}</span>
+            <span class="badge badge--tier">${op.tier_required||'lite'}</span>
+          </div>
+        </div>
+        <div class="card-name">${op.name}</div>
+        <div class="card-desc">${op.description||''}</div>
+        <div class="card-footer">
+          <span class="card-meta">${op.type} · v${op.version}</span>
+          <button class="btn-install ${installed?'btn-install--installed':'btn-install--ready'}"
+            onclick="event.preventDefault();event.stopPropagation();install('${op.id}',this)"
+            ${installed?'disabled':''}>
+            ${installed?'Installed':'Install'}
+          </button>
+        </div>
+      </a>`;
+  }).join('');
+}
+
+async function install(id, btn) {
+  btn.textContent = 'Installing…';
+  btn.className = 'btn-install btn-install--loading';
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${DEPOT}/v1/operators/${id}/install`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({requested_by:'prism'})
+    });
+    const d = await r.json();
+    if(d.ok) {
+      btn.textContent = 'Installed';
+      btn.className = 'btn-install btn-install--installed';
+      toast(`${id} installed successfully`, 'ok');
+    } else {
+      btn.textContent = 'Install';
+      btn.className = 'btn-install btn-install--ready';
+      btn.disabled = false;
+      toast(`Install failed: ${d.error||'unknown error'}`, 'err');
+    }
+  } catch(e) {
+    btn.textContent = 'Install';
+    btn.className = 'btn-install btn-install--ready';
+    btn.disabled = false;
+    toast('DEPOT API unreachable', 'err');
+  }
+}
+
+function toast(msg, type='ok') {
+  const t = document.createElement('div');
+  t.className = `toast toast--${type}`;
+  t.textContent = msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(()=>t.remove(), 3500);
+}
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const f = btn.dataset.filter, v = btn.dataset.value;
+    _filters[f] = _filters[f]===v ? '' : v;
+    document.querySelectorAll(`[data-filter="${f}"]`).forEach(b=>b.classList.remove('active'));
+    if(_filters[f]) btn.classList.add('active');
+    else document.querySelectorAll(`[data-filter="${f}"][data-value=""]`).forEach(b=>b.classList.add('active'));
+    render();
+  });
+});
+
+document.getElementById('search-input').addEventListener('input', render);
+document.getElementById('sort-select').addEventListener('change', render);
+load();
+</script>
+</body>
+</html>
