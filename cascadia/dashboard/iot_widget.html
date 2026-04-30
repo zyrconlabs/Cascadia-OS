@@ -1,234 +1,242 @@
 <!-- Sensors (beta) — PRISM Dashboard embed
      Polls GET http://127.0.0.1:8300/iot/readings?limit=20 every 10 seconds.
+     Polls GET http://127.0.0.1:8301/iot/devices for threshold config.
      Experimental local sensor monitoring. Not production IoT.
      Self-contained: no external dependencies.
 -->
 <style>
 .iot-widget {
   --navy-900: #111827;
+  --navy-800: #1e293b;
   --prism-a: #4facfe;
   --prism-b: #a78bfa;
-  --prism-c: #34d399;
-  --prism-d: #f472b6;
-  --violet: #7c3aed;
-  --green: #34d399;
+  --green:   #34d399;
+  --yellow:  #fbbf24;
+  --red:     #f87171;
+  --gray:    #9ca3af;
+  --border:  rgba(0,0,0,0.07);
 
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #ffffff;
-  border: 1px solid rgba(0,0,0,0.07);
+  background: #f9fafb;
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  min-width: 320px;
+  min-width: 340px;
 }
 
-.iot-widget__header {
-  background: linear-gradient(135deg, var(--navy-900) 0%, #1e293b 100%);
+/* ── Header ── */
+.iot-header {
+  background: linear-gradient(135deg, var(--navy-900) 0%, var(--navy-800) 100%);
   padding: 14px 18px 12px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
-
-.iot-widget__title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #ffffff;
-  letter-spacing: 0.02em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.iot-widget__title-icon {
-  width: 20px;
-  height: 20px;
+.iot-header__icon {
+  width: 22px; height: 22px;
   background: linear-gradient(135deg, var(--prism-a), var(--prism-b));
   border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.iot-header__icon svg { width: 12px; height: 12px; stroke: #fff; fill: none; stroke-width: 2; }
+.iot-header__title {
+  font-size: 13px; font-weight: 700; color: #fff; letter-spacing: .02em;
+  display: flex; align-items: center; gap: 6px;
+}
+.iot-header__badge {
+  font-size: 9px; background: rgba(167,139,250,.25); color: #c4b5fd;
+  border-radius: 4px; padding: 1px 5px; font-weight: 600; letter-spacing: .04em;
+}
+.iot-header__status {
+  margin-left: auto; font-size: 10px; color: rgba(255,255,255,.5);
+  font-family: 'JetBrains Mono','SF Mono',monospace; white-space: nowrap; flex-shrink: 0;
+}
+.iot-offline-dot {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(248,113,113,.18); color: var(--red);
+  font-size: 10px; font-weight: 600; padding: 2px 8px;
+  border-radius: 20px; border: 1px solid rgba(248,113,113,.3);
+}
+.iot-offline-dot::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--red);
 }
 
-.iot-widget__title-icon svg {
-  width: 11px;
-  height: 11px;
-  stroke: #fff;
-  fill: none;
-  stroke-width: 2;
+/* ── Sections ── */
+.iot-section {
+  padding: 12px 14px 0;
+}
+.iot-section:last-child { padding-bottom: 14px; }
+
+.iot-section-title {
+  font-size: 11px; font-weight: 600; color: #6b7280;
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.iot-section-sub { font-size: 10px; color: var(--gray); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* ── Alert banner ── */
+.iot-alerts { margin: 12px 14px 0; border-radius: 8px; overflow: hidden; }
+.iot-alert-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 12px; font-size: 12px; line-height: 1.4;
+  border-bottom: 1px solid rgba(0,0,0,.04);
+}
+.iot-alert-row:last-child { border-bottom: none; }
+.iot-alert-row--alert   { background: rgba(248,113,113,.08); color: #b91c1c; }
+.iot-alert-row--warning { background: rgba(251,191,36,.08);  color: #92400e; }
+.iot-alert-label {
+  font-size: 9px; font-weight: 700; border-radius: 3px;
+  padding: 2px 5px; flex-shrink: 0; text-transform: uppercase; letter-spacing: .05em;
+}
+.iot-alert-label--alert   { background: rgba(248,113,113,.2); color: #ef4444; }
+.iot-alert-label--warning { background: rgba(251,191,36,.2);  color: #d97706; }
+
+/* ── Device grid ── */
+.iot-device-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  padding: 0 14px 12px;
+}
+.iot-device-card {
+  background: #fff; border: 1px solid var(--border);
+  border-radius: 9px; padding: 12px; position: relative;
+  transition: box-shadow .12s;
+}
+.iot-device-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.iot-device-card--alert   { border-color: rgba(248,113,113,.35); background: rgba(255,249,249,1); }
+.iot-device-card--warning { border-color: rgba(251,191,36,.35);  background: rgba(255,253,244,1); }
+
+.iot-card-header {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+}
+.iot-status-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.iot-status-dot--ok      { background: var(--green); }
+.iot-status-dot--warning { background: var(--yellow); }
+.iot-status-dot--alert   { background: var(--red); animation: iot-pulse 1.4s ease-in-out infinite; }
+@keyframes iot-pulse {
+  0%,100% { opacity: 1; } 50% { opacity: .4; }
+}
+.iot-card-name {
+  font-size: 11px; font-weight: 600; color: var(--navy-900);
+  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.iot-status-tag {
+  font-size: 9px; font-weight: 700; border-radius: 3px;
+  padding: 1px 5px; text-transform: uppercase; letter-spacing: .05em; flex-shrink: 0;
+}
+.iot-status-tag--warning { background: rgba(251,191,36,.15); color: #b45309; }
+.iot-status-tag--alert   { background: rgba(248,113,113,.15); color: #dc2626; }
+
+.iot-card-value {
+  font-family: 'JetBrains Mono','SF Mono',monospace;
+  font-size: 22px; font-weight: 700; color: var(--navy-900); line-height: 1;
+  margin-bottom: 2px;
+}
+.iot-card-unit { font-size: 11px; color: var(--gray); margin-left: 3px; font-weight: 400; }
+.iot-card-type { font-size: 10px; color: var(--gray); margin-bottom: 8px; }
+
+/* ── Threshold bar ── */
+.iot-threshold-bar { margin: 8px 0 6px; }
+.iot-threshold-track {
+  height: 5px; border-radius: 3px; background: #e5e7eb; position: relative; overflow: visible;
+}
+.iot-threshold-fill {
+  height: 100%; border-radius: 3px; transition: width .3s ease;
+}
+.iot-threshold-fill--ok      { background: var(--green); }
+.iot-threshold-fill--warning { background: var(--yellow); }
+.iot-threshold-fill--alert   { background: var(--red); }
+.iot-threshold-limits {
+  display: flex; justify-content: space-between;
+  font-size: 9px; color: #9ca3af; margin-top: 3px;
 }
 
-.iot-widget__status-bar {
-  font-size: 10px;
-  color: rgba(255,255,255,0.55);
-  font-family: 'JetBrains Mono', 'SF Mono', monospace;
-  white-space: nowrap;
-  flex-shrink: 0;
+/* ── Sparkline ── */
+.iot-sparkline { margin-top: 8px; }
+.iot-sparkline svg { display: block; width: 100%; height: 32px; }
+
+/* ── Readings list ── */
+.iot-readings-panel {
+  background: #fff; border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; margin: 0 14px 14px;
 }
-
-.iot-widget__offline-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(248,113,113,0.18);
-  color: #f87171;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 20px;
-  border: 1px solid rgba(248,113,113,0.3);
+.iot-readings-header {
+  padding: 10px 14px; border-bottom: 1px solid #f3f4f6;
+  display: flex; align-items: center; justify-content: space-between;
 }
+.iot-readings-title { font-size: 12px; font-weight: 600; color: var(--navy-900); }
+.iot-readings-sub   { font-size: 10px; color: var(--gray); }
+.iot-readings-list  { max-height: 260px; overflow-y: auto; }
+.iot-readings-list::-webkit-scrollbar { width: 3px; }
+.iot-readings-list::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
 
-.iot-widget__offline-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #f87171;
-  flex-shrink: 0;
+.iot-reading-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-bottom: 1px solid #f9fafb; font-size: 12px;
 }
-
-.iot-widget__body {
-  padding: 10px;
-  max-height: 420px;
-  overflow-y: auto;
-  background: #f9fafb;
+.iot-reading-row:last-child { border-bottom: none; }
+.iot-reading-badge {
+  font-size: 9px; font-weight: 600; border-radius: 3px;
+  padding: 2px 6px; min-width: 58px; text-align: center; flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: .03em;
 }
+.badge-temperature  { background: rgba(251,146,60,.12); color: #ea580c; border: 1px solid rgba(251,146,60,.25); }
+.badge-humidity     { background: rgba(79,172,254,.12);  color: #2563eb; border: 1px solid rgba(79,172,254,.25); }
+.badge-soil_moisture{ background: rgba(52,211,153,.12);  color: #059669; border: 1px solid rgba(52,211,153,.25); }
+.badge-ph           { background: rgba(167,139,250,.12); color: #7c3aed; border: 1px solid rgba(167,139,250,.25); }
+.badge-pressure     { background: rgba(251,191,36,.12);  color: #d97706; border: 1px solid rgba(251,191,36,.25); }
+.badge-motion       { background: rgba(99,102,241,.12);  color: #4f46e5; border: 1px solid rgba(99,102,241,.25); }
+.badge-light        { background: rgba(250,204,21,.15);  color: #a16207; border: 1px solid rgba(250,204,21,.3); }
+.badge-door         { background: rgba(107,114,128,.1);  color: #4b5563; border: 1px solid rgba(107,114,128,.2); }
+.badge-default      { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
 
-.iot-widget__body::-webkit-scrollbar { width: 3px; }
-.iot-widget__body::-webkit-scrollbar-track { background: transparent; }
-.iot-widget__body::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+.iot-reading-device { flex: 1; font-weight: 600; color: var(--navy-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iot-reading-val    { font-family: 'JetBrains Mono','SF Mono',monospace; font-weight: 700; color: var(--navy-900); flex-shrink: 0; }
+.iot-reading-unit   { color: var(--gray); font-size: 10px; margin-left: 2px; }
+.iot-reading-ago    { font-size: 10px; color: var(--gray); flex-shrink: 0; min-width: 48px; text-align: right; }
 
-.iot-widget__empty {
-  text-align: center;
-  padding: 36px 20px;
-  color: #9ca3af;
-  font-size: 13px;
-}
-
-.iot-widget__empty-icon {
-  font-size: 28px;
-  margin-bottom: 10px;
-  opacity: 0.5;
-}
-
-.iot-reading-card {
-  background: #ffffff;
-  border: 1px solid rgba(0,0,0,0.06);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  transition: box-shadow 0.12s;
-}
-
-.iot-reading-card:last-child { margin-bottom: 0; }
-
-.iot-reading-card:hover {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-}
-
-.iot-reading-card__badge {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  min-width: 80px;
-  text-align: center;
-}
-
-.badge--soil_moisture {
-  background: rgba(52,211,153,0.12);
-  color: #059669;
-  border: 1px solid rgba(52,211,153,0.3);
-}
-
-.badge--temperature {
-  background: rgba(251,146,60,0.12);
-  color: #ea580c;
-  border: 1px solid rgba(251,146,60,0.3);
-}
-
-.badge--humidity {
-  background: rgba(79,172,254,0.12);
-  color: #2563eb;
-  border: 1px solid rgba(79,172,254,0.3);
-}
-
-.badge--ph {
-  background: rgba(167,139,250,0.12);
-  color: #7c3aed;
-  border: 1px solid rgba(167,139,250,0.3);
-}
-
-.badge--default {
-  background: rgba(107,114,128,0.10);
-  color: #6b7280;
-  border: 1px solid rgba(107,114,128,0.2);
-}
-
-.iot-reading-card__body {
-  flex: 1;
-  min-width: 0;
-}
-
-.iot-reading-card__device {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--navy-900);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.iot-reading-card__meta {
-  font-size: 11px;
-  color: #9ca3af;
-  margin-top: 1px;
-}
-
-.iot-reading-card__value {
-  flex-shrink: 0;
-  text-align: right;
-}
-
-.iot-reading-card__number {
-  font-family: 'JetBrains Mono', 'SF Mono', monospace;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--navy-900);
-  line-height: 1;
-}
-
-.iot-reading-card__unit {
-  font-size: 10px;
-  color: #9ca3af;
-  margin-top: 2px;
+.iot-empty {
+  text-align: center; padding: 32px 20px; color: var(--gray); font-size: 13px;
 }
 </style>
 
 <div class="iot-widget" id="iot-widget-root">
-  <div class="iot-widget__header">
-    <div class="iot-widget__title">
-      <div class="iot-widget__title-icon">
-        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-      </div>
-      Sensors <span style="font-size:9px;background:rgba(167,139,250,.25);color:#c4b5fd;border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:600;letter-spacing:.04em">beta</span>
+  <!-- Header -->
+  <div class="iot-header">
+    <div class="iot-header__icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
-    <div class="iot-widget__status-bar" id="iot-status-bar">Loading...</div>
+    <div class="iot-header__title">
+      Sensors <span class="iot-header__badge">beta</span>
+    </div>
+    <div class="iot-header__status" id="iot-status-bar">Loading…</div>
   </div>
-  <div class="iot-widget__body" id="iot-widget-body">
-    <div class="iot-widget__empty">
-      <div class="iot-widget__empty-icon">&#x1F4E1;</div>
-      Loading sensor data...
+
+  <!-- Alert banner (hidden when no alerts) -->
+  <div id="iot-alerts-panel" style="display:none"></div>
+
+  <!-- Device grid label -->
+  <div class="iot-section" style="padding-bottom:8px">
+    <div class="iot-section-title">
+      Devices
+      <span class="iot-section-sub" id="iot-device-count"></span>
+    </div>
+  </div>
+
+  <!-- Device cards -->
+  <div class="iot-device-grid" id="iot-device-grid">
+    <div style="grid-column:1/-1" class="iot-empty">Loading devices…</div>
+  </div>
+
+  <!-- Recent readings -->
+  <div class="iot-readings-panel">
+    <div class="iot-readings-header">
+      <span class="iot-readings-title">Recent Readings</span>
+      <span class="iot-readings-sub">last 20</span>
+    </div>
+    <div class="iot-readings-list" id="iot-readings-list">
+      <div class="iot-empty">Loading…</div>
     </div>
   </div>
 </div>
@@ -237,163 +245,340 @@
 (function () {
   'use strict';
 
-  var ENDPOINT = 'http://127.0.0.1:8300/iot/readings?limit=20';
-  var POLL_INTERVAL = 10000; // 10 seconds
-  var _timer = null;
-  var _isOffline = false;
+  var INGEST_URL   = 'http://127.0.0.1:8300/iot/readings?limit=20';
+  var REGISTRY_URL = 'http://127.0.0.1:8301/iot/devices';
+  var POLL_MS      = 10000;
+  var _timer       = null;
+  var _offline     = false;
 
-  var BADGE_CLASSES = {
-    soil_moisture: 'badge--soil_moisture',
-    temperature:   'badge--temperature',
-    humidity:      'badge--humidity',
-    ph:            'badge--ph'
-  };
+  // Per-device reading history (last 20 per device, for sparklines)
+  var _history = {};
 
-  var BADGE_LABELS = {
-    soil_moisture: 'Soil',
-    temperature:   'Temp',
-    humidity:      'Humidity',
-    ph:            'pH'
-  };
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
-  function formatTime(iso) {
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fmtVal(v) {
+    if (v == null) return '—';
+    var n = parseFloat(v);
+    return isNaN(n) ? esc(String(v)) : (Number.isInteger(n) ? String(n) : n.toFixed(2));
+  }
+
+  function fmtAgo(iso) {
     if (!iso) return '—';
     try {
-      var d = new Date(iso);
-      var diff = Math.floor((Date.now() - d.getTime()) / 1000);
-      if (diff < 5)  return 'just now';
-      if (diff < 60) return diff + 's ago';
+      var diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+      if (diff < 5)    return 'just now';
+      if (diff < 60)   return diff + 's ago';
       if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-      return d.toLocaleDateString();
-    } catch (e) { return iso; }
+      return Math.floor(diff / 3600) + 'h ago';
+    } catch(e) { return '—'; }
   }
 
-  function nowHHMMSS() {
-    var d = new Date();
-    return d.toTimeString().slice(0, 8);
+  function nowHMS() {
+    return new Date().toTimeString().slice(0, 8);
   }
 
-  function badgeClass(sensorType) {
-    return BADGE_CLASSES[sensorType] || 'badge--default';
+  function badgeClass(t) {
+    var map = {
+      temperature:'temperature', humidity:'humidity', soil_moisture:'soil_moisture',
+      ph:'ph', pressure:'pressure', motion:'motion', light:'light', door:'door'
+    };
+    return 'iot-reading-badge badge-' + (map[t] || 'default');
   }
 
-  function badgeLabel(sensorType) {
-    return BADGE_LABELS[sensorType] || sensorType.replace(/_/g, ' ');
+  function badgeLabel(t) {
+    var map = {
+      temperature:'Temp', humidity:'Humidity', soil_moisture:'Soil',
+      ph:'pH', pressure:'Pressure', motion:'Motion', light:'Light', door:'Door'
+    };
+    return map[t] || t.replace(/_/g,' ');
   }
 
-  function formatValue(val) {
-    if (val === null || val === undefined) return '—';
-    var n = parseFloat(val);
-    if (isNaN(n)) return String(val);
-    return Number.isInteger(n) ? String(n) : n.toFixed(2);
+  // ── Status computation ─────────────────────────────────────────────────────
+
+  function computeStatus(val, device) {
+    if (!device) return 'ok';
+    var v   = parseFloat(val);
+    var tmax = device.alert_threshold_max;
+    var tmin = device.alert_threshold_min;
+    if (isNaN(v) || (tmax == null && tmin == null)) return 'ok';
+    if (tmax != null && v > tmax) return 'alert';
+    if (tmin != null && v < tmin) return 'alert';
+    // warning zone: within 15% of range from threshold edge
+    if (tmax != null && tmin != null) {
+      var range = tmax - tmin;
+      if (range > 0 && (v > tmax - range * 0.15 || v < tmin + range * 0.15)) return 'warning';
+    } else if (tmax != null && v > tmax * 0.85) {
+      return 'warning';
+    } else if (tmin != null && tmin > 0 && v < tmin * 1.15) {
+      return 'warning';
+    }
+    return 'ok';
   }
 
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+  // ── Threshold bar ──────────────────────────────────────────────────────────
+
+  function renderThresholdBar(val, device, status) {
+    if (!device) return '';
+    var tmax = device.alert_threshold_max;
+    var tmin = device.alert_threshold_min;
+    if (tmax == null && tmin == null) return '';
+
+    var v = parseFloat(val);
+    if (isNaN(v)) return '';
+
+    var lo = tmin != null ? tmin : Math.min(0, v);
+    var hi = tmax != null ? tmax : Math.max(v * 1.2, lo + 1);
+    var range = hi - lo;
+    if (range <= 0) return '';
+
+    var pct = Math.max(0, Math.min(100, ((v - lo) / range) * 100)).toFixed(1);
+    var fillClass = 'iot-threshold-fill--' + status;
+
+    var loLabel = lo.toFixed(1) + (device.unit ? ' ' + esc(device.unit) : '');
+    var hiLabel = hi.toFixed(1) + (device.unit ? ' ' + esc(device.unit) : '');
+
+    return '<div class="iot-threshold-bar">' +
+      '<div class="iot-threshold-track">' +
+        '<div class="iot-threshold-fill ' + fillClass + '" style="width:' + pct + '%"></div>' +
+      '</div>' +
+      '<div class="iot-threshold-limits"><span>' + esc(loLabel) + '</span><span>' + esc(hiLabel) + '</span></div>' +
+    '</div>';
   }
 
-  function renderOffline() {
-    var bar = document.getElementById('iot-status-bar');
-    var body = document.getElementById('iot-widget-body');
-    if (!bar || !body) return;
+  // ── Sparkline ─────────────────────────────────────────────────────────────
 
-    bar.innerHTML = '<span class="iot-widget__offline-badge">' +
-      '<span class="iot-widget__offline-dot"></span>Offline</span>';
+  function renderSparkline(deviceId, status) {
+    var pts = _history[deviceId];
+    if (!pts || pts.length < 2) return '';
 
-    if (!_isOffline) {
-      body.innerHTML = '<div class="iot-widget__empty">' +
-        '<div class="iot-widget__empty-icon">&#x26A0;</div>' +
-        'Endpoint unreachable &mdash; retrying every 10s</div>';
-      _isOffline = true;
+    var vals = pts.map(function(p){ return p.v; });
+    var lo   = Math.min.apply(null, vals);
+    var hi   = Math.max.apply(null, vals);
+    if (lo === hi) { hi = lo + 1; }
+
+    var W = 100, H = 28, PAD = 3;
+    var dw = W / (vals.length - 1);
+    var points = vals.map(function(v, i) {
+      var x = i * dw;
+      var y = PAD + (H - PAD * 2) * (1 - (v - lo) / (hi - lo));
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+
+    var color = status === 'alert' ? '#f87171' : status === 'warning' ? '#fbbf24' : '#34d399';
+
+    return '<div class="iot-sparkline">' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+        '<polyline points="' + points + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '</svg>' +
+    '</div>';
+  }
+
+  // ── Update history ─────────────────────────────────────────────────────────
+
+  function updateHistory(readings) {
+    readings.forEach(function(r) {
+      var id  = r.device_id || 'unknown';
+      var val = parseFloat(r.value);
+      var ts  = r.recorded_at || r.timestamp || '';
+      if (isNaN(val)) return;
+      if (!_history[id]) _history[id] = [];
+      // avoid duplicate timestamps
+      var last = _history[id][_history[id].length - 1];
+      if (last && last.ts === ts) return;
+      _history[id].push({ v: val, ts: ts });
+      if (_history[id].length > 20) _history[id].shift();
+    });
+  }
+
+  // ── Render alerts ──────────────────────────────────────────────────────────
+
+  function renderAlerts(deviceLatest, thresholdMap) {
+    var panel = document.getElementById('iot-alerts-panel');
+    if (!panel) return;
+
+    var rows = [];
+    Object.keys(deviceLatest).forEach(function(id) {
+      var r      = deviceLatest[id];
+      var dev    = thresholdMap[id];
+      var status = computeStatus(r.value, dev);
+      if (status === 'ok') return;
+      var val    = fmtVal(r.value);
+      var unit   = esc(r.unit || (dev && dev.unit) || '');
+      var label  = status === 'alert' ? 'Alert' : 'Warn';
+      rows.push(
+        '<div class="iot-alert-row iot-alert-row--' + status + '">' +
+          '<span class="iot-alert-label iot-alert-label--' + status + '">' + label + '</span>' +
+          '<span>' + esc(id) + ' · ' + esc(r.sensor_type || '') + ' ' + val + (unit ? ' ' + unit : '') + '</span>' +
+        '</div>'
+      );
+    });
+
+    if (rows.length) {
+      panel.style.display = '';
+      panel.className = 'iot-alerts';
+      panel.innerHTML = rows.join('');
+    } else {
+      panel.style.display = 'none';
     }
   }
 
-  function renderReadings(readings, count) {
-    _isOffline = false;
-    var bar = document.getElementById('iot-status-bar');
-    var body = document.getElementById('iot-widget-body');
-    if (!bar || !body) return;
+  // ── Render device grid ─────────────────────────────────────────────────────
 
-    bar.textContent = count + ' reading' + (count !== 1 ? 's' : '') +
-      ' • Updated: ' + nowHHMMSS();
+  function renderDeviceGrid(deviceLatest, thresholdMap) {
+    var grid = document.getElementById('iot-device-grid');
+    var cnt  = document.getElementById('iot-device-count');
+    if (!grid) return;
 
-    if (!readings || readings.length === 0) {
-      body.innerHTML = '<div class="iot-widget__empty">' +
-        '<div class="iot-widget__empty-icon">&#x1F4E1;</div>' +
-        'No readings yet</div>';
+    var ids = Object.keys(deviceLatest);
+    if (cnt) cnt.textContent = ids.length + ' device' + (ids.length !== 1 ? 's' : '');
+
+    if (!ids.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1" class="iot-empty">No devices with readings yet</div>';
       return;
     }
 
-    // Newest first
-    var sorted = readings.slice().reverse();
-    var html = '';
-    for (var i = 0; i < sorted.length; i++) {
-      var r = sorted[i];
-      var bc   = badgeClass(r.sensor_type);
-      var bl   = badgeLabel(r.sensor_type);
-      var val  = formatValue(r.value);
-      var unit = r.unit ? escapeHtml(r.unit) : '';
-      var dev  = escapeHtml(r.device_id || 'unknown');
-      var ts   = formatTime(r.timestamp || r.ingested_at);
+    grid.innerHTML = ids.map(function(id) {
+      var r      = deviceLatest[id];
+      var dev    = thresholdMap[id];
+      var status = computeStatus(r.value, dev);
+      var val    = fmtVal(r.value);
+      var unit   = esc(r.unit || (dev && dev.unit) || '');
+      var type   = esc(r.sensor_type || '');
+      var ago    = fmtAgo(r.recorded_at || r.timestamp);
 
-      html += '<div class="iot-reading-card">' +
-        '<span class="iot-reading-card__badge ' + bc + '">' + escapeHtml(bl) + '</span>' +
-        '<div class="iot-reading-card__body">' +
-          '<div class="iot-reading-card__device">' + dev + '</div>' +
-          '<div class="iot-reading-card__meta">' + ts + '</div>' +
+      var cardClass = 'iot-device-card' + (status !== 'ok' ? ' iot-device-card--' + status : '');
+      var dotClass  = 'iot-status-dot iot-status-dot--' + status;
+      var tag = status !== 'ok'
+        ? '<span class="iot-status-tag iot-status-tag--' + status + '">' + (status === 'alert' ? 'Alert' : 'Warn') + '</span>'
+        : '';
+
+      return '<div class="' + cardClass + '">' +
+        '<div class="iot-card-header">' +
+          '<div class="' + dotClass + '"></div>' +
+          '<div class="iot-card-name">' + esc(id) + '</div>' +
+          tag +
         '</div>' +
-        '<div class="iot-reading-card__value">' +
-          '<div class="iot-reading-card__number">' + val + '</div>' +
-          (unit ? '<div class="iot-reading-card__unit">' + unit + '</div>' : '') +
-        '</div>' +
+        '<div class="iot-card-value">' + val + '<span class="iot-card-unit">' + unit + '</span></div>' +
+        '<div class="iot-card-type">' + type + ' · ' + ago + '</div>' +
+        renderThresholdBar(r.value, dev, status) +
+        renderSparkline(id, status) +
       '</div>';
-    }
-    body.innerHTML = html;
+    }).join('');
   }
 
-  function fetchReadings() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', ENDPOINT, true);
-    xhr.timeout = 5000;
+  // ── Render readings list ───────────────────────────────────────────────────
 
-    xhr.onreadystatechange = function () {
+  function renderReadingsList(readings) {
+    var list = document.getElementById('iot-readings-list');
+    if (!list) return;
+
+    if (!readings || !readings.length) {
+      list.innerHTML = '<div class="iot-empty">No readings yet</div>';
+      return;
+    }
+
+    var sorted = readings.slice().sort(function(a, b) {
+      return ((b.recorded_at || b.timestamp) || '').localeCompare((a.recorded_at || a.timestamp) || '');
+    });
+
+    list.innerHTML = sorted.map(function(r) {
+      var val  = fmtVal(r.value);
+      var unit = esc(r.unit || '');
+      var ago  = fmtAgo(r.recorded_at || r.timestamp);
+      return '<div class="iot-reading-row">' +
+        '<span class="' + badgeClass(r.sensor_type) + '">' + esc(badgeLabel(r.sensor_type)) + '</span>' +
+        '<span class="iot-reading-device">' + esc(r.device_id || 'unknown') + '</span>' +
+        '<span class="iot-reading-val">' + val + '<span class="iot-reading-unit">' + unit + '</span></span>' +
+        '<span class="iot-reading-ago">' + ago + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  // ── Main render ────────────────────────────────────────────────────────────
+
+  function renderOffline() {
+    var bar = document.getElementById('iot-status-bar');
+    if (bar) bar.innerHTML = '<span class="iot-offline-dot">Offline</span>';
+    if (!_offline) {
+      var grid = document.getElementById('iot-device-grid');
+      if (grid) grid.innerHTML = '<div style="grid-column:1/-1" class="iot-empty">⚠ iot_ingest not reachable on port 8300 — retrying</div>';
+      _offline = true;
+    }
+  }
+
+  function render(readings, devices) {
+    _offline = false;
+
+    updateHistory(readings);
+
+    // Build device threshold map keyed by device_id
+    var thresholdMap = {};
+    (devices || []).forEach(function(d) { thresholdMap[d.device_id] = d; });
+
+    // Latest reading per device
+    var deviceLatest = {};
+    readings.forEach(function(r) {
+      var id = r.device_id || 'unknown';
+      var cur = deviceLatest[id];
+      var ts  = r.recorded_at || r.timestamp || '';
+      if (!cur || ts > (cur.recorded_at || cur.timestamp || '')) {
+        deviceLatest[id] = r;
+      }
+    });
+
+    var bar = document.getElementById('iot-status-bar');
+    if (bar) bar.textContent = readings.length + ' reading' + (readings.length !== 1 ? 's' : '') + ' · ' + nowHMS();
+
+    renderAlerts(deviceLatest, thresholdMap);
+    renderDeviceGrid(deviceLatest, thresholdMap);
+    renderReadingsList(readings);
+  }
+
+  // ── Fetching ───────────────────────────────────────────────────────────────
+
+  function get(url, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.timeout = 5000;
+    xhr.onreadystatechange = function() {
       if (xhr.readyState !== 4) return;
       if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          var data = JSON.parse(xhr.responseText);
-          renderReadings(data.readings || [], data.count || 0);
-        } catch (e) {
-          renderOffline();
-        }
+        try { cb(null, JSON.parse(xhr.responseText)); } catch(e) { cb(e); }
       } else {
-        renderOffline();
+        cb(new Error('status ' + xhr.status));
       }
     };
+    xhr.ontimeout = xhr.onerror = function() { cb(new Error('network')); };
+    try { xhr.send(); } catch(e) { cb(e); }
+  }
 
-    xhr.ontimeout = function () { renderOffline(); };
-    xhr.onerror   = function () { renderOffline(); };
-
-    try { xhr.send(); } catch (e) { renderOffline(); }
+  function poll() {
+    get(INGEST_URL, function(err, data) {
+      if (err) { renderOffline(); return; }
+      var readings = data.readings || [];
+      get(REGISTRY_URL, function(err2, devData) {
+        // registry offline is non-fatal — proceed without thresholds
+        render(readings, err2 ? [] : (devData.devices || []));
+      });
+    });
   }
 
   function startPolling() {
-    fetchReadings();
-    _timer = setInterval(fetchReadings, POLL_INTERVAL);
+    poll();
+    _timer = setInterval(poll, POLL_MS);
   }
 
-  // Pause when tab is hidden, resume when visible
   if (typeof document.hidden !== 'undefined') {
-    document.addEventListener('visibilitychange', function () {
+    document.addEventListener('visibilitychange', function() {
       if (document.hidden) {
         clearInterval(_timer);
       } else {
-        fetchReadings();
-        _timer = setInterval(fetchReadings, POLL_INTERVAL);
+        poll();
+        _timer = setInterval(poll, POLL_MS);
       }
     });
   }

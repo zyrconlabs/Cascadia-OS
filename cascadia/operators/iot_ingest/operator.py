@@ -17,10 +17,10 @@ from urllib.parse import urlparse, parse_qs
 
 from cascadia.iot.sensor_ingest import (
     _Handler as _BaseHandler,
-    _validate_reading,
-    _normalize_timestamp,
-    _nats_subject,
-    _publish_to_nats,
+    validate_reading,
+    normalize_timestamp,
+    build_subject,
+    publish_reading,
     VALID_SENSOR_TYPES,
 )
 from cascadia.iot.sensor_store import SensorStore
@@ -97,13 +97,13 @@ class _IngestHandler(_BaseHandler):
             self._send(400, {"error": "invalid or missing JSON body"})
             return
 
-        err = _validate_reading(body)
+        err = validate_reading(body)
         if err:
             self._send(400, {"error": err})
             return
 
-        body["timestamp"] = _normalize_timestamp(body.get("timestamp"))
-        subject = _nats_subject(body["sensor_type"], body["device_id"])
+        body["timestamp"] = normalize_timestamp(body.get("timestamp"))
+        subject = build_subject(body["sensor_type"], body["device_id"])
 
         try:
             val = float(body["value"])
@@ -111,7 +111,7 @@ class _IngestHandler(_BaseHandler):
         except Exception:
             pass
 
-        _publish_to_nats(subject, body)
+        publish_reading(subject, body)
         log.info("accepted reading device=%s type=%s", body["device_id"], body["sensor_type"])
         self._send(200, {"accepted": True, "subject": subject})
 

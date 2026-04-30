@@ -3638,8 +3638,21 @@ function _renderSensorsData(readings) {
 
 function _sensorStatus(r) {
   const payload = (typeof r.payload === 'object' && r.payload) ? r.payload : {};
-  if (payload.alert_threshold_max != null && parseFloat(r.value) > payload.alert_threshold_max) return 'alert';
-  if (payload.alert_threshold_min != null && parseFloat(r.value) < payload.alert_threshold_min) return 'alert';
+  const val = parseFloat(r.value);
+  if (isNaN(val)) return 'ok';
+  const tmax = payload.alert_threshold_max;
+  const tmin = payload.alert_threshold_min;
+  if (tmax != null && val > tmax) return 'alert';
+  if (tmin != null && val < tmin) return 'alert';
+  // warning: within 15% of breaching a threshold
+  if (tmax != null && tmin != null) {
+    const range = tmax - tmin;
+    if (range > 0 && (val > tmax - range * 0.15 || val < tmin + range * 0.15)) return 'warning';
+  } else if (tmax != null && val > tmax * 0.85) {
+    return 'warning';
+  } else if (tmin != null && tmin > 0 && val < tmin * 1.15) {
+    return 'warning';
+  }
   return 'ok';
 }
 

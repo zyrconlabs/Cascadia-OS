@@ -254,3 +254,20 @@ class _Handler(BaseHTTPRequestHandler):
 
 def touch_last_seen(device_id: str) -> None:
     _get_store().touch_last_seen(device_id)
+
+
+# Public module-level API
+def register_device(data: Dict[str, Any]) -> Dict[str, Any]:
+    return _get_store().register(data)
+
+def list_devices() -> List[Dict[str, Any]]:
+    return _get_store().list_all()
+
+def get_device(device_id: str) -> Optional[Dict[str, Any]]:
+    return _get_store().get(device_id)
+
+def update_device(device_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    return _get_store().update(device_id, data)
+
+def propose_deregister(device_id: str) -> str:
+    return _get_store().deregister_note(device_id)
