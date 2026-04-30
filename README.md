@@ -201,6 +201,8 @@ Cascadia OS coordinates AI operators that:
 | HANDSHAKE | 6203 | Webhook/HTTP/SMTP execution, external API registry |
 | BELL | 6204 | Chat sessions, workflow execution, approval collection |
 | ALMANAC | 6205 | Component catalog, glossary, runbooks |
+| CONDUIT | 6206 | IoT device bridge and sensor event router |
+| DEPOT API | 6208 | Marketplace API — browse, search, install, purchase |
 | PRISM | 6300 | Live system visibility — runs, approvals, operators |
 
 ---
