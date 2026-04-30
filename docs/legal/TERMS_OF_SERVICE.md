@@ -83,7 +83,7 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, ZYRCON'S TOTAL LIABILITY TO Y
 
 **Informal Resolution.** Before filing any formal dispute, you agree to contact legal@zyrcon.ai and attempt to resolve the matter informally for at least 30 days.
 
-**Arbitration.** Any unresolved dispute shall be settled by binding arbitration administered by JAMS under its Streamlined Arbitration Rules, conducted in San Francisco, California. The arbitrator's decision is final and may be entered as a judgment in any court of competent jurisdiction. Class action waivers apply; you may not bring claims as a class representative or class member.
+**Arbitration.** Any unresolved dispute shall be settled by binding arbitration administered by JAMS under its Streamlined Arbitration Rules, conducted in Houston, Texas. The arbitrator's decision is final and may be entered as a judgment in any court of competent jurisdiction. Class action waivers apply; you may not bring claims as a class representative or class member.
 
 **Small Claims.** Either party may bring an individual action in small claims court in lieu of arbitration.
 
@@ -97,7 +97,7 @@ Zyrcon may suspend or terminate your account at any time for violation of these 
 
 ## 13. Governing Law
 
-These Terms are governed by the laws of the State of California, without regard to conflict-of-law principles. Any court proceedings not subject to arbitration shall be brought exclusively in the state or federal courts located in San Francisco County, California.
+These Terms are governed by the laws of the State of Texas, without regard to conflict-of-law principles. Any court proceedings not subject to arbitration shall be brought exclusively in the state or federal courts located in Harris County, Texas.
 
 ---
 
@@ -107,4 +107,4 @@ Zyrcon may update these Terms at any time. Material changes will be communicated
 
 ---
 
-**Contact:** legal@zyrcon.ai | Zyrcon, Inc., San Francisco, CA
+**Contact:** legal@zyrcon.ai | Zyrcon, Inc., Houston, TX

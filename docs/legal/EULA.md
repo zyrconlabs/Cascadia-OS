@@ -84,8 +84,8 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL ZYRCON BE L
 
 ## 11. Governing Law
 
-This Agreement is governed by the laws of the State of California, without regard to conflict-of-law provisions. Any disputes arising under this Agreement that are not subject to arbitration under Zyrcon's Terms of Service shall be resolved in the state or federal courts of San Francisco County, California.
+This Agreement is governed by the laws of the State of Texas, without regard to conflict-of-law provisions. Any disputes arising under this Agreement that are not subject to arbitration under Zyrcon's Terms of Service shall be resolved in the state or federal courts of Harris County, Texas.
 
 ---
 
-**Contact:** legal@zyrcon.ai | Zyrcon, Inc., San Francisco, CA
+**Contact:** legal@zyrcon.ai | Zyrcon, Inc., Houston, TX
