@@ -1,0 +1,19 @@
+{
+  "id": "appointment-scheduler",
+  "name": "Appointment Scheduler",
+  "type": "operator",
+  "version": "1.0.0",
+  "description": "Schedule, reschedule, and cancel appointments with confirmation messages.",
+  "author": "Zyrcon",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 8102,
+  "entry_point": "operator.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "operations",
+  "industries": ["healthcare", "professional-services", "general"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true
+}

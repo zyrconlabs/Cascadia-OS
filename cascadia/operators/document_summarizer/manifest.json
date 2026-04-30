@@ -1,0 +1,19 @@
+{
+  "id": "document-summarizer",
+  "name": "Document Summarizer",
+  "type": "operator",
+  "version": "1.0.0",
+  "description": "Summarize documents using extractive techniques — no LLM required.",
+  "author": "Zyrcon",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 8106,
+  "entry_point": "operator.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "operations",
+  "industries": ["general"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true
+}

@@ -1,0 +1,19 @@
+{
+  "id": "budget-tracker",
+  "name": "Budget Tracker",
+  "type": "operator",
+  "version": "1.0.0",
+  "description": "Track project and department budgets, log expenses, and generate spend reports.",
+  "author": "Zyrcon",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 8107,
+  "entry_point": "operator.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "finance",
+  "industries": ["general"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true
+}
