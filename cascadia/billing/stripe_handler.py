@@ -20,13 +20,11 @@ from cascadia.shared.logger import get_logger
 logger = get_logger('stripe')
 
 STRIPE_TIER_MAP = {
-    'price_pro_monthly':       'pro',
-    'price_pro_annual':        'pro',
-    'price_pro_workspace':     'pro_workspace',
-    'price_business_starter':  'business_starter',
-    'price_business_growth':   'business_growth',
-    'price_business_max':      'business_max',
-    'price_enterprise':        'enterprise',
+    'price_pro_monthly':      'pro',
+    'price_pro_annual':       'pro',
+    'price_business_monthly': 'business',
+    'price_business_annual':  'business',
+    'price_enterprise':       'enterprise',
 }
 
 
@@ -40,7 +38,7 @@ class StripeHandler:
                  sub_manager=None, email=None, license_gen=None) -> None:
         self._secret = webhook_secret.encode()
         self._price_map = price_map or STRIPE_TIER_MAP
-        self._processed_events: set = set()  # replay protection
+        self._processed_events: set = set()  # in-memory fallback; persistent dedup via sub_manager
         self._sub_manager = sub_manager
         self._email = email
         self._license_gen = license_gen
@@ -68,13 +66,21 @@ class StripeHandler:
         """
         Process a Stripe event dict.
         Returns action dict or None if no action needed.
-        Replay-safe: duplicate event_ids are ignored.
+        Replay-safe: duplicate event_ids are ignored (persistent if sub_manager available).
         """
         event_id = event.get('id', '')
-        if event_id in self._processed_events:
-            logger.warning('Stripe: duplicate event %s — skipping', event_id)
-            return None
-        self._processed_events.add(event_id)
+        if event_id:
+            # Prefer persistent dedup via SubscriptionManager; fall back to in-memory set
+            if self._sub_manager and hasattr(self._sub_manager, 'is_event_processed'):
+                if self._sub_manager.is_event_processed(event_id):
+                    logger.warning('Stripe: duplicate event %s — skipping', event_id)
+                    return None
+                self._sub_manager.mark_event_processed(event_id)
+            elif event_id in self._processed_events:
+                logger.warning('Stripe: duplicate event %s — skipping', event_id)
+                return None
+            else:
+                self._processed_events.add(event_id)
 
         etype = event.get('type', '')
         data = event.get('data', {}).get('object', {})
@@ -107,7 +113,8 @@ class StripeHandler:
     def handle(self, body: bytes, sig: str) -> Optional[Dict[str, Any]]:
         """Full lifecycle: verify → parse → process → act on result using injected dependencies."""
         if not self.verify_signature(body, sig):
-            logger.warning('Stripe handle: invalid signature — processing anyway (soft mode)')
+            logger.warning('Stripe handle: invalid signature — rejected')
+            return None
         try:
             event = json.loads(body)
         except Exception as exc:

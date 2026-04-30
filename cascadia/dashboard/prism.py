@@ -142,6 +142,7 @@ class PrismService:
         self.runtime.register_route('POST', '/api/prism/stripe/webhook',       self.stripe_webhook)
         self.runtime.register_route('POST', '/api/prism/approve/edit',         self.approve_edit)
         self.runtime.register_route('GET',  '/api/prism/approvals/analytics',  self.approval_analytics)
+        self.runtime.register_route('GET',  '/api/prism/outcomes',             self.approval_outcomes)
         self.runtime.register_route('GET',  '/api/prism/audit',                self.audit_log)
         self.runtime.register_route('GET',  '/api/prism/audit/export',         self.audit_export)
         self.runtime.register_route('GET',  '/api/prism/audit/verify',         self.audit_verify)
@@ -176,6 +177,8 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/watchdog/status',            self.watchdog_status)
         # License gate
         self.runtime.register_route('GET',  '/api/prism/license',              self.license_status)
+        self.runtime.register_route('GET',  '/activate',                        self.license_activate_page)
+        self.runtime.register_route('POST', '/api/prism/license/activate',      self.license_activate_api)
         # Sales Funnel trigger (Sprint 4)
         self.runtime.register_route('POST', '/api/prism/sales_funnel/run',               self.sales_funnel_run)
         self.runtime.register_route('GET',  '/api/prism/sales_funnel/run/{run_id}',      self.sales_funnel_run_status)
@@ -900,6 +903,108 @@ class PrismService:
         }
         return 200, {**status, 'generated_at': _now()}
 
+    def license_activate_page(self, _: Dict[str, Any]) -> tuple[int, str]:
+        """Serve the license activation HTML page."""
+        html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Activate Cascadia OS License</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;
+       display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+  .card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:40px;max-width:480px;width:100%}
+  h1{margin:0 0 8px;font-size:1.4rem;font-weight:600}
+  p{color:#8b949e;margin:0 0 24px;font-size:.9rem}
+  label{display:block;font-size:.85rem;font-weight:500;margin-bottom:6px;color:#8b949e}
+  input{width:100%;box-sizing:border-box;background:#0d1117;border:1px solid #30363d;border-radius:6px;
+        padding:10px 12px;color:#e6edf3;font-size:.9rem;font-family:monospace;outline:none}
+  input:focus{border-color:#58a6ff}
+  button{margin-top:16px;width:100%;background:#238636;border:none;border-radius:6px;padding:10px;
+         color:#fff;font-size:.9rem;font-weight:600;cursor:pointer}
+  button:hover{background:#2ea043}
+  #msg{margin-top:16px;padding:10px 14px;border-radius:6px;display:none;font-size:.875rem}
+  .ok{background:#0d1117;border:1px solid #238636;color:#3fb950}
+  .err{background:#0d1117;border:1px solid #f85149;color:#f85149}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Activate your license</h1>
+  <p>Enter the license key from your welcome email to unlock your tier.</p>
+  <label for="key">License key</label>
+  <input id="key" type="text" placeholder="zyrcon_pro_..." autocomplete="off" spellcheck="false">
+  <button onclick="activate()">Activate</button>
+  <div id="msg"></div>
+</div>
+<script>
+async function activate() {
+  var key = document.getElementById('key').value.trim();
+  var msg = document.getElementById('msg');
+  if (!key) { show(msg, 'Please enter a license key.', false); return; }
+  try {
+    var r = await fetch('/api/prism/license/activate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({license_key: key})
+    });
+    var d = await r.json();
+    if (r.ok && d.ok) {
+      show(msg, 'License activated! Tier: ' + (d.tier || 'unknown') + '. Restarting dashboard...', true);
+      setTimeout(function(){ window.location.href = '/'; }, 2500);
+    } else {
+      show(msg, d.error || 'Activation failed.', false);
+    }
+  } catch(e) { show(msg, 'Request failed: ' + e.message, false); }
+}
+function show(el, text, ok) {
+  el.textContent = text; el.className = ok ? 'ok' : 'err'; el.style.display = 'block';
+}
+document.getElementById('key').addEventListener('keydown', function(e){
+  if (e.key === 'Enter') activate();
+});
+</script>
+</body>
+</html>"""
+        return 200, html
+
+    def license_activate_api(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/license/activate — validate and save a license key to config."""
+        key = (payload.get('license_key') or '').strip()
+        if not key:
+            return 400, {'error': 'license_key required'}
+        try:
+            from cascadia.licensing.tier_validator import TierValidator
+            secret = self.config.get('license_secret', '')
+            if secret:
+                validator = TierValidator(secret)
+                result = validator.validate(key)
+                if not result.get('valid'):
+                    return 400, {'error': result.get('error', 'invalid_license')}
+                tier = result['tier']
+            else:
+                # No HMAC secret — accept any well-formed key (license_gate handles format check)
+                from cascadia.licensing.license_gate import _build_status
+                status = _build_status(key)
+                if not status.get('valid'):
+                    return 400, {'error': 'invalid_license_format'}
+                tier = status['tier']
+        except Exception as exc:
+            return 500, {'error': f'validation error: {exc}'}
+        # Persist to config.json
+        import json as _json
+        from pathlib import Path as _Path
+        config_path = _Path(__file__).parents[2] / 'config.json'
+        try:
+            cfg = _json.loads(config_path.read_text())
+            cfg['license_key'] = key
+            config_path.write_text(_json.dumps(cfg, indent=2))
+            self.config['license_key'] = key
+        except Exception as exc:
+            return 500, {'error': f'could not save config: {exc}'}
+        return 200, {'ok': True, 'tier': tier, 'key_prefix': key[:24] + '...'}
+
     def operator_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Live status of all registered operators from registry.json.
 
@@ -1176,13 +1281,33 @@ class PrismService:
             with store.connection() as conn:
                 rows = conn.execute(
                     'SELECT a.id, a.run_id, a.step_index, a.action_key, '
-                    'a.created_at, r.goal '
+                    'a.created_at, a.risk_level, '
+                    'r.goal, r.operator_id, r.state_snapshot '
                     'FROM approvals a '
                     'JOIN runs r ON a.run_id = r.run_id '
                     "WHERE a.decision = 'pending' "
                     'ORDER BY a.created_at ASC'
                 ).fetchall()
-            return [dict(r) for r in rows]
+            results = []
+            for row in rows:
+                d = dict(row)
+                # Extract key fields from state_snapshot so the UI can show
+                # what data the operator was working with at decision time
+                snap_raw = d.pop('state_snapshot', None)
+                data_used: Dict[str, Any] = {}
+                if snap_raw:
+                    try:
+                        snap = json.loads(snap_raw)
+                        for key in ('lead_name', 'name', 'email', 'company',
+                                    'subject', 'to', 'phone', 'amount',
+                                    'message', 'file_path', 'url'):
+                            if key in snap:
+                                data_used[key] = str(snap[key])[:100]
+                    except Exception:
+                        pass
+                d['data_used'] = data_used
+                results.append(d)
+            return results
         except Exception:
             return []
 
@@ -1276,6 +1401,31 @@ class PrismService:
             store = RunStore(self.config['database_path'])
             analytics = store.approval_analytics()
             return 200, {**analytics, 'generated_at': _now()}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def approval_outcomes(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Recently resolved approvals for the Outcomes dashboard (last 50)."""
+        try:
+            from cascadia.durability.run_store import RunStore
+            store = RunStore(self.config['database_path'])
+            with store.connection() as conn:
+                rows = conn.execute(
+                    'SELECT a.id, a.run_id, a.step_index, a.action_key, '
+                    'a.decision, a.actor, a.reason, a.created_at, a.decided_at, '
+                    'a.risk_level, a.edited_content, a.edit_summary, '
+                    'r.goal, r.operator_id '
+                    'FROM approvals a '
+                    'JOIN runs r ON a.run_id = r.run_id '
+                    "WHERE a.decision != 'pending' "
+                    'ORDER BY a.decided_at DESC '
+                    'LIMIT 50'
+                ).fetchall()
+            return 200, {
+                'count': len(rows),
+                'outcomes': [dict(r) for r in rows],
+                'generated_at': _now(),
+            }
         except Exception as exc:
             return 500, {'error': str(exc)}
 

@@ -106,12 +106,12 @@ class StripeHandlerTests(unittest.TestCase):
                 'object': {
                     'customer_details': {'email': 'biz@corp.com'},
                     'customer': 'cus_biz',
-                    'metadata': {'price_id': 'price_business_growth'},
+                    'metadata': {'price_id': 'price_business_monthly'},
                 }
             }
         }
         result = self.handler.process_event(event)
-        self.assertEqual(result['tier'], 'business_growth')
+        self.assertEqual(result['tier'], 'business')
 
     def test_empty_sig_header_rejected(self) -> None:
         self.assertFalse(self.handler.verify_signature(b'data', ''))

@@ -10,9 +10,10 @@ Key generation is handled by the enterprise service.
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.request
-from typing import Any
+from typing import Any, Optional
 
 from cascadia.shared.logger import get_logger
 
@@ -30,17 +31,31 @@ STRIPE_TIER_MAP = {
 
 
 class LicenseGenerator:
-    """Stores and delivers pre-generated license keys."""
+    """Generates (when secret available), stores, and delivers license keys."""
 
-    def __init__(self, config_or_secret, handshake_port: int = None,
+    def __init__(self, config_or_secret=None, handshake_port: int = None,
                  vault_port: int = None) -> None:
         if isinstance(config_or_secret, dict):
+            self._secret = config_or_secret.get('license_secret', '')
             ports = {c['name']: c.get('port') for c in config_or_secret.get('components', [])}
             self._handshake_port = ports.get('handshake', 6203)
             self._vault_port = ports.get('vault', 5101)
-        else:
+        elif isinstance(config_or_secret, str) and config_or_secret:
+            self._secret = config_or_secret
             self._handshake_port = handshake_port or 6203
             self._vault_port = vault_port or 5101
+        else:
+            self._secret = os.environ.get('LICENSE_SIGNING_SECRET', '')
+            self._handshake_port = handshake_port or 6203
+            self._vault_port = vault_port or 5101
+
+    def generate_key(self, tier: str, customer_id: str, days: int = 365) -> str:
+        """Generate a signed v2 license key. Requires license_secret to be configured."""
+        if not self._secret:
+            raise ValueError('license_secret not configured — cannot generate key')
+        from cascadia.licensing.tier_validator import TierValidator
+        expiry = int(time.time()) + days * 86400
+        return TierValidator(self._secret).generate(tier, customer_id, expiry)
 
     def store_in_vault(self, customer_id: str, license_key: str,
                        customer_email: str) -> bool:
@@ -97,12 +112,11 @@ class LicenseGenerator:
             return False
 
     def activate(self, customer_email: str, customer_id: str,
-                 tier: str, license_key: str) -> str:
-        """Full activation flow: store → deliver a pre-generated key.
-
-        Key generation is handled by the enterprise service.
-        The caller must supply the pre-generated license_key.
-        """
+                 tier: str, license_key: Optional[str] = None,
+                 days: int = 365) -> str:
+        """Full activation flow: generate (if needed) → store → deliver. Returns the key."""
+        if not license_key:
+            license_key = self.generate_key(tier, customer_id, days)
         self.store_in_vault(customer_id, license_key, customer_email)
         self.deliver_by_email(customer_email, license_key, tier)
         logger.info('LicenseGen: activated %s for %s', tier, customer_email)

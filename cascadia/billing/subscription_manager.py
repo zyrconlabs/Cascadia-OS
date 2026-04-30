@@ -41,6 +41,12 @@ class SubscriptionManager:
             conn.execute('''
                 CREATE INDEX IF NOT EXISTS idx_email ON customers (email)
             ''')
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS processed_events (
+                    event_id   TEXT PRIMARY KEY,
+                    processed_at TEXT NOT NULL
+                )
+            ''')
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
@@ -124,6 +130,21 @@ class SubscriptionManager:
                     'SELECT * FROM customers ORDER BY created_at DESC'
                 ).fetchall()
         return [dict(r) for r in rows]
+
+    def is_event_processed(self, event_id: str) -> bool:
+        with sqlite3.connect(self._db) as conn:
+            row = conn.execute(
+                'SELECT 1 FROM processed_events WHERE event_id = ?', (event_id,)
+            ).fetchone()
+        return row is not None
+
+    def mark_event_processed(self, event_id: str) -> None:
+        now = self._now()
+        with sqlite3.connect(self._db) as conn:
+            conn.execute(
+                'INSERT OR IGNORE INTO processed_events (event_id, processed_at) VALUES (?, ?)',
+                (event_id, now),
+            )
 
     def get_stats(self) -> dict:
         """Summary for PRISM billing dashboard."""
