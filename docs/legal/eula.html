@@ -1,0 +1,168 @@
+<!-- DRAFT — PENDING LEGAL REVIEW — Do not publish without attorney review -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>End-User License Agreement — Zyrcon</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;background:#f5f7fa;color:#111827}
+  .topbar{background:#111827;padding:12px 32px;display:flex;align-items:center;gap:12px}
+  .topbar-bar{width:28px;height:2px;background:linear-gradient(90deg,#4facfe,#a78bfa,#34d399,#f472b6);border-radius:2px}
+  .topbar-name{font-size:13px;font-weight:800;letter-spacing:.18em;color:#fff;text-transform:uppercase}
+  .topbar-sep{color:rgba(255,255,255,.3);font-size:13px}
+  .topbar-page{font-size:13px;color:rgba(255,255,255,.6)}
+  .topbar-back{margin-left:auto;font-size:12px;color:rgba(255,255,255,.5);text-decoration:none}
+  .topbar-back:hover{color:#fff}
+  .hero{background:linear-gradient(135deg,#111827 0%,#1e1b4b 100%);padding:48px 32px 40px}
+  .hero-draft{display:inline-block;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);color:#fbbf24;font-size:11px;font-weight:600;padding:4px 10px;border-radius:5px;letter-spacing:.05em;margin-bottom:16px}
+  .hero h1{font-size:28px;font-weight:700;color:#fff;margin-bottom:8px}
+  .hero-meta{font-size:13px;color:rgba(255,255,255,.5)}
+  .container{max-width:800px;margin:0 auto;padding:48px 32px 80px}
+  .tier-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:32px}
+  .tier-card{background:#fff;border:1px solid #e8edf4;border-radius:10px;padding:14px 16px;text-align:center}
+  .tier-card .tier-name{font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:4px}
+  .tier-card .tier-devices{font-size:12px;color:#4a5568}
+  .toc{background:#fff;border:1px solid #e8edf4;border-radius:12px;padding:20px 24px;margin-bottom:40px}
+  .toc-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:12px}
+  .toc ol{padding-left:18px}
+  .toc li{font-size:13px;color:#4a5568;line-height:2}
+  .toc a{color:#7c3aed;text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .section{margin-bottom:40px}
+  .section h2{font-size:17px;font-weight:700;color:#111827;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #e8edf4}
+  .section p{font-size:14px;color:#374151;line-height:1.75;margin-bottom:12px}
+  .section ul,.section ol{padding-left:20px;margin-bottom:12px}
+  .section li{font-size:14px;color:#374151;line-height:1.75;margin-bottom:4px}
+  .section strong{color:#111827}
+  .contact-box{background:#fff;border:1px solid #e8edf4;border-radius:12px;padding:20px 24px;margin-top:48px}
+  .contact-box p{font-size:13px;color:#4a5568;margin:0}
+  .contact-box a{color:#7c3aed}
+  footer{text-align:center;padding:24px 32px;font-size:12px;color:#94a3b8}
+</style>
+</head>
+<body>
+
+<nav class="topbar">
+  <div class="topbar-bar"></div>
+  <span class="topbar-name">Zyrcon</span>
+  <span class="topbar-sep">›</span>
+  <span class="topbar-page">End-User License Agreement</span>
+  <a class="topbar-back" href="../../../cascadia/dashboard/prism.html">← Dashboard</a>
+</nav>
+
+<div class="hero">
+  <div style="max-width:800px;margin:0 auto">
+    <div class="hero-draft">DRAFT — PENDING LEGAL REVIEW</div>
+    <h1>End-User License Agreement</h1>
+    <p class="hero-meta">Zyrcon, Inc. &nbsp;·&nbsp; Effective Date: January 1, 2026</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="tier-grid">
+    <div class="tier-card"><div class="tier-name">Lite</div><div class="tier-devices">Up to 2 devices</div></div>
+    <div class="tier-card"><div class="tier-name">Pro</div><div class="tier-devices">Up to 5 devices</div></div>
+    <div class="tier-card"><div class="tier-name">Enterprise</div><div class="tier-devices">Separate agreement</div></div>
+  </div>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#s1">Parties and Scope</a></li>
+      <li><a href="#s2">Grant of License</a></li>
+      <li><a href="#s3">Restrictions</a></li>
+      <li><a href="#s4">DEPOT Operator Licenses</a></li>
+      <li><a href="#s5">Updates</a></li>
+      <li><a href="#s6">Open Source Components</a></li>
+      <li><a href="#s7">Ownership and Intellectual Property</a></li>
+      <li><a href="#s8">Termination</a></li>
+      <li><a href="#s9">Disclaimer of Warranties</a></li>
+      <li><a href="#s10">Limitation of Liability</a></li>
+      <li><a href="#s11">Governing Law</a></li>
+    </ol>
+  </div>
+
+  <div class="section" id="s1">
+    <h2>1. Parties and Scope</h2>
+    <p>This End-User License Agreement ("Agreement") is between you ("User") and Zyrcon, Inc. ("Zyrcon"), a Delaware corporation. This Agreement governs your use of the Cascadia OS software, including all updates and associated documentation (collectively, the "Software"). By installing or using the Software, you accept this Agreement. If you do not accept, do not install or use the Software.</p>
+    <p>This Agreement supplements, and does not replace, Zyrcon's Terms of Service.</p>
+  </div>
+
+  <div class="section" id="s2">
+    <h2>2. Grant of License</h2>
+    <p>Subject to the terms of this Agreement, Zyrcon grants you a <strong>limited, non-exclusive, non-transferable, revocable license</strong> to install and use the Software on devices that you own or control, solely for your personal or internal business purposes.</p>
+    <ul>
+      <li><strong>Lite tier</strong> users may install the Software on up to two (2) devices.</li>
+      <li><strong>Pro tier</strong> users may install the Software on up to five (5) devices.</li>
+      <li><strong>Enterprise tier</strong> users are governed by their separate enterprise license agreement.</li>
+    </ul>
+    <p>This license does not include any right to sublicense, resell, or distribute the Software.</p>
+  </div>
+
+  <div class="section" id="s3">
+    <h2>3. Restrictions</h2>
+    <p>You may not:</p>
+    <ol>
+      <li>Copy, modify, adapt, or create derivative works of the Software except as expressly permitted by applicable law.</li>
+      <li>Reverse engineer, decompile, disassemble, or attempt to derive source code from the Software, except to the limited extent permitted by applicable law and only after providing Zyrcon written notice.</li>
+      <li>Remove, alter, or obscure any proprietary notices, labels, or marks on the Software.</li>
+      <li>Transfer, sublicense, rent, lease, or lend the Software or your license rights to any third party.</li>
+      <li>Use the Software for any purpose that violates applicable law or these Terms.</li>
+      <li>Circumvent or disable any technical protection measures, license enforcement mechanisms, or operator approval gates embedded in the Software.</li>
+    </ol>
+  </div>
+
+  <div class="section" id="s4">
+    <h2>4. DEPOT Operator Licenses</h2>
+    <p>Operators distributed through the DEPOT marketplace are third-party software components. Each operator is licensed to you under its own license terms, which are displayed on the operator's DEPOT listing page before installation. Zyrcon grants you the right to install and run operators on your local machine; Zyrcon does not license third-party operator code on behalf of its developers.</p>
+    <p>By installing an operator, you agree to that operator's license in addition to this Agreement. Zyrcon is not a party to, and makes no representations regarding, individual operator licenses.</p>
+  </div>
+
+  <div class="section" id="s5">
+    <h2>5. Updates</h2>
+    <p>Zyrcon may release updates, patches, or new versions of the Software from time to time. Updates may be applied automatically or made available for manual installation. Updates are subject to this Agreement unless accompanied by a new agreement. Zyrcon is not obligated to provide any updates or maintain any particular version of the Software.</p>
+  </div>
+
+  <div class="section" id="s6">
+    <h2>6. Open Source Components</h2>
+    <p>The Software may include open-source software components. A complete list of open-source components and their applicable licenses is available at <a href="https://zyrcon.ai/oss-attribution">https://zyrcon.ai/oss-attribution</a> and within the Software's installation directory under <code>NOTICES</code>. Your use of open-source components is governed by the applicable open-source licenses, which may grant you additional rights that this Agreement does not restrict.</p>
+  </div>
+
+  <div class="section" id="s7">
+    <h2>7. Ownership and Intellectual Property</h2>
+    <p>Zyrcon and its licensors retain all right, title, and interest in and to the Software, including all intellectual property rights. This Agreement does not transfer any ownership interest in the Software to you. All rights not expressly granted are reserved by Zyrcon.</p>
+  </div>
+
+  <div class="section" id="s8">
+    <h2>8. Termination</h2>
+    <p>This license is effective until terminated. It will terminate automatically, without notice, if you breach any term of this Agreement. Zyrcon may also terminate this Agreement at any time with reasonable notice. Upon termination, you must cease all use of the Software and delete all copies in your possession. Sections 7–10 of this Agreement survive termination.</p>
+  </div>
+
+  <div class="section" id="s9">
+    <h2>9. Disclaimer of Warranties</h2>
+    <p>THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, ZYRCON EXPRESSLY DISCLAIMS ALL WARRANTIES, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. ZYRCON DOES NOT WARRANT THAT THE SOFTWARE WILL BE UNINTERRUPTED, ERROR-FREE, OR FREE OF HARMFUL COMPONENTS.</p>
+  </div>
+
+  <div class="section" id="s10">
+    <h2>10. Limitation of Liability</h2>
+    <p>TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL ZYRCON BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES ARISING OUT OF OR RELATED TO THIS AGREEMENT OR YOUR USE OF THE SOFTWARE, EVEN IF ZYRCON HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. ZYRCON'S TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNT YOU PAID FOR THE SOFTWARE IN THE TWELVE MONTHS PRECEDING THE CLAIM.</p>
+  </div>
+
+  <div class="section" id="s11">
+    <h2>11. Governing Law</h2>
+    <p>This Agreement is governed by the laws of the State of California, without regard to conflict-of-law provisions. Any disputes arising under this Agreement that are not subject to arbitration under Zyrcon's Terms of Service shall be resolved in the state or federal courts of San Francisco County, California.</p>
+  </div>
+
+  <div class="contact-box">
+    <p>Questions about this license? Contact us at <a href="mailto:legal@zyrcon.ai">legal@zyrcon.ai</a> &nbsp;·&nbsp; Zyrcon, Inc., San Francisco, CA</p>
+  </div>
+
+</div>
+
+<footer>© 2026 Zyrcon, Inc. · <a href="privacy-policy.html" style="color:#94a3b8">Privacy</a> · <a href="terms-of-service.html" style="color:#94a3b8">Terms</a> · <a href="eula.html" style="color:#94a3b8">EULA</a></footer>
+</body>
+</html>
