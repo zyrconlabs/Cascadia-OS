@@ -1,0 +1,22 @@
+{
+  "id": "approval-gate",
+  "name": "Approval Gate Connector",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Human-in-the-loop approval workflow. Receives approval requests from other connectors and operators, routes to approvers, and publishes the outcome back to the requester.",
+  "author": "Zyrcon Labs",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 9988,
+  "entry_point": "cascadia.connectors.approval.connector",
+  "dependencies": [],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "runtime",
+  "industries": ["all"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "nats_subjects": [
+    "cascadia.approvals.>"
+  ]
+}
