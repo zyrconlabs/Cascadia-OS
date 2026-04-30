@@ -1,14 +1,14 @@
 """
 license_generator.py — Cascadia OS v0.46
-Generates and delivers license keys on successful Stripe payment.
-Owns: key generation, email delivery via HANDSHAKE, key storage in VAULT.
-Does not own: Stripe event processing (StripeHandler), tier validation (TierValidator).
+Delivers license keys on successful Stripe payment.
+Owns: VAULT storage, email delivery via HANDSHAKE, and activation coordination.
+Does not own: key generation (enterprise service), tier validation (TierValidator).
+
+Key generation is handled by the enterprise service.
 """
-# MATURITY: PRODUCTION — Keys HMAC-signed, stored in VAULT, delivered via HANDSHAKE SMTP.
+# MATURITY: PRODUCTION — Keys stored in VAULT, delivered via HANDSHAKE SMTP.
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import time
 import urllib.request
@@ -30,26 +30,17 @@ STRIPE_TIER_MAP = {
 
 
 class LicenseGenerator:
-    """Owns license key generation, VAULT storage, and email delivery."""
+    """Stores and delivers pre-generated license keys."""
 
     def __init__(self, config_or_secret, handshake_port: int = None,
                  vault_port: int = None) -> None:
         if isinstance(config_or_secret, dict):
-            self._secret = config_or_secret.get('license_secret', '')
             ports = {c['name']: c.get('port') for c in config_or_secret.get('components', [])}
             self._handshake_port = ports.get('handshake', 6203)
             self._vault_port = ports.get('vault', 5101)
         else:
-            self._secret = config_or_secret
             self._handshake_port = handshake_port or 6203
             self._vault_port = vault_port or 5101
-
-    def generate_key(self, tier: str, customer_id: str, days: int = 365) -> str:
-        """Generate a signed license key. Same format as scripts/generate_license.py."""
-        expiry = int(time.time()) + (days * 86400)
-        message = f'zyrcon_{tier}_{customer_id}_{expiry}'.encode()
-        sig = hmac.new(self._secret.encode(), message, hashlib.sha256).hexdigest()
-        return f'zyrcon_{tier}_{customer_id}_{expiry}_{sig}'
 
     def store_in_vault(self, customer_id: str, license_key: str,
                        customer_email: str) -> bool:
@@ -106,10 +97,13 @@ class LicenseGenerator:
             return False
 
     def activate(self, customer_email: str, customer_id: str,
-                 tier: str, days: int = 365) -> str:
-        """Full activation flow: generate → store → deliver. Returns the key."""
-        key = self.generate_key(tier, customer_id, days)
-        self.store_in_vault(customer_id, key, customer_email)
-        self.deliver_by_email(customer_email, key, tier)
+                 tier: str, license_key: str) -> str:
+        """Full activation flow: store → deliver a pre-generated key.
+
+        Key generation is handled by the enterprise service.
+        The caller must supply the pre-generated license_key.
+        """
+        self.store_in_vault(customer_id, license_key, customer_email)
+        self.deliver_by_email(customer_email, license_key, tier)
         logger.info('LicenseGen: activated %s for %s', tier, customer_email)
-        return key
+        return license_key

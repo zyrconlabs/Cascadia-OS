@@ -5,7 +5,7 @@
 #   or:  bash zero_touch_deploy.sh [--config <url>] [--node-id <id>]
 set -euo pipefail
 
-CASCADIA_REPO="${CASCADIA_REPO:-https://github.com/zyrcon/cascadia-os}"
+CASCADIA_REPO="${CASCADIA_REPO:-https://github.com/zyrconlabs/Cascadia-OS}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/cascadia}"
 NODE_ID="${NODE_ID:-$(hostname -s)}"
 CONFIG_URL="${CONFIG_URL:-}"
