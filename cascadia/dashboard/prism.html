@@ -630,6 +630,7 @@ input[type="file"]{display:none}
     <button class="nav-btn nav-btn--active" onclick="switchSurface('ops')" id="nav-ops"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="nav-tooltip">Ops</span></button>
     <button class="nav-btn" onclick="switchSurface('runs')" id="nav-runs"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg><span class="nav-tooltip">Runs</span></button>
     <button class="nav-btn" onclick="switchSurface('approvals')" id="nav-approvals"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-tooltip">Approvals</span></button>
+    <button class="nav-btn" onclick="switchSurface('scorecard')" id="nav-scorecard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span class="nav-tooltip">Scorecard</span></button>
     <div class="nav-divider"></div>
     <button class="nav-btn" onclick="switchSurface('studio')" id="nav-studio"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><span class="nav-tooltip">Studio</span></button>
     <button class="nav-btn" onclick="switchSurface('admin')" id="nav-admin"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span class="nav-tooltip">Admin & Gateway</span></button>
@@ -1670,7 +1671,7 @@ function renderACPending() {
   const el = document.getElementById('ac-content'); if (!el) return;
   const la = S.liveApprovals || [];
   if (!la.length) {
-    el.innerHTML = `<div class="approvals-empty"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span>All clear — no pending approvals</span></div>`;
+    el.innerHTML = `<div class="approvals-empty"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span>No pending approvals — your operators are waiting for work or running automatically.</span></div>`;
     return;
   }
   el.innerHTML = '<div id="ac-analytics-section"></div>' + la.map(renderACCard).join('');
@@ -1849,6 +1850,136 @@ async function resolveApproval(id, decision) {
   await GatewayContract.resolveApproval(id, decision, '').catch(()=>{});
   await Vault.appendAuditEvent({id:'audit_'+Date.now(), ts:Date.now(), icon:'✓', action:`Approval ${decision}: ${a.title}`, actor:'operator', time:timeNow()});
   renderApprovalsSurface(); renderSidebar(); updateNavBadges();
+}
+
+/* ═══ SCORECARD SURFACE ═══ */
+async function renderScorecardSurface() {
+  const panel = document.getElementById('main-panel');
+  const now   = new Date();
+  const monthLabel = now.toLocaleString('default', {month:'long'}) + ' ' + now.getFullYear();
+  panel.innerHTML = `
+    <div class="topbar">
+      <div class="topbar__left"><div style="font-size:15px;font-weight:700;color:var(--navy-800)">Scorecard</div></div>
+      <div class="topbar__right"><span style="font-family:var(--mono);font-size:11px;color:var(--gray-400)">${monthLabel}</span></div>
+    </div>
+    <div class="surface" id="scorecard-surface">
+      <div id="scorecard-body" style="padding:0">
+        <div style="padding:32px 0;text-align:center;color:var(--gray-400);font-family:var(--mono);font-size:12px">Loading metrics…</div>
+      </div>
+    </div>`;
+  let data = null, tierData = null;
+  try {
+    [data, tierData] = await Promise.all([
+      prismFetch('/api/prism/scorecard').catch(() => null),
+      prismFetch('/api/prism/license').catch(() => null),
+    ]);
+  } catch(_) {}
+  const tier = (tierData && tierData.tier) || 'lite';
+  const cur  = (data && data.current)    || {};
+  const last = (data && data.last_month) || {};
+  const isLite = tier === 'lite';
+  const METRICS = [
+    {key:'leads_captured',      label:'Leads Captured',       icon:'👤'},
+    {key:'proposals_drafted',   label:'Proposals Drafted',    icon:'📄'},
+    {key:'emails_sent',         label:'Emails Sent',          icon:'✉'},
+    {key:'approvals_completed', label:'Approvals Completed',  icon:'✓'},
+    {key:'approvals_rejected',  label:'Approvals Rejected',   icon:'✗'},
+    {key:'operator_runs',       label:'Operator Runs',        icon:'⚡'},
+    {key:'hours_saved',         label:'Hours Saved',          icon:'⏱', decimal:true},
+  ];
+  function pct(cur, last) {
+    if (!last || last === 0) return cur > 0 ? '+100%' : '—';
+    const d = ((cur - last) / last * 100).toFixed(0);
+    return (d >= 0 ? '+' : '') + d + '%';
+  }
+  function trendColor(cur, last) {
+    if (!last || last === 0) return 'var(--gray-400)';
+    return cur >= last ? 'var(--green)' : 'var(--red)';
+  }
+  const tiles = METRICS.map(m => {
+    const val = cur[m.key] !== undefined ? cur[m.key] : 0;
+    const disp = m.decimal ? (parseFloat(val)||0).toFixed(1) : (val || 0);
+    const lval = last[m.key] || 0;
+    const trendHtml = !isLite
+      ? `<div style="font-size:11px;color:${trendColor(val,lval)};margin-top:2px">${pct(val,lval)} vs last month</div>`
+      : '';
+    return `<div style="background:#fff;border:1px solid var(--gray-150);border-radius:10px;padding:16px 14px;display:flex;flex-direction:column;gap:2px">
+      <div style="font-size:10px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em">${m.label}</div>
+      <div style="font-size:28px;font-weight:700;color:var(--navy-900);line-height:1.1">${disp}</div>
+      ${trendHtml}
+    </div>`;
+  }).join('');
+  // History table
+  let histHtml = '';
+  let histRows = [];
+  try {
+    const hd = await prismFetch('/api/prism/scorecard/history').catch(()=>null);
+    if (hd && hd.rows) histRows = hd.rows;
+  } catch(_){}
+  if (histRows.length) {
+    const histDays = {'lite':30,'pro':90,'business':365,'enterprise':365}[tier]||30;
+    histHtml = `
+      <div style="margin-top:24px">
+        <div style="font-size:11px;font-weight:700;color:var(--navy-700);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">History · last ${histDays} days</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="border-bottom:1px solid var(--gray-150)">
+              <th style="text-align:left;padding:6px 8px;color:var(--gray-400);font-weight:600">Date</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--gray-400);font-weight:600">Leads</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--gray-400);font-weight:600">Proposals</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--gray-400);font-weight:600">Emails</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--gray-400);font-weight:600">Runs</th>
+            </tr></thead>
+            <tbody>${histRows.slice(-30).reverse().map(r=>`
+              <tr style="border-bottom:1px solid var(--gray-100)">
+                <td style="padding:5px 8px;font-family:var(--mono);color:var(--navy-800)">${r.date||'—'}</td>
+                <td style="padding:5px 8px;text-align:right">${r.leads_captured||0}</td>
+                <td style="padding:5px 8px;text-align:right">${r.proposals_drafted||0}</td>
+                <td style="padding:5px 8px;text-align:right">${r.emails_sent||0}</td>
+                <td style="padding:5px 8px;text-align:right">${r.operator_runs||0}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+  // PDF export button
+  const pdfBtn = isLite
+    ? `<button style="height:34px;padding:0 16px;border:1px solid var(--gray-200);border-radius:8px;background:var(--gray-100);color:var(--gray-400);font-size:12px;cursor:not-allowed" title="PDF export available on Pro and above" disabled>Export PDF</button>`
+    : `<button onclick="downloadScorecardPdf()" style="height:34px;padding:0 16px;border:none;border-radius:8px;background:var(--navy-800);color:#fff;font-size:12px;cursor:pointer">Export PDF</button>`;
+  // Lite upgrade prompt
+  const upgradeHtml = isLite
+    ? `<div style="margin-top:18px;padding:14px;background:rgba(79,172,254,.07);border:1px solid rgba(79,172,254,.18);border-radius:10px;font-size:12px;color:var(--navy-700)">
+        <strong>Unlock PDF Scorecard Reports with Pro</strong>
+        <span style="margin-left:8px;color:var(--gray-400)">— also unlocks trend data, 90-day history, and more.</span>
+      </div>` : '';
+  document.getElementById('scorecard-body').innerHTML = `
+    <div style="padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--navy-800)">Key Metrics · ${monthLabel}</div>
+        ${pdfBtn}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+        ${tiles}
+      </div>
+      ${upgradeHtml}
+      ${histHtml}
+    </div>`;
+}
+
+async function downloadScorecardPdf() {
+  try {
+    const resp = await fetch(PRISM_URL + '/api/prism/scorecard/report.pdf', {signal: AbortSignal.timeout(8000)});
+    if (!resp.ok) { alert('PDF export failed: ' + (await resp.json()).error); return; }
+    const blob = await resp.blob();
+    const now  = new Date();
+    const month = now.toLocaleString('default',{month:'long'}).toLowerCase();
+    const year  = now.getFullYear();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `zyrcon-scorecard-${month}-${year}.pdf`;
+    a.click();
+  } catch(e) { alert('PDF export error: ' + e); }
 }
 
 /* ═══ STUDIO SURFACE (with draggable nodes) ═══ */
@@ -2404,6 +2535,7 @@ function switchSurface(surface) {
   else if (surface==='runs') renderRunsSurface();
   else if (surface==='obs') renderHealthSurface(); // merged into health
   else if (surface==='approvals') renderApprovalsSurface();
+  else if (surface==='scorecard') renderScorecardSurface();
   else if (surface==='studio') renderStudioSurface();
   else if (surface==='admin') renderAdminSurface();
   else if (surface==='settings') renderSettingsSurface();
