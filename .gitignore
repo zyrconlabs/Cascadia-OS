@@ -87,3 +87,4 @@ ai-tasks/
 *_CLAUDE_*.md
 *-claude-*.md
 claude_*.tmp
+scripts/record_demo.sh

@@ -1,24 +1,4 @@
 {
   "version": "0.44",
-  "operators": [
-    {
-      "id": "test_op",
-      "name": "Test Operator",
-      "version": "1.0.0",
-      "port": null,
-      "start_cmd": "",
-      "autonomy_level": "assistive",
-      "capabilities": [
-        "email.send",
-        "crm.write"
-      ],
-      "tier_required": "lite",
-      "health_path": "/api/health",
-      "category": "custom",
-      "description": "",
-      "status": "installed",
-      "source": "installed",
-      "installed_at": "2026-04-30T17:37:04.231268+00:00"
-    }
-  ]
+  "operators": []
 }
