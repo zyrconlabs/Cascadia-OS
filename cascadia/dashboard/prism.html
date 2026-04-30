@@ -574,6 +574,15 @@ input[type="file"]{display:none}
 .ov-op__name{font-size:12px;font-weight:600;color:var(--navy-800);flex:1}
 .ov-op__stat{font-family:var(--mono);font-size:11px;color:var(--gray-500)}
 .ov-op__extra{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--navy-600)}
+.ov-cat{margin-bottom:6px}
+.ov-cat__header{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;background:var(--gray-50);cursor:pointer;user-select:none}
+.ov-cat__header:hover{background:var(--gray-100)}
+.ov-cat__arrow{font-size:9px;color:var(--gray-400);transition:transform .15s;display:inline-block}
+.ov-cat__arrow--open{transform:rotate(90deg)}
+.ov-cat__label{font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--gray-400);letter-spacing:.08em;text-transform:uppercase;flex:1}
+.ov-cat__count{font-family:var(--mono);font-size:9px;color:var(--gray-400)}
+.ov-cat__body{padding:4px 0 2px 0}
+.ov-cat__body--collapsed{display:none}
 .sys-health-pill{font-family:var(--mono);font-size:9.5px;font-weight:600;padding:2px 7px;border-radius:10px;display:flex;align-items:center;gap:4px;white-space:nowrap}
 .shp--healthy{background:rgba(52,211,153,.12);color:#059669}
 .shp--degraded{background:rgba(212,175,55,.14);color:#b45309}
@@ -3003,6 +3012,82 @@ function updateHealthIndicator(health) {
   }
 }
 
+const CATEGORY_CONFIG = {
+  orchestrator: {label:'Orchestrators'},
+  operator:     {label:'Operators'},
+  connector:    {label:'Connectors'},
+  channel:      {label:'Channels'},
+};
+const CATEGORY_ORDER = ['orchestrator','operator','connector','channel'];
+
+function getCategoryState(cat) {
+  try { return localStorage.getItem('ov_cat_'+cat) !== 'collapsed'; } catch(_) { return true; }
+}
+function setCategoryState(cat, open) {
+  try { localStorage.setItem('ov_cat_'+cat, open ? 'open' : 'collapsed'); } catch(_) {}
+}
+function toggleCategory(cat) {
+  const body = document.getElementById('ov-cat-body-'+cat);
+  const arrow = document.getElementById('ov-cat-arrow-'+cat);
+  if (!body) return;
+  const wasCollapsed = body.classList.contains('ov-cat__body--collapsed');
+  body.classList.toggle('ov-cat__body--collapsed', !wasCollapsed);
+  arrow.classList.toggle('ov-cat__arrow--open', wasCollapsed);
+  setCategoryState(cat, wasCollapsed);
+}
+function modeBadge(mode) {
+  if (!mode || mode === 'semi_autonomous') return '';
+  const label = mode === 'autonomous' ? 'AUTO' : mode === 'assistive' ? 'ASSIST' : mode.toUpperCase();
+  const color = mode === 'autonomous' ? 'var(--green)' : 'var(--gray-400)';
+  return `<span style="font-family:var(--mono);font-size:8px;padding:1px 4px;border-radius:3px;background:var(--gray-100);color:${color};flex-shrink:0">${label}</span>`;
+}
+function categorySummary(categories) {
+  if (!categories) return '';
+  const labels = {orchestrator:'orch',operator:'ops',connector:'conn',channel:'ch'};
+  return CATEGORY_ORDER
+    .filter(cat => categories[cat] && categories[cat].total)
+    .map(cat => `${categories[cat].healthy}/${categories[cat].total} ${labels[cat]}`)
+    .join(' · ');
+}
+function renderOperatorGroups(ops) {
+  if (!ops.length) return `<div style="font-size:12px;color:var(--gray-400);padding:16px 0">No autostart operators configured — add operators to registry.json</div>`;
+  const grouped = {};
+  for (const cat of CATEGORY_ORDER) grouped[cat] = [];
+  for (const op of ops) {
+    const cat = op.category && CATEGORY_ORDER.includes(op.category) ? op.category : 'operator';
+    grouped[cat].push(op);
+  }
+  return CATEGORY_ORDER.filter(cat => grouped[cat].length).map(cat => {
+    const cfg = CATEGORY_CONFIG[cat];
+    const open = getCategoryState(cat);
+    const count = grouped[cat].length;
+    const healthy = grouped[cat].filter(o => o.status === 'online').length;
+    const opCards = grouped[cat].map(op => {
+      const online = op.status === 'online';
+      const dotCls = online ? 'ov-op__dot--online' : 'ov-op__dot--offline';
+      const ini = (op.name||'').slice(0,2).toUpperCase();
+      const lastRel = op.last_run ? relativeTime(new Date(op.last_run)) : '';
+      return `<div class="ov-op">
+        <div class="ov-op__dot ${dotCls}"></div>
+        <div style="width:28px;height:28px;border-radius:7px;background:${online?'linear-gradient(135deg,var(--prism-a),var(--prism-b))':'var(--gray-200)'};color:${online?'#fff':'var(--gray-400)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${ini}</div>
+        <div class="ov-op__name">${esc(op.name)}</div>
+        ${op.runs_today ? `<span class="ov-op__stat">${op.runs_today} runs today</span>` : ''}
+        ${op.extra_stat && op.extra_stat !== '—' ? `<span class="ov-op__extra">${esc(op.extra_stat)}</span>` : ''}
+        ${lastRel ? `<span class="ov-op__stat">${lastRel}</span>` : ''}
+        ${modeBadge(op.mode)}
+      </div>`;
+    }).join('');
+    return `<div class="ov-cat">
+      <div class="ov-cat__header" onclick="toggleCategory('${cat}')">
+        <span id="ov-cat-arrow-${cat}" class="ov-cat__arrow${open?' ov-cat__arrow--open':''}">&#9658;</span>
+        <span class="ov-cat__label">${cfg.label}</span>
+        <span class="ov-cat__count">${healthy}/${count}</span>
+      </div>
+      <div id="ov-cat-body-${cat}" class="ov-cat__body${open?'':' ov-cat__body--collapsed'}">${opCards}</div>
+    </div>`;
+  }).join('');
+}
+
 function renderOverviewPanel(panel) {
   const ov = S.overview;
   if (!ov) {
@@ -3022,21 +3107,8 @@ function renderOverviewPanel(panel) {
   ).join('');
 
   const ops = ov.operators || [];
-  const CATINIT = {intelligence:'RI',sales:'QT',executive:'AU',inbound:'SC',engineering:'JP'};
-  const opsHTML = ops.length ? ops.map(op => {
-    const online = op.status === 'online';
-    const dotCls = online ? 'ov-op__dot--online' : 'ov-op__dot--offline';
-    const ini = CATINIT[op.category] || (op.name||'').slice(0,2).toUpperCase();
-    const lastRel = op.last_run ? relativeTime(new Date(op.last_run)) : '';
-    return `<div class="ov-op">
-      <div class="ov-op__dot ${dotCls}"></div>
-      <div style="width:28px;height:28px;border-radius:7px;background:${online?'linear-gradient(135deg,var(--prism-a),var(--prism-b))':'var(--gray-200)'};color:${online?'#fff':'var(--gray-400)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${ini}</div>
-      <div class="ov-op__name">${esc(op.name)}</div>
-      ${op.runs_today ? `<span class="ov-op__stat">${op.runs_today} runs today</span>` : ''}
-      ${op.extra_stat && op.extra_stat !== '—' ? `<span class="ov-op__extra">${esc(op.extra_stat)}</span>` : ''}
-      ${lastRel ? `<span class="ov-op__stat">${lastRel}</span>` : ''}
-    </div>`;
-  }).join('') : `<div style="font-size:12px;color:var(--gray-400);padding:16px 0">No autostart operators configured — add operators to registry.json</div>`;
+  const opsHTML = renderOperatorGroups(ops);
+  const catSummaryText = categorySummary(ov.categories);
 
   const healthCls = {healthy:'shp--healthy',degraded:'shp--degraded',critical:'shp--critical'}[ov.system_health]||'shp--degraded';
   const healthLabel = ov.system_health ? ov.system_health.charAt(0).toUpperCase()+ov.system_health.slice(1) : '—';
@@ -3051,6 +3123,7 @@ function renderOverviewPanel(panel) {
       <div class="topbar__left"><div style="font-size:15px;font-weight:700;color:var(--navy-800)">Overview</div></div>
       <div class="topbar__right">
         <span class="sys-health-pill ${healthCls}${healthClick?' sys-health-pill--clickable':''}" ${healthClick}>${healthLabel}</span>
+        ${catSummaryText ? `<span style="font-family:var(--mono);font-size:9.5px;color:var(--gray-400)">${catSummaryText}</span>` : ''}
         <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">auto-refresh 60s</span>
       </div>
     </div>
