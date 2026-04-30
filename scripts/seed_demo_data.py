@@ -146,7 +146,7 @@ def seed_run() -> int:
     # Run record
     store.create_run({
         "run_id":          DEMO_RUN_ID,
-        "operator_id":     "scout",
+        "operator_id":     "quote",
         "tenant_id":       "default",
         "goal":            "Qualify lead: Marcus Webb — Gulf Coast HVAC Services, Houston TX",
         "current_step":    "send_proposal",

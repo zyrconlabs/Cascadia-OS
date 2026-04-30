@@ -1696,10 +1696,27 @@ function renderACCard(a) {
           ? `<span class="ac-timer ac-timer--warn">escalated · auto-reject in ${tr.reject_in}m</span>`
           : `<span class="ac-timer">escalates ${tr.escalate_in}m · rejects ${tr.reject_in}m</span>`)
     : '';
-  const dataUsed = a.data_used && Object.keys(a.data_used).length
-    ? Object.entries(a.data_used).slice(0,4)
-        .map(([k,v])=>`<span class="ac-data-tag">${esc(k)}: ${esc(String(v).slice(0,50))}</span>`).join('')
-    : '<span style="color:var(--gray-400);font-size:11px">—</span>';
+  const du = a.data_used || {};
+  const toField = du.to
+    ? `<div class="ac-field ac-field--wide">
+        <div class="ac-field-lbl">Send to</div>
+        <div class="ac-field-val ac-mono">${esc(du.to)}${du.contact ? ` <span style="color:var(--gray-400);font-size:11px">(${esc(du.contact)})</span>` : ''}</div>
+      </div>` : '';
+  const amountField = du.amount
+    ? `<div class="ac-field ac-field--wide">
+        <div class="ac-field-lbl">Amount</div>
+        <div class="ac-field-val" style="font-size:15px;font-weight:700;color:var(--navy-900)">${esc(du.amount)}${du.equipment ? ` <span style="font-size:11.5px;font-weight:400;color:var(--gray-500)">— ${esc(du.equipment)}</span>` : ''}</div>
+      </div>` : '';
+  const hasStructured = !!(du.to || du.amount);
+  const remainingTags = Object.entries(du)
+    .filter(([k]) => !['to','amount','equipment','service','contact'].includes(k))
+    .slice(0, 4)
+    .map(([k,v])=>`<span class="ac-data-tag">${esc(k)}: ${esc(String(v).slice(0,50))}</span>`).join('');
+  const dataField = !hasStructured
+    ? `<div class="ac-field ac-field--wide">
+        <div class="ac-field-lbl">Data used</div>
+        <div class="ac-field-val ac-data-tags">${remainingTags || '<span style="color:var(--gray-400);font-size:11px">—</span>'}</div>
+      </div>` : '';
   return `<div class="ac-card ac-card--${risk.toLowerCase()}">
     <div class="ac-hdr">
       <div class="ac-hdr-left">
@@ -1720,14 +1737,13 @@ function renderACCard(a) {
         <div class="ac-field-lbl">External system affected</div>
         <div class="ac-field-val">${esc(extSystem)}</div>
       </div>
+      ${toField}
+      ${amountField}
       <div class="ac-field ac-field--wide">
         <div class="ac-field-lbl">Reason for action</div>
         <div class="ac-field-val">${esc(reason)}</div>
       </div>
-      <div class="ac-field ac-field--wide">
-        <div class="ac-field-lbl">Data used</div>
-        <div class="ac-field-val ac-data-tags">${dataUsed}</div>
-      </div>
+      ${dataField}
       <div class="ac-field">
         <div class="ac-field-lbl">Time requested</div>
         <div class="ac-field-val ac-mono">${esc(timeReq)}</div>

@@ -1282,7 +1282,7 @@ document.getElementById('key').addEventListener('keydown', function(e){
                 rows = conn.execute(
                     'SELECT a.id, a.run_id, a.step_index, a.action_key, '
                     'a.created_at, a.risk_level, '
-                    'r.goal, r.operator_id, r.state_snapshot '
+                    'r.goal, r.operator_id, r.state_snapshot, r.input_snapshot '
                     'FROM approvals a '
                     'JOIN runs r ON a.run_id = r.run_id '
                     "WHERE a.decision = 'pending' "
@@ -1291,18 +1291,41 @@ document.getElementById('key').addEventListener('keydown', function(e){
             results = []
             for row in rows:
                 d = dict(row)
-                # Extract key fields from state_snapshot so the UI can show
-                # what data the operator was working with at decision time
-                snap_raw = d.pop('state_snapshot', None)
+                snap_raw  = d.pop('state_snapshot', None)
+                input_raw = d.pop('input_snapshot', None)
                 data_used: Dict[str, Any] = {}
                 if snap_raw:
                     try:
                         snap = json.loads(snap_raw)
+                        # Extract from nested operator outputs
+                        quote = snap.get('quote', {})
+                        if isinstance(quote, dict):
+                            if quote.get('total') is not None:
+                                total = float(quote['total'])
+                                data_used['amount'] = (
+                                    f"${int(total):,}" if total == int(total)
+                                    else f"${total:,.2f}"
+                                )
+                            if quote.get('equipment'):
+                                data_used['equipment'] = str(quote['equipment'])[:80]
+                            if quote.get('proposal_number'):
+                                data_used['proposal'] = str(quote['proposal_number'])
+                        # Flat scan for top-level fields (non-nested operators)
                         for key in ('lead_name', 'name', 'email', 'company',
-                                    'subject', 'to', 'phone', 'amount',
+                                    'subject', 'to', 'phone',
                                     'message', 'file_path', 'url'):
-                            if key in snap:
+                            if key in snap and key not in data_used:
                                 data_used[key] = str(snap[key])[:100]
+                    except Exception:
+                        pass
+                if input_raw:
+                    try:
+                        inp = json.loads(input_raw) if isinstance(input_raw, str) else input_raw
+                        if isinstance(inp, dict):
+                            if inp.get('contact_email') and 'to' not in data_used:
+                                data_used['to'] = str(inp['contact_email'])[:100]
+                            if inp.get('contact_name') and 'contact' not in data_used:
+                                data_used['contact'] = str(inp['contact_name'])[:60]
                     except Exception:
                         pass
                 d['data_used'] = data_used
