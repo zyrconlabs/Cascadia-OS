@@ -14,6 +14,7 @@
     --prism-a:#4facfe;--prism-b:#a78bfa;--prism-c:#34d399;--prism-d:#f472b6;
     --green:#34d399;--green-soft:rgba(52,211,153,.12);
     --red:#f87171;--red-soft:rgba(248,113,113,.1);
+    --yellow:#fbbf24;--yellow-soft:rgba(251,191,36,.12);
     --violet:#7c3aed;--violet-soft:rgba(124,58,237,.1);
   }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -39,6 +40,9 @@
   .tag--category{background:var(--green-soft);color:#059669}
   .tag--free{background:var(--green-soft);color:#059669;font-weight:600}
   .tag--price{background:var(--navy-100);color:var(--navy-800);font-weight:600}
+  .tag--risk-low{background:var(--green-soft);color:#059669;font-weight:600}
+  .tag--risk-medium{background:var(--yellow-soft);color:#92400e;font-weight:600}
+  .tag--risk-high{background:var(--red-soft);color:#b91c1c;font-weight:600}
   .op-install-row{display:flex;align-items:center;gap:12px}
   .btn-install{padding:10px 24px;border-radius:9px;border:none;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
   .btn-install--ready{background:var(--violet);color:#fff}
@@ -62,6 +66,17 @@
   .subjects-card{background:var(--white);border:1px solid var(--navy-200);border-radius:12px;padding:20px;margin-bottom:24px}
   .subjects-card h3{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--navy-400);margin-bottom:12px}
   .subject-pill{display:inline-block;font-family:var(--mono);font-size:12px;background:var(--navy-50);border:1px solid var(--navy-200);border-radius:6px;padding:4px 10px;margin:3px}
+
+  /* Permission manifest card */
+  .perms-card{background:var(--white);border:1px solid var(--navy-200);border-radius:12px;padding:20px;margin-bottom:24px}
+  .perms-card h3{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--navy-400);margin-bottom:14px}
+  .perms-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .perms-group-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--navy-400);margin-bottom:6px}
+  .perm-pill{display:inline-block;font-size:12px;background:var(--navy-50);border:1px solid var(--navy-200);border-radius:5px;padding:3px 8px;margin:2px}
+  .perm-pill--approval{background:var(--yellow-soft);border-color:rgba(251,191,36,.3);color:#92400e}
+  .ext-badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:3px 9px;border-radius:5px}
+  .ext-badge--yes{background:var(--red-soft);color:#b91c1c}
+  .ext-badge--no{background:var(--green-soft);color:#059669}
 
   /* Related */
   .related-section{margin-top:8px}
@@ -122,12 +137,59 @@ async function load() {
   }
 }
 
+function riskClass(level) {
+  return level==='high'?'tag--risk-high':level==='medium'?'tag--risk-medium':'tag--risk-low';
+}
+
+function renderPermsCard(op) {
+  const perms = op.permissions||[];
+  const approvals = op.requires_approval_for||[];
+  const dataAccess = op.data_access||[];
+  const risk = op.risk_level||'low';
+  if (!op.risk_level && !perms.length && !approvals.length && !dataAccess.length) return '';
+  return `
+    <div class="perms-card">
+      <h3>Permission Manifest</h3>
+      <div class="perms-grid">
+        <div>
+          <div class="perms-group-label">Permissions requested</div>
+          ${perms.length
+            ? perms.map(p=>`<span class="perm-pill">${p}</span>`).join('')
+            : '<span style="font-size:12px;color:var(--navy-400)">None</span>'}
+        </div>
+        <div>
+          <div class="perms-group-label">Requires approval for</div>
+          ${approvals.length
+            ? approvals.map(a=>`<span class="perm-pill perm-pill--approval">${a}</span>`).join('')
+            : '<span style="font-size:12px;color:var(--navy-400)">None</span>'}
+        </div>
+        <div>
+          <div class="perms-group-label">Data accessed</div>
+          ${dataAccess.length
+            ? dataAccess.map(d=>`<span class="perm-pill">${d}</span>`).join('')
+            : '<span style="font-size:12px;color:var(--navy-400)">None</span>'}
+        </div>
+        <div>
+          <div class="perms-group-label">External systems</div>
+          <span class="ext-badge ${op.writes_external_systems?'ext-badge--yes':'ext-badge--no'}">
+            ${op.writes_external_systems?'✎ Writes externally':'✓ Local only'}
+          </span>
+          <br style="margin:4px 0">
+          <span class="ext-badge ${op.network_access?'ext-badge--yes':'ext-badge--no'}" style="margin-top:4px">
+            ${op.network_access?'⇥ Network access':'✓ No network'}
+          </span>
+        </div>
+      </div>
+    </div>`;
+}
+
 function render(op, all) {
   const icon = CATEGORY_ICONS[op.category]||'🔧';
   const price = parseFloat(op.price||0)===0?'Free':`$${op.price}/mo`;
   const installed = op.installed_by_default;
   const related = all.filter(o=>o.category===op.category && o.id!==op.id).slice(0,3);
   const subjects = op.nats_subjects||[];
+  const risk = op.risk_level||'';
 
   document.getElementById('page').innerHTML = `
     <div class="op-hero">
@@ -140,6 +202,7 @@ function render(op, all) {
           <span class="tag tag--category">${op.category||''}</span>
           <span class="tag tag--tier">${op.tier_required||'lite'}+</span>
           <span class="tag ${parseFloat(op.price||0)===0?'tag--free':'tag--price'}">${price}</span>
+          ${risk?`<span class="tag ${riskClass(risk)}">${risk} risk</span>`:''}
         </div>
         <div class="op-install-row">
           <button id="btn-install"
@@ -173,6 +236,8 @@ function render(op, all) {
         ${op.auth_type?`<div class="detail-row"><span class="detail-label">Auth</span><span class="detail-value">${op.auth_type}</span></div>`:''}
       </div>
     </div>
+
+    ${renderPermsCard(op)}
 
     ${subjects.length?`
     <div class="subjects-card">

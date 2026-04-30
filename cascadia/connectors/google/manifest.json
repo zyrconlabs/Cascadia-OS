@@ -20,5 +20,11 @@
   "approval_required_for_writes": true,
   "nats_subjects": ["cascadia.connectors.google-connector.>"],
   "setup_required": true,
-  "setup_instructions": "Create OAuth2 credentials at console.cloud.google.com. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars."
+  "setup_instructions": "Create OAuth2 credentials at console.cloud.google.com. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars.",
+  "risk_level": "medium",
+  "permissions": ["read_google_profile", "manage_oauth2_tokens"],
+  "requires_approval_for": ["revoke_token"],
+  "data_access": ["google_account_profile", "oauth2_tokens"],
+  "writes_external_systems": false,
+  "network_access": true
 }

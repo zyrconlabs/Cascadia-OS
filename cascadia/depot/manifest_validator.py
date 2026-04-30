@@ -30,6 +30,8 @@ VALID_AUTH_TYPES = {
     'iam', 'service_account', 'signed_token', 'none',
 }
 
+VALID_RISK_LEVELS = {'low', 'medium', 'high'}
+
 # Fields every DEPOT manifest must have
 REQUIRED_FIELDS = {
     'id', 'name', 'type', 'version', 'description',
@@ -37,6 +39,8 @@ REQUIRED_FIELDS = {
     'entry_point', 'dependencies', 'install_hook',
     'uninstall_hook', 'category', 'industries',
     'installed_by_default', 'safe_to_uninstall',
+    'risk_level', 'permissions', 'requires_approval_for',
+    'data_access', 'writes_external_systems', 'network_access',
 }
 
 # Fields that are valid but not required
@@ -192,6 +196,25 @@ def validate_depot_manifest(data: Dict[str, Any]) -> ValidationResult:
     # 21. Connector-specific: warn if type==connector but no auth_type
     if data.get('type') == 'connector' and 'auth_type' not in data:
         result.add_warning("Connectors should specify 'auth_type'")
+
+    # 22. risk_level — must be a valid level
+    risk = data.get('risk_level')
+    if not isinstance(risk, str) or risk not in VALID_RISK_LEVELS:
+        result.add_error(f"'risk_level' must be one of {sorted(VALID_RISK_LEVELS)}, got: {risk!r}")
+
+    # 23. permissions / requires_approval_for / data_access — lists of strings
+    for list_field in ('permissions', 'requires_approval_for', 'data_access'):
+        val = data.get(list_field)
+        if not isinstance(val, list):
+            result.add_error(f"'{list_field}' must be a list")
+        elif not all(isinstance(s, str) for s in val):
+            result.add_error(f"'{list_field}' must be a list of strings")
+
+    # 24. writes_external_systems / network_access — booleans
+    for bool_field in ('writes_external_systems', 'network_access'):
+        val = data.get(bool_field)
+        if not isinstance(val, bool):
+            result.add_error(f"'{bool_field}' must be a boolean")
 
     return result
 
