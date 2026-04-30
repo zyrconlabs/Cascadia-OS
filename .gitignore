@@ -88,3 +88,4 @@ ai-tasks/
 *-claude-*.md
 claude_*.tmp
 scripts/record_demo.sh
+*.p8
