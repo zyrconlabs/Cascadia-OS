@@ -1289,7 +1289,9 @@ class PrismService:
             return 500, {'error': str(exc)}
 
     def audit_export(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """Export audit log as CSV string."""
+        """Export audit log as CSV string. Requires pro tier or above."""
+        check = self._public_tier_check('pro')
+        if check: return check
         try:
             from cascadia.system.audit_log import AuditLog
             log = AuditLog()
@@ -1298,7 +1300,9 @@ class PrismService:
             return 500, {'error': str(exc)}
 
     def audit_verify(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """Verify the audit log hash chain integrity."""
+        """Verify the audit log hash chain integrity. Requires pro tier or above."""
+        check = self._public_tier_check('pro')
+        if check: return check
         try:
             from cascadia.system.audit_log import AuditLog
             log = AuditLog()
@@ -1317,7 +1321,9 @@ class PrismService:
             return 500, {'error': str(exc)}
 
     def fleet_register(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """Register a new fleet node: {node_id, name, host, port}."""
+        """Register a new fleet node: {node_id, name, host, port}. Requires enterprise tier."""
+        check = self._public_tier_check('enterprise')
+        if check: return check
         node_id = payload.get('node_id', '')
         name    = payload.get('name', '')
         host    = payload.get('host', '')
@@ -1333,7 +1339,9 @@ class PrismService:
             return 500, {'error': str(exc)}
 
     def fleet_remove(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """Remove a fleet node: {node_id}."""
+        """Remove a fleet node: {node_id}. Requires enterprise tier."""
+        check = self._public_tier_check('enterprise')
+        if check: return check
         node_id = payload.get('node_id', '')
         if not node_id:
             return 400, {'error': 'node_id required'}
@@ -1589,6 +1597,33 @@ class PrismService:
             'roi':           roi,
             'categories':    categories,
         }
+
+    # ------------------------------------------------------------------
+    # Tier gate helpers
+    # ------------------------------------------------------------------
+
+    _TIER_RANKS = {'lite': 0, 'pro': 1, 'business': 2, 'enterprise': 3}
+
+    def _public_tier_check(self, required: str = 'pro') -> Optional[tuple]:
+        """Returns (403, dict) if the public license key is below required tier, else None.
+        Uses license_gate (public) — fails open if gate is unavailable.
+        """
+        try:
+            from cascadia.licensing.license_gate import _build_status
+            key = self.config.get('license_key', '')
+            status = _build_status(key or None)
+            user_rank = self._TIER_RANKS.get(status.get('tier', 'lite'), 0)
+            required_rank = self._TIER_RANKS.get(required, 1)
+            if user_rank < required_rank:
+                return 403, {
+                    'error': 'tier_required',
+                    'tier_required': required,
+                    'current_tier': status.get('tier', 'lite'),
+                    'upgrade_url': 'https://zyrcon.store',
+                }
+        except Exception:
+            pass  # fail-open if license_gate unavailable
+        return None
 
     # ------------------------------------------------------------------
     # Workflow Designer handlers
