@@ -302,6 +302,71 @@ def seed_vault() -> None:
     print("  ✓ 3 vault entries written (business, lead, proposal)")
 
 
+# ── Seed scorecard ────────────────────────────────────────────────────────────
+
+def seed_scorecard() -> None:
+    """Seed a few days of realistic HVAC business metrics for the Scorecard tab."""
+    from cascadia.analytics.scorecard import Scorecard
+    from datetime import date, timedelta
+
+    sc   = Scorecard()
+    today = date.today()
+
+    # Realistic HVAC business metrics for the past 10 days of the current month
+    day_data = [
+        # (days_ago, leads, proposals, emails, appr_completed, appr_rejected, runs, failed, avg_rt)
+        (9,  3, 1, 4,  2, 0, 6,  0, 38),
+        (8,  2, 2, 3,  1, 0, 5,  0, 42),
+        (7,  4, 1, 6,  3, 1, 9,  1, 35),
+        (6,  1, 0, 2,  0, 0, 3,  0, 29),
+        (5,  5, 3, 7,  4, 0, 12, 0, 31),
+        (4,  3, 2, 5,  3, 1, 8,  1, 44),
+        (3,  2, 1, 4,  2, 0, 6,  0, 38),
+        (2,  6, 4, 8,  5, 0, 14, 1, 33),
+        (1,  4, 2, 6,  3, 1, 9,  0, 36),
+        (0,  2, 1, 3,  1, 0, 5,  0, 28),  # today (partial day)
+    ]
+
+    for days_ago, leads, proposals, emails, appr_comp, appr_rej, runs, failed, avg_rt in day_data:
+        d = (today - timedelta(days=days_ago)).isoformat()
+        sc.record_today.__func__(sc, {  # bypass today check via direct insert
+            'leads_captured':            leads,
+            'proposals_drafted':         proposals,
+            'emails_sent':               emails,
+            'approvals_completed':       appr_comp,
+            'approvals_rejected':        appr_rej,
+            'operator_runs':             runs,
+            'failed_runs':               failed,
+            'avg_response_time_seconds': avg_rt,
+        }) if days_ago == 0 else _insert_scorecard_row(sc, d, {
+            'leads_captured':            leads,
+            'proposals_drafted':         proposals,
+            'emails_sent':               emails,
+            'approvals_completed':       appr_comp,
+            'approvals_rejected':        appr_rej,
+            'operator_runs':             runs,
+            'failed_runs':               failed,
+            'avg_response_time_seconds': avg_rt,
+        })
+
+    print("  ✓ 10 days of scorecard metrics seeded (HVAC business scenario)")
+
+
+def _insert_scorecard_row(sc, date_str: str, metrics: dict) -> None:
+    """Insert a scorecard row for a specific date (bypasses today-only check)."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    import sqlite3
+    with sqlite3.connect(sc._db_path) as conn:
+        fields = ['date', 'created_at', 'updated_at'] + list(metrics.keys())
+        values = [date_str, now, now] + list(metrics.values())
+        placeholders = ', '.join('?' * len(fields))
+        conn.execute(
+            f'INSERT OR REPLACE INTO daily_metrics ({", ".join(fields)}) VALUES ({placeholders})',
+            values,
+        )
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -315,6 +380,7 @@ def main() -> None:
     approval_id = seed_run()
     seed_audit(approval_id)
     seed_vault()
+    seed_scorecard()
 
     print("\n  Done. Open PRISM to see the demo:\n")
     print("    http://127.0.0.1:6300\n")
