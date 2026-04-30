@@ -1,0 +1,406 @@
+<!-- IoT Sensor Widget — PRISM Dashboard embed
+     Polls GET http://127.0.0.1:8300/readings?limit=20 every 10 seconds.
+     Self-contained: no external dependencies.
+-->
+<style>
+.iot-widget {
+  --navy-900: #111827;
+  --prism-a: #4facfe;
+  --prism-b: #a78bfa;
+  --prism-c: #34d399;
+  --prism-d: #f472b6;
+  --violet: #7c3aed;
+  --green: #34d399;
+
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.07);
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 320px;
+}
+
+.iot-widget__header {
+  background: linear-gradient(135deg, var(--navy-900) 0%, #1e293b 100%);
+  padding: 14px 18px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.iot-widget__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iot-widget__title-icon {
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, var(--prism-a), var(--prism-b));
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.iot-widget__title-icon svg {
+  width: 11px;
+  height: 11px;
+  stroke: #fff;
+  fill: none;
+  stroke-width: 2;
+}
+
+.iot-widget__status-bar {
+  font-size: 10px;
+  color: rgba(255,255,255,0.55);
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.iot-widget__offline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(248,113,113,0.18);
+  color: #f87171;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid rgba(248,113,113,0.3);
+}
+
+.iot-widget__offline-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f87171;
+  flex-shrink: 0;
+}
+
+.iot-widget__body {
+  padding: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  background: #f9fafb;
+}
+
+.iot-widget__body::-webkit-scrollbar { width: 3px; }
+.iot-widget__body::-webkit-scrollbar-track { background: transparent; }
+.iot-widget__body::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+
+.iot-widget__empty {
+  text-align: center;
+  padding: 36px 20px;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.iot-widget__empty-icon {
+  font-size: 28px;
+  margin-bottom: 10px;
+  opacity: 0.5;
+}
+
+.iot-reading-card {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: box-shadow 0.12s;
+}
+
+.iot-reading-card:last-child { margin-bottom: 0; }
+
+.iot-reading-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+}
+
+.iot-reading-card__badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  min-width: 80px;
+  text-align: center;
+}
+
+.badge--soil_moisture {
+  background: rgba(52,211,153,0.12);
+  color: #059669;
+  border: 1px solid rgba(52,211,153,0.3);
+}
+
+.badge--temperature {
+  background: rgba(251,146,60,0.12);
+  color: #ea580c;
+  border: 1px solid rgba(251,146,60,0.3);
+}
+
+.badge--humidity {
+  background: rgba(79,172,254,0.12);
+  color: #2563eb;
+  border: 1px solid rgba(79,172,254,0.3);
+}
+
+.badge--ph {
+  background: rgba(167,139,250,0.12);
+  color: #7c3aed;
+  border: 1px solid rgba(167,139,250,0.3);
+}
+
+.badge--default {
+  background: rgba(107,114,128,0.10);
+  color: #6b7280;
+  border: 1px solid rgba(107,114,128,0.2);
+}
+
+.iot-reading-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.iot-reading-card__device {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.iot-reading-card__meta {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 1px;
+}
+
+.iot-reading-card__value {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.iot-reading-card__number {
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--navy-900);
+  line-height: 1;
+}
+
+.iot-reading-card__unit {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+</style>
+
+<div class="iot-widget" id="iot-widget-root">
+  <div class="iot-widget__header">
+    <div class="iot-widget__title">
+      <div class="iot-widget__title-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      IoT Sensor Readings
+    </div>
+    <div class="iot-widget__status-bar" id="iot-status-bar">Loading...</div>
+  </div>
+  <div class="iot-widget__body" id="iot-widget-body">
+    <div class="iot-widget__empty">
+      <div class="iot-widget__empty-icon">&#x1F4E1;</div>
+      Loading sensor data...
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var ENDPOINT = 'http://127.0.0.1:8300/readings?limit=20';
+  var POLL_INTERVAL = 10000; // 10 seconds
+  var _timer = null;
+  var _isOffline = false;
+
+  var BADGE_CLASSES = {
+    soil_moisture: 'badge--soil_moisture',
+    temperature:   'badge--temperature',
+    humidity:      'badge--humidity',
+    ph:            'badge--ph'
+  };
+
+  var BADGE_LABELS = {
+    soil_moisture: 'Soil',
+    temperature:   'Temp',
+    humidity:      'Humidity',
+    ph:            'pH'
+  };
+
+  function formatTime(iso) {
+    if (!iso) return '—';
+    try {
+      var d = new Date(iso);
+      var diff = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diff < 5)  return 'just now';
+      if (diff < 60) return diff + 's ago';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return d.toLocaleDateString();
+    } catch (e) { return iso; }
+  }
+
+  function nowHHMMSS() {
+    var d = new Date();
+    return d.toTimeString().slice(0, 8);
+  }
+
+  function badgeClass(sensorType) {
+    return BADGE_CLASSES[sensorType] || 'badge--default';
+  }
+
+  function badgeLabel(sensorType) {
+    return BADGE_LABELS[sensorType] || sensorType.replace(/_/g, ' ');
+  }
+
+  function formatValue(val) {
+    if (val === null || val === undefined) return '—';
+    var n = parseFloat(val);
+    if (isNaN(n)) return String(val);
+    return Number.isInteger(n) ? String(n) : n.toFixed(2);
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderOffline() {
+    var bar = document.getElementById('iot-status-bar');
+    var body = document.getElementById('iot-widget-body');
+    if (!bar || !body) return;
+
+    bar.innerHTML = '<span class="iot-widget__offline-badge">' +
+      '<span class="iot-widget__offline-dot"></span>Offline</span>';
+
+    if (!_isOffline) {
+      body.innerHTML = '<div class="iot-widget__empty">' +
+        '<div class="iot-widget__empty-icon">&#x26A0;</div>' +
+        'Endpoint unreachable &mdash; retrying every 10s</div>';
+      _isOffline = true;
+    }
+  }
+
+  function renderReadings(readings, count) {
+    _isOffline = false;
+    var bar = document.getElementById('iot-status-bar');
+    var body = document.getElementById('iot-widget-body');
+    if (!bar || !body) return;
+
+    bar.textContent = count + ' reading' + (count !== 1 ? 's' : '') +
+      ' • Updated: ' + nowHHMMSS();
+
+    if (!readings || readings.length === 0) {
+      body.innerHTML = '<div class="iot-widget__empty">' +
+        '<div class="iot-widget__empty-icon">&#x1F4E1;</div>' +
+        'No readings yet</div>';
+      return;
+    }
+
+    // Newest first
+    var sorted = readings.slice().reverse();
+    var html = '';
+    for (var i = 0; i < sorted.length; i++) {
+      var r = sorted[i];
+      var bc   = badgeClass(r.sensor_type);
+      var bl   = badgeLabel(r.sensor_type);
+      var val  = formatValue(r.value);
+      var unit = r.unit ? escapeHtml(r.unit) : '';
+      var dev  = escapeHtml(r.device_id || 'unknown');
+      var ts   = formatTime(r.timestamp || r.ingested_at);
+
+      html += '<div class="iot-reading-card">' +
+        '<span class="iot-reading-card__badge ' + bc + '">' + escapeHtml(bl) + '</span>' +
+        '<div class="iot-reading-card__body">' +
+          '<div class="iot-reading-card__device">' + dev + '</div>' +
+          '<div class="iot-reading-card__meta">' + ts + '</div>' +
+        '</div>' +
+        '<div class="iot-reading-card__value">' +
+          '<div class="iot-reading-card__number">' + val + '</div>' +
+          (unit ? '<div class="iot-reading-card__unit">' + unit + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    }
+    body.innerHTML = html;
+  }
+
+  function fetchReadings() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', ENDPOINT, true);
+    xhr.timeout = 5000;
+
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          var data = JSON.parse(xhr.responseText);
+          renderReadings(data.readings || [], data.count || 0);
+        } catch (e) {
+          renderOffline();
+        }
+      } else {
+        renderOffline();
+      }
+    };
+
+    xhr.ontimeout = function () { renderOffline(); };
+    xhr.onerror   = function () { renderOffline(); };
+
+    try { xhr.send(); } catch (e) { renderOffline(); }
+  }
+
+  function startPolling() {
+    fetchReadings();
+    _timer = setInterval(fetchReadings, POLL_INTERVAL);
+  }
+
+  // Pause when tab is hidden, resume when visible
+  if (typeof document.hidden !== 'undefined') {
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        clearInterval(_timer);
+      } else {
+        fetchReadings();
+        _timer = setInterval(fetchReadings, POLL_INTERVAL);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startPolling);
+  } else {
+    startPolling();
+  }
+})();
+</script>
