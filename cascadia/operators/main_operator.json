@@ -1,0 +1,12 @@
+{
+  "id": "main_operator",
+  "name": "Main Operator",
+  "version": "0.1.0",
+  "type": "service",
+  "capabilities": ["parse_lead", "enrich_company", "draft_email", "crm.write"],
+  "required_dependencies": [],
+  "requested_permissions": ["crm.write"],
+  "autonomy_level": "semi_autonomous",
+  "health_hook": "/health",
+  "description": "Primary business operator. Handles lead parsing, enrichment, email drafting, and CRM logging. Replace with your own operator implementation."
+}
