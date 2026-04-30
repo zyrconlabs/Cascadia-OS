@@ -2,12 +2,20 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List
 
 VALID_TYPES = {'system', 'service', 'skill', 'composite'}
 VALID_AUTONOMY = {'manual_only', 'assistive', 'semi_autonomous', 'autonomous'}
+VALID_RISK_LEVELS = {'low', 'medium', 'high'}
+
+_MANIFEST_FIELDS = {
+    'id', 'name', 'version', 'type', 'capabilities', 'required_dependencies',
+    'requested_permissions', 'autonomy_level', 'health_hook', 'description',
+    'risk_level', 'permissions', 'requires_approval_for', 'data_access',
+    'writes_external_systems', 'network_access',
+}
 
 
 @dataclass(slots=True)
@@ -23,6 +31,12 @@ class Manifest:
     autonomy_level: str
     health_hook: str
     description: str
+    risk_level: str = 'low'
+    permissions: List[str] = field(default_factory=list)
+    requires_approval_for: List[str] = field(default_factory=list)
+    data_access: List[str] = field(default_factory=list)
+    writes_external_systems: bool = False
+    network_access: bool = False
 
 
 class ManifestValidationError(ValueError):
@@ -44,7 +58,11 @@ def validate_manifest(data: Dict[str, Any]) -> Manifest:
     for key in ('capabilities', 'required_dependencies', 'requested_permissions'):
         if not isinstance(data[key], list):
             raise ManifestValidationError(f'{key} must be a list')
-    return Manifest(**data)
+    risk = data.get('risk_level', 'low')
+    if risk not in VALID_RISK_LEVELS:
+        raise ManifestValidationError(f"Invalid risk_level: {risk!r}; must be one of {sorted(VALID_RISK_LEVELS)}")
+    known = {k: v for k, v in data.items() if k in _MANIFEST_FIELDS}
+    return Manifest(**known)
 
 
 def load_manifest(path: str | Path) -> Manifest:

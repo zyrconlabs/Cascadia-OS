@@ -32,6 +32,12 @@ VALID_OPERATOR = {
     "industries": ["general"],
     "installed_by_default": False,
     "safe_to_uninstall": True,
+    "risk_level": "low",
+    "permissions": ["read_crm_contacts", "write_crm_lead"],
+    "requires_approval_for": ["write_crm_lead"],
+    "data_access": ["lead_records"],
+    "writes_external_systems": False,
+    "network_access": False,
 }
 
 VALID_CONNECTOR = {
@@ -54,6 +60,12 @@ VALID_CONNECTOR = {
     "safe_to_uninstall": True,
     "auth_type": "oauth2",
     "approval_required_for_writes": True,
+    "risk_level": "medium",
+    "permissions": ["read_crm", "write_crm"],
+    "requires_approval_for": ["write_crm"],
+    "data_access": ["crm_contacts", "deals"],
+    "writes_external_systems": True,
+    "network_access": True,
 }
 
 
@@ -363,3 +375,79 @@ def test_validate_file_invalid_manifest(tmp_path):
     result = validate_depot_manifest_file(f)
     assert result.valid is False
     assert len(result.errors) >= 2
+
+
+# ── Permission manifest fields ────────────────────────────────────────────────
+
+def test_valid_risk_levels_pass():
+    from cascadia.depot.manifest_validator import VALID_RISK_LEVELS
+    for level in VALID_RISK_LEVELS:
+        result = validate_depot_manifest(_with(VALID_OPERATOR, risk_level=level))
+        assert result.valid is True, f"Expected risk_level={level!r} to pass"
+
+
+def test_invalid_risk_level_fails():
+    result = validate_depot_manifest(_with(VALID_OPERATOR, risk_level="critical"))
+    assert result.valid is False
+    assert any("risk_level" in err for err in result.errors)
+
+
+def test_missing_risk_level_fails():
+    result = validate_depot_manifest(_without(VALID_OPERATOR, "risk_level"))
+    assert result.valid is False
+
+
+def test_permissions_empty_list_ok():
+    result = validate_depot_manifest(_with(VALID_OPERATOR, permissions=[]))
+    assert result.valid is True
+
+
+def test_permissions_not_list_fails():
+    result = validate_depot_manifest(_with(VALID_OPERATOR, permissions="read_crm"))
+    assert result.valid is False
+    assert any("permissions" in err for err in result.errors)
+
+
+def test_requires_approval_for_list_of_strings():
+    result = validate_depot_manifest(_with(VALID_OPERATOR, requires_approval_for=["send_email", "write_crm"]))
+    assert result.valid is True
+
+
+def test_requires_approval_for_not_list_fails():
+    result = validate_depot_manifest(_with(VALID_OPERATOR, requires_approval_for="send_email"))
+    assert result.valid is False
+
+
+def test_data_access_list_ok():
+    result = validate_depot_manifest(_with(VALID_OPERATOR, data_access=["contacts", "orders"]))
+    assert result.valid is True
+
+
+def test_writes_external_systems_bool_required():
+    result = validate_depot_manifest(_with(VALID_OPERATOR, writes_external_systems="yes"))
+    assert result.valid is False
+    assert any("writes_external_systems" in err for err in result.errors)
+
+
+def test_network_access_bool_required():
+    result = validate_depot_manifest(_with(VALID_OPERATOR, network_access=1))
+    assert result.valid is False
+    assert any("network_access" in err for err in result.errors)
+
+
+def test_missing_permission_fields_fails():
+    for f in ("risk_level", "permissions", "requires_approval_for", "data_access",
+              "writes_external_systems", "network_access"):
+        result = validate_depot_manifest(_without(VALID_OPERATOR, f))
+        assert result.valid is False, f"Expected failure when '{f}' is missing"
+
+
+def test_high_risk_with_external_writes_passes():
+    result = validate_depot_manifest(_with(
+        VALID_OPERATOR,
+        risk_level="high",
+        writes_external_systems=True,
+        network_access=True,
+        requires_approval_for=["send_email", "write_crm", "delete_record"],
+    ))
+    assert result.valid is True
