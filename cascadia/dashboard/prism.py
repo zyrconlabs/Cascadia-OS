@@ -204,6 +204,11 @@ class PrismService:
         self.runtime.register_route('GET',  '/setup',                                    self.serve_wizard)
         self.runtime.register_route('POST', '/api/wizard/save-progress',                 self.wizard_save_progress)
         self.runtime.register_route('POST', '/api/wizard/complete',                      self.wizard_complete)
+        # Guided Configuration routes (Phase 3–5)
+        self.runtime.register_route('GET',  '/config-wizard',                            self.serve_config_wizard)
+        self.runtime.register_route('POST', '/api/config/chat',                          self.config_chat)
+        self.runtime.register_route('GET',  '/api/prism/operator/{id}/settings',         self.operator_settings_get)
+        self.runtime.register_route('POST', '/api/prism/operator/{id}/settings',         self.operator_settings_post)
 
         # Start operator watchdog
         try:
@@ -2655,6 +2660,86 @@ document.getElementById('key').addEventListener('keydown', function(e){
             return 200, {'complete': True, 'business_type': business_type}
         except Exception as exc:
             return 500, {'error': str(exc)}
+
+    # ------------------------------------------------------------------
+    # Guided Configuration routes (Phase 3–5)
+    # ------------------------------------------------------------------
+
+    def serve_config_wizard(self, _) -> tuple[int, Dict[str, Any]]:
+        """GET /config-wizard — serve the hybrid configuration wizard slide-over."""
+        html_path = Path(__file__).parent / 'config-wizard.html'
+        if html_path.exists():
+            return 200, {'__html__': html_path.read_bytes()}
+        return 404, {'error': 'config-wizard.html not found'}
+
+    def config_chat(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/config/chat — settings chat assistant entry point."""
+        message = payload.get('message', '').strip()
+        context = payload.get('context', {})
+        if not message:
+            return 400, {'error': 'message required'}
+        # Route /settings commands to SettingsChatAssistant
+        if message.startswith('/settings') or not message.startswith('/'):
+            try:
+                from cascadia.settings.chat_assistant import SettingsChatAssistant
+                result = SettingsChatAssistant().handle(message, context)
+                return 200, result
+            except Exception:
+                pass
+        # Generic AI-style fallback for non-/settings questions
+        return 200, {
+            'response': (
+                'For most businesses, the recommended option is the safest starting point. '
+                'You can change any setting later from the Configuration menu in PRISM.'
+            ),
+            'options': [],
+            'preview': None,
+        }
+
+    def operator_settings_get(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/operator/{id}/settings — return operator settings fields."""
+        op_id = payload.get('id', '')
+        # Return a generic placeholder field set
+        # (actual settings engine is off-limits; this is the UI contract only)
+        return 200, {
+            'operator_id': op_id,
+            'fields': [
+                {'key': 'lead_score_threshold', 'label': 'Lead Score Threshold',
+                 'type': 'slider', 'min': 0, 'max': 100, 'default': 70,
+                 'simple_mode': True, 'advanced_mode': True,
+                 'hint': 'Leads above this score trigger automatic actions.'},
+                {'key': 'approval_mode', 'label': 'Approval Mode',
+                 'type': 'select', 'options': ['always', 'on_high_risk', 'never'], 'default': 'always',
+                 'simple_mode': True, 'advanced_mode': True,
+                 'hint': 'When to pause and request human approval.'},
+                {'key': 'notifications_enabled', 'label': 'Notifications Enabled',
+                 'type': 'boolean', 'default': True, 'simple_mode': True},
+                {'key': 'notify_email', 'label': 'Notification Email',
+                 'type': 'string', 'default': '', 'simple_mode': True, 'advanced_mode': True},
+                {'key': 'api_key', 'label': 'API Key',
+                 'type': 'secret', 'simple_mode': False, 'advanced_mode': True, 'developer_mode': True},
+                {'key': 'debug_mode', 'label': 'Debug Mode',
+                 'type': 'boolean', 'default': False, 'simple_mode': False,
+                 'advanced_mode': False, 'developer_mode': True},
+                {'key': 'tags', 'label': 'Tags',
+                 'type': 'tags', 'default': '', 'simple_mode': False, 'advanced_mode': True},
+                {'key': 'max_retries', 'label': 'Max Retries',
+                 'type': 'number', 'min': 0, 'max': 10, 'default': 3,
+                 'simple_mode': False, 'advanced_mode': True},
+            ],
+        }
+
+    def operator_settings_post(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/operator/{id}/settings — save operator settings (demo mode)."""
+        op_id = payload.get('id', '')
+        settings = payload.get('settings', {})
+        # Demo mode: acknowledge save without persisting
+        # (actual settings engine is off-limits)
+        return 200, {
+            'saved': True,
+            'operator_id': op_id,
+            'message': 'Settings saved (demo mode)',
+        }
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')

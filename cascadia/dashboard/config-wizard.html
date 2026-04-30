@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cascadia OS — Configuration Wizard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff;--bg2:#f5f7fa;--surface:#f0f4f8;
+  --text:#0a0a0a;--text-dim:#4a5568;
+  --prism-a:#4facfe;--prism-b:#a78bfa;--prism-c:#34d399;
+  --navy-900:#111827;--navy-800:#374151;--navy-700:#4a5568;
+  --navy-600:#4facfe;
+  --navy-100:#f0f4f8;--navy-50:#f5f7fa;
+  --white:#ffffff;--gray-50:#f5f7fa;--gray-100:#f0f4f8;--gray-150:#e8edf4;
+  --gray-200:#e8edf4;--gray-300:#94a3b8;--gray-400:#94a3b8;
+  --gray-500:#4a5568;
+  --green:#34d399;--green-soft:rgba(52,211,153,.12);
+  --red:#f87171;--red-soft:rgba(248,113,113,.1);
+  --yellow:#D4AF37;--yellow-soft:rgba(212,175,55,.12);
+  --purple:#a78bfa;--purple-soft:rgba(167,139,250,.1);
+  --font:'Inter',-apple-system,sans-serif;--mono:'JetBrains Mono','SF Mono',monospace;
+  --ease:cubic-bezier(.25,1,.5,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:var(--font);-webkit-font-smoothing:antialiased;background:var(--white);color:var(--navy-900)}
+button{cursor:pointer;font-family:var(--font)}
+input,textarea,select{font-family:var(--font)}
+
+/* Layout */
+.wizard{display:flex;flex-direction:column;height:100vh;max-width:480px;width:100%}
+
+/* Header */
+.wiz-header{padding:18px 20px 0;flex-shrink:0}
+.wiz-title{font-size:16px;font-weight:700;color:var(--navy-800);margin-bottom:3px}
+.wiz-sub{font-size:11px;color:var(--gray-400);font-family:var(--mono)}
+
+/* Progress bar */
+.wiz-progress{padding:14px 20px 0;flex-shrink:0}
+.wiz-progress__bar{height:3px;background:var(--gray-200);border-radius:2px;overflow:hidden;margin-bottom:6px}
+.wiz-progress__fill{height:100%;background:linear-gradient(90deg,var(--prism-a),var(--prism-b));border-radius:2px;transition:width .4s var(--ease)}
+.wiz-progress__label{font-family:var(--mono);font-size:10px;color:var(--gray-400)}
+
+/* Body */
+.wiz-body{flex:1;overflow-y:auto;padding:18px 20px}
+
+/* Step heading */
+.wiz-step__title{font-size:17px;font-weight:700;color:var(--navy-900);margin-bottom:6px}
+.wiz-step__question{font-size:13px;color:var(--gray-500);margin-bottom:18px;line-height:1.5}
+
+/* Option buttons */
+.wiz-options{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
+.wiz-option{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border:1.5px solid var(--gray-200);border-radius:11px;background:var(--white);cursor:pointer;transition:all .15s;text-align:left;width:100%}
+.wiz-option:hover{border-color:rgba(79,172,254,.4);background:rgba(79,172,254,.04)}
+.wiz-option.selected{border-color:var(--prism-a);background:rgba(79,172,254,.06)}
+.wiz-option__icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.wiz-option__body{flex:1;min-width:0}
+.wiz-option__label{font-size:13px;font-weight:600;color:var(--navy-800)}
+.wiz-option__meta{font-size:11px;color:var(--gray-400);font-family:var(--mono);margin-top:2px}
+.wiz-option__help{font-size:12px;color:var(--gray-500);margin-top:8px;line-height:1.5;display:none}
+.wiz-option.selected .wiz-option__help{display:block}
+
+/* Recommended defaults shortcut */
+.wiz-defaults-btn{width:100%;padding:9px 14px;border:1px dashed var(--gray-300);border-radius:9px;background:transparent;color:var(--gray-500);font-size:12px;font-family:var(--mono);cursor:pointer;transition:all .15s;margin-bottom:14px}
+.wiz-defaults-btn:hover{border-color:var(--prism-a);color:var(--prism-a);background:rgba(79,172,254,.04)}
+
+/* Advanced settings section */
+.wiz-advanced{overflow:hidden;max-height:0;transition:max-height .35s var(--ease),opacity .25s;opacity:0}
+.wiz-advanced.open{max-height:600px;opacity:1}
+.wiz-advanced-toggle{display:flex;align-items:center;gap:6px;border:none;background:none;color:var(--prism-a);font-size:12px;font-weight:500;cursor:pointer;padding:2px 0;margin-bottom:8px;transition:opacity .15s}
+.wiz-advanced-toggle:hover{opacity:.75}
+.wiz-advanced-toggle__arrow{font-size:10px;transition:transform .25s;display:inline-block}
+.wiz-advanced-toggle.open .wiz-advanced-toggle__arrow{transform:rotate(90deg)}
+.wiz-advanced-inner{padding:14px;background:var(--gray-50);border-radius:10px;border:1px solid var(--gray-200);margin-bottom:12px}
+.wiz-advanced-field{margin-bottom:12px}
+.wiz-advanced-field:last-child{margin-bottom:0}
+.wiz-advanced-field label{display:block;font-size:11px;font-weight:600;color:var(--gray-500);margin-bottom:4px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em}
+.wiz-advanced-input{width:100%;height:34px;border:1px solid var(--gray-200);border-radius:7px;padding:0 10px;font-size:12px;color:var(--navy-900);background:var(--white);outline:none;transition:border-color .15s}
+.wiz-advanced-input:focus{border-color:var(--prism-a)}
+.wiz-back-recommended{border:none;background:none;color:var(--prism-a);font-size:12px;cursor:pointer;margin-top:6px;padding:0;text-decoration:underline;text-decoration-color:transparent;transition:text-decoration-color .15s}
+.wiz-back-recommended:hover{text-decoration-color:var(--prism-a)}
+
+/* AI Help button + chips */
+.wiz-help-section{margin-bottom:16px}
+.wiz-help-btn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 12px;border-radius:7px;border:1px solid rgba(167,139,250,.4);background:rgba(167,139,250,.08);color:var(--purple);font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;font-family:var(--mono)}
+.wiz-help-btn:hover{background:rgba(167,139,250,.14)}
+.wiz-help-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.wiz-help-chip{padding:5px 12px;border-radius:20px;border:1px solid var(--gray-200);background:var(--white);color:var(--navy-800);font-size:12px;cursor:pointer;transition:all .12s}
+.wiz-help-chip:hover{border-color:var(--prism-a);color:var(--prism-a)}
+.wiz-help-response{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:9px;padding:12px;font-size:12px;color:var(--navy-800);line-height:1.6;margin-top:8px;display:none}
+.wiz-help-response.visible{display:block}
+
+/* Footer */
+.wiz-footer{padding:14px 20px 18px;border-top:1px solid var(--gray-200);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--white)}
+.wiz-btn-back{height:36px;padding:0 16px;border-radius:9px;border:1px solid var(--gray-200);background:var(--white);color:var(--navy-800);font-size:13px;cursor:pointer;transition:all .12s}
+.wiz-btn-back:hover{background:var(--gray-100)}
+.wiz-btn-continue{flex:1;height:36px;border-radius:9px;border:none;background:linear-gradient(135deg,var(--prism-a),var(--prism-b));color:var(--white);font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.wiz-btn-continue:hover{opacity:.9}
+.wiz-btn-finish{background:linear-gradient(135deg,var(--prism-c),var(--prism-a));color:var(--white)}
+
+/* Completion screen */
+.wiz-complete{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;flex:1;padding:40px 24px}
+.wiz-complete__icon{font-size:48px;margin-bottom:16px}
+.wiz-complete__title{font-size:20px;font-weight:700;color:var(--navy-900);margin-bottom:8px}
+.wiz-complete__sub{font-size:13px;color:var(--gray-500);line-height:1.6;margin-bottom:24px}
+.wiz-complete__btn{height:40px;padding:0 28px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--prism-a),var(--prism-b));color:var(--white);font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.wiz-complete__btn:hover{opacity:.9}
+</style>
+</head>
+<body>
+
+<div class="wizard" id="wizard">
+  <!-- Rendered by JS -->
+</div>
+
+<script>
+'use strict';
+
+/* ── Parse URL params ── */
+const _params = new URLSearchParams(window.location.search);
+const OP_ID   = _params.get('op')   || '';
+const OP_NAME = _params.get('name') || 'Operator';
+const PRISM_URL = window.parent?.location?.origin || window.location.origin;
+
+/* ── Wizard state ── */
+const WS = {
+  step: 0,        // 0-indexed
+  totalSteps: 5,
+  answers: {},    // {stepKey: selectedOption}
+  advOpen: {},    // {stepIdx: bool}
+  helpOpen: {},   // {stepIdx: bool}
+  complete: false,
+};
+
+/* ── Step definitions ── */
+const STEPS = [
+  {
+    key: 'intro',
+    title: `Let's configure ${OP_NAME}`,
+    question: 'This takes about 2 minutes. We\'ll walk you through the key settings using plain language — no technical jargon required.',
+    options: [
+      {id:'start', icon:'🚀', label:'Get started', meta:'Takes about 2 minutes', help:'We\'ll ask you 4 simple questions and set everything up.'},
+    ],
+    advanced: false,
+    noQuestion: true,
+  },
+  {
+    key: 'input_source',
+    title: 'Step 2 of 5 — Primary Input Source',
+    question: 'Where should this operator get its data from?',
+    options: [
+      {id:'gmail',       icon:'✉', label:'Gmail',        meta:'Already installed · Recommended', help:'Automatically monitors your inbox for relevant leads and triggers.'},
+      {id:'form',        icon:'📋', label:'Web Form',     meta:'No setup needed · Fast',          help:'Captures submissions from your website contact form.'},
+      {id:'spreadsheet', icon:'📊', label:'Google Sheets',meta:'Already installed · Easy',        help:'Reads rows from a spreadsheet on a schedule.'},
+      {id:'webhook',     icon:'⚡', label:'Webhook',      meta:'Developer · Any source',          help:'Receives data from any external system via HTTP POST.'},
+    ],
+    advanced: true,
+    advFields: [
+      {key:'custom_webhook', label:'Custom Webhook URL', placeholder:'https://your-endpoint.com/hook'},
+      {key:'poll_interval',  label:'Poll interval (minutes)', placeholder:'15'},
+    ],
+  },
+  {
+    key: 'output_destination',
+    title: 'Step 3 of 5 — Output Destination',
+    question: 'Where should results and qualified leads be saved?',
+    options: [
+      {id:'sheets',    icon:'✓', label:'Google Sheets',   meta:'Already installed · Recommended', help:'Appends rows to a shared spreadsheet your team can access.'},
+      {id:'hubspot',   icon:'+', label:'Install HubSpot', meta:'From DEPOT · Full CRM',           help:'Syncs contacts and deals to HubSpot CRM. Requires HubSpot API key.'},
+      {id:'notify',    icon:'🔔', label:'Notify Me Only', meta:'No destination storage',          help:'Sends you a notification without saving to any system.'},
+    ],
+    advanced: true,
+    advFields: [
+      {key:'dest_webhook', label:'Custom Destination Webhook', placeholder:'https://crm.example.com/api'},
+      {key:'multi_dest',   label:'Multiple destinations (comma-separated)', placeholder:'sheets, email'},
+    ],
+  },
+  {
+    key: 'approval_rules',
+    title: 'Step 4 of 5 — Approval Rules',
+    question: 'When should the operator pause and ask for your approval before taking action?',
+    options: [
+      {id:'always',      icon:'👀', label:'Always ask me',      meta:'Safest · Recommended for new setups', help:'Every action pauses for your review. Best when you\'re getting started.'},
+      {id:'high_risk',   icon:'⚠', label:'High-risk only',     meta:'Balanced · Most teams choose this',   help:'Only pauses for actions that could have major consequences (sending emails, making purchases).'},
+      {id:'autonomous',  icon:'⚡', label:'Run autonomously',   meta:'Fastest · Requires trust',            help:'Runs without approval. Use only after you\'ve verified the operator works correctly.'},
+    ],
+    advanced: true,
+    advFields: [
+      {key:'risk_threshold', label:'Custom risk threshold (0–100)', placeholder:'60'},
+      {key:'business_hours', label:'Business hours only (9am-5pm)', placeholder:'yes'},
+    ],
+  },
+  {
+    key: 'notifications',
+    title: 'Step 5 of 5 — Notifications',
+    question: 'How would you like to be alerted when the operator completes a task or needs help?',
+    options: [
+      {id:'sms',   icon:'📱', label:'SMS',        meta:'Fastest · Recommended', help:'Get a text message when there\'s an approval needed or a task completes.'},
+      {id:'email', icon:'✉', label:'Email',       meta:'Detailed notifications', help:'Receive a summary email with full details about each completed workflow.'},
+      {id:'slack', icon:'💬', label:'Slack',       meta:'From DEPOT · Team-friendly', help:'Get Slack messages in a channel of your choice. Install from DEPOT.'},
+      {id:'none',  icon:'🔕', label:'No alerts',  meta:'Silent mode',           help:'Run silently. You can still check the Runs tab in PRISM at any time.'},
+    ],
+    advanced: false,
+  },
+];
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Render ── */
+function render() {
+  const root = document.getElementById('wizard');
+  if (!root) return;
+  if (WS.complete) { renderComplete(root); return; }
+  const step = STEPS[WS.step];
+  if (!step) return;
+  const pct = Math.round(((WS.step) / WS.totalSteps) * 100);
+
+  const optionsHTML = step.options.map(opt => {
+    const sel = WS.answers[step.key] === opt.id;
+    return `<button class="wiz-option${sel?' selected':''}" onclick="selectOption('${step.key}','${opt.id}')">
+      <div class="wiz-option__icon">${opt.icon}</div>
+      <div class="wiz-option__body">
+        <div class="wiz-option__label">${esc(opt.label)}</div>
+        <div class="wiz-option__meta">${esc(opt.meta || '')}</div>
+        ${opt.help ? `<div class="wiz-option__help">${esc(opt.help)}</div>` : ''}
+      </div>
+    </button>`;
+  }).join('');
+
+  const advOpen = WS.advOpen[WS.step];
+  const advFields = (step.advFields || []).map(f =>
+    `<div class="wiz-advanced-field">
+      <label>${esc(f.label)}</label>
+      <input class="wiz-advanced-input" type="text" placeholder="${esc(f.placeholder||'')}" value="${esc(WS.answers[f.key]||'')}" oninput="WS.answers['${f.key}']=this.value">
+    </div>`
+  ).join('');
+
+  const advSection = step.advanced ? `
+    <button class="wiz-advanced-toggle${advOpen?' open':''}" onclick="toggleAdv(${WS.step})">
+      <span class="wiz-advanced-toggle__arrow">&#9658;</span>
+      Advanced Settings
+    </button>
+    <div class="wiz-advanced${advOpen?' open':''}">
+      <div class="wiz-advanced-inner">
+        ${advFields}
+        <button class="wiz-back-recommended" onclick="toggleAdv(${WS.step})">← Back to Recommended Options</button>
+      </div>
+    </div>` : '';
+
+  const helpOpen = WS.helpOpen[WS.step];
+  const helpSection = `
+    <div class="wiz-help-section">
+      <button class="wiz-help-btn" onclick="toggleHelp(${WS.step})">? Ask Zyrcon</button>
+      ${helpOpen ? `<div class="wiz-help-chips">
+        <button class="wiz-help-chip" onclick="sendHelp('Which option is best for my business?')">Which option is best for my business?</button>
+        <button class="wiz-help-chip" onclick="sendHelp('Can I change this later?')">Can I change this later?</button>
+        <button class="wiz-help-chip" onclick="sendHelp('What is the safest choice?')">What is the safest choice?</button>
+      </div>` : ''}
+      <div class="wiz-help-response" id="help-response"></div>
+    </div>`;
+
+  const isLast = WS.step === STEPS.length - 1;
+  const isFirst = WS.step === 0;
+
+  root.innerHTML = `
+    <div class="wiz-header">
+      <div class="wiz-title">${esc(OP_NAME)} Configuration</div>
+      <div class="wiz-sub">Step ${WS.step + 1} of ${WS.totalSteps}</div>
+    </div>
+    <div class="wiz-progress">
+      <div class="wiz-progress__bar"><div class="wiz-progress__fill" style="width:${pct}%"></div></div>
+      <div class="wiz-progress__label">${pct}% complete</div>
+    </div>
+    <div class="wiz-body">
+      <div class="wiz-step__title">${esc(step.title)}</div>
+      ${step.noQuestion ? '' : `<div class="wiz-step__question">${esc(step.question)}</div>`}
+      ${step.noQuestion ? `<div class="wiz-step__question" style="margin-bottom:24px">${esc(step.question)}</div>` : ''}
+      ${!isFirst ? `<button class="wiz-defaults-btn" onclick="useDefaults()">Use Recommended Defaults for all remaining steps</button>` : ''}
+      <div class="wiz-options">${optionsHTML}</div>
+      ${advSection}
+      ${helpSection}
+    </div>
+    <div class="wiz-footer">
+      ${helpSection.includes('?') ? '' /* help btn already in body */ : ''}
+      ${!isFirst ? `<button class="wiz-btn-back" onclick="goBack()">Back</button>` : ''}
+      <button class="wiz-btn-continue${isLast?' wiz-btn-finish':''}" onclick="${isLast?'finishWizard()':'goNext()'}">
+        ${isFirst ? 'Start Setup' : isLast ? 'Save & Finish' : 'Continue'}
+      </button>
+    </div>`;
+}
+
+function renderComplete(root) {
+  root.innerHTML = `
+    <div class="wiz-header">
+      <div class="wiz-title">${esc(OP_NAME)} Configuration</div>
+      <div class="wiz-sub">Complete</div>
+    </div>
+    <div class="wiz-progress">
+      <div class="wiz-progress__bar"><div class="wiz-progress__fill" style="width:100%"></div></div>
+      <div class="wiz-progress__label">100% complete</div>
+    </div>
+    <div class="wiz-complete">
+      <div class="wiz-complete__icon">✓</div>
+      <div class="wiz-complete__title">${esc(OP_NAME)} is configured</div>
+      <div class="wiz-complete__sub">Your settings have been saved. ${esc(OP_NAME)} will use these preferences going forward. You can change any setting at any time from the Configuration menu.</div>
+      <button class="wiz-complete__btn" onclick="window.parent.gcfgCloseWizard()">Done</button>
+    </div>`;
+}
+
+function selectOption(stepKey, optId) {
+  WS.answers[stepKey] = optId;
+  render();
+}
+
+function goNext() {
+  if (WS.step < STEPS.length - 1) {
+    WS.step++;
+    render();
+  }
+}
+
+function goBack() {
+  if (WS.step > 0) {
+    WS.step--;
+    render();
+  }
+}
+
+function useDefaults() {
+  // Auto-select recommended (first) option for all remaining steps
+  for (let i = WS.step; i < STEPS.length; i++) {
+    const step = STEPS[i];
+    if (step.options && step.options.length) {
+      WS.answers[step.key] = step.options[0].id;
+    }
+  }
+  // Jump to last step to let user review before saving
+  WS.step = STEPS.length - 1;
+  render();
+}
+
+function toggleAdv(stepIdx) {
+  WS.advOpen[stepIdx] = !WS.advOpen[stepIdx];
+  render();
+}
+
+function toggleHelp(stepIdx) {
+  WS.helpOpen[stepIdx] = !WS.helpOpen[stepIdx];
+  render();
+}
+
+async function sendHelp(question) {
+  const respEl = document.getElementById('help-response');
+  if (!respEl) return;
+  respEl.classList.add('visible');
+  respEl.textContent = 'Thinking…';
+  try {
+    const r = await fetch(PRISM_URL + '/api/config/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        message: question,
+        context: {operator: OP_ID, operator_name: OP_NAME, step: STEPS[WS.step]?.key}
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      respEl.textContent = d.response || 'No response received.';
+    } else {
+      respEl.textContent = `I can help you decide. For most businesses, the first recommended option is the safest starting point. You can always change this later from the Configuration menu.`;
+    }
+  } catch(_) {
+    respEl.textContent = `I can help you decide. For most businesses, the first recommended option is the safest starting point. You can always change this later from the Configuration menu.`;
+  }
+}
+
+async function finishWizard() {
+  // Save settings
+  const payload = {
+    operator_id: OP_ID,
+    operator_name: OP_NAME,
+    answers: WS.answers,
+  };
+  try {
+    await fetch(PRISM_URL + '/api/prism/operator/' + encodeURIComponent(OP_ID) + '/settings', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({settings: payload}),
+      signal: AbortSignal.timeout(4000),
+    });
+  } catch(_) { /* ignore — show completion anyway */ }
+  WS.complete = true;
+  render();
+}
+
+/* ── Initialize ── */
+// Try to load current settings for pre-fill
+(async () => {
+  if (OP_ID) {
+    try {
+      const r = await fetch(PRISM_URL + '/api/prism/settings/' + encodeURIComponent(OP_ID), {signal: AbortSignal.timeout(3000)});
+      if (r.ok) {
+        const d = await r.json();
+        // Pre-fill answers from saved settings
+        if (d.answers) Object.assign(WS.answers, d.answers);
+      }
+    } catch(_) {}
+  }
+  render();
+})();
+</script>
+</body>
+</html>
