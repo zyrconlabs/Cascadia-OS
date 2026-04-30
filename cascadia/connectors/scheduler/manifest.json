@@ -1,0 +1,22 @@
+{
+  "id": "scheduler-connector",
+  "name": "Scheduler Connector",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Schedules one-shot and recurring (cron-style) jobs that fire NATS events when triggered.",
+  "author": "Zyrcon Labs",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 9987,
+  "entry_point": "cascadia.connectors.scheduler.connector",
+  "dependencies": [],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "runtime",
+  "industries": ["all"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "nats_subjects": [
+    "cascadia.connectors.scheduler-connector.>"
+  ]
+}
