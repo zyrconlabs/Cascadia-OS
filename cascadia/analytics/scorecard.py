@@ -53,39 +53,41 @@ class Scorecard:
             ''')
 
     def record_today(self, metrics: Dict[str, Any]) -> None:
-        """Upsert today's metrics row. Only provided fields are updated."""
+        """Upsert today's metrics row using ON CONFLICT DO UPDATE.
+
+        created_at is set only on first insert and never overwritten;
+        updated_at is refreshed on every call.
+        """
         today = date.today().isoformat()
         now   = _now()
+        # Extract the 8 metric columns from *metrics*, defaulting to 0
+        _cols = [
+            'leads_captured', 'proposals_drafted', 'emails_sent',
+            'approvals_completed', 'approvals_rejected', 'operator_runs',
+            'failed_runs', 'avg_response_time_seconds',
+        ]
+        vals = [metrics.get(c, 0) for c in _cols]
         with self._connect() as conn:
-            existing = conn.execute(
-                'SELECT * FROM daily_metrics WHERE date = ?', (today,)
-            ).fetchone()
-            if existing:
-                sets = ', '.join(
-                    f'{k} = ?' for k in metrics
-                    if k not in ('date', 'created_at', 'updated_at')
-                )
-                vals = [
-                    metrics[k] for k in metrics
-                    if k not in ('date', 'created_at', 'updated_at')
-                ]
-                if sets:
-                    conn.execute(
-                        f'UPDATE daily_metrics SET {sets}, updated_at = ? WHERE date = ?',
-                        vals + [now, today],
-                    )
-            else:
-                fields = ['date', 'created_at', 'updated_at']
-                values: List[Any] = [today, now, now]
-                for k, v in metrics.items():
-                    if k not in ('date', 'created_at', 'updated_at'):
-                        fields.append(k)
-                        values.append(v)
-                placeholders = ', '.join('?' * len(fields))
-                conn.execute(
-                    f'INSERT INTO daily_metrics ({", ".join(fields)}) VALUES ({placeholders})',
-                    values,
-                )
+            conn.execute(
+                '''
+                INSERT INTO daily_metrics (
+                    date, leads_captured, proposals_drafted, emails_sent,
+                    approvals_completed, approvals_rejected, operator_runs,
+                    failed_runs, avg_response_time_seconds, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    leads_captured            = excluded.leads_captured,
+                    proposals_drafted         = excluded.proposals_drafted,
+                    emails_sent               = excluded.emails_sent,
+                    approvals_completed       = excluded.approvals_completed,
+                    approvals_rejected        = excluded.approvals_rejected,
+                    operator_runs             = excluded.operator_runs,
+                    failed_runs               = excluded.failed_runs,
+                    avg_response_time_seconds = excluded.avg_response_time_seconds,
+                    updated_at                = excluded.updated_at
+                ''',
+                [today] + vals + [now, now],
+            )
 
     def _sum_rows(self, rows: List[sqlite3.Row]) -> Dict[str, Any]:
         """Sum all numeric metric columns across rows."""

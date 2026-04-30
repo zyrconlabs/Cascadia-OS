@@ -2401,9 +2401,19 @@ document.getElementById('key').addEventListener('keydown', function(e){
         if check:
             return 403, {'error': 'PDF export requires Pro or above', 'upgrade_url': '/upgrade'}
         try:
+            from reportlab.lib.pagesizes import LETTER
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+            from reportlab.lib import colors
+            from reportlab.platypus import (
+                SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+            )
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT
+            import io
             from cascadia.analytics.scorecard import Scorecard
-            from datetime import date
+            from datetime import date, timedelta
             from cascadia.licensing.license_gate import _build_status
+
             key    = self.config.get('license_key', '')
             status = _build_status(key)
             tier   = status.get('tier', 'lite')
@@ -2412,56 +2422,170 @@ document.getElementById('key').addEventListener('keydown', function(e){
             month  = now.strftime('%B').lower()
             year   = now.year
             period = now.strftime('%B %Y')
-            sc     = Scorecard()
-            cur    = sc.get_current_month()
+
+            sc  = Scorecard()
+            cur = sc.get_current_month()
             approvals_completed = cur.get('approvals_completed', 0)
             emails_sent         = cur.get('emails_sent', 0)
             leads_captured      = cur.get('leads_captured', 0)
             hours_saved = round(
                 approvals_completed * 0.25 + emails_sent * 0.15 + leads_captured * 0.20, 1
             )
-            from datetime import timedelta
             end_d   = date.today()
             start_d = end_d - timedelta(days=30)
             recent  = sc.get_range(start_d.isoformat(), end_d.isoformat())
-            # Build plain-text PDF content (no external library required)
-            lines = [
-                f"ZYRCON SCORECARD REPORT",
-                f"",
-                f"Business: {biz}",
-                f"License tier: {tier.title()}",
-                f"Reporting period: {period}",
-                f"Generated: {date.today().isoformat()}",
-                f"",
-                f"--- KEY METRICS ---",
-                f"Leads Captured:        {cur.get('leads_captured', 0)}",
-                f"Proposals Drafted:     {cur.get('proposals_drafted', 0)}",
-                f"Emails Sent:           {emails_sent}",
-                f"Approvals Completed:   {approvals_completed}",
-                f"Approvals Rejected:    {cur.get('approvals_rejected', 0)}",
-                f"Operator Runs:         {cur.get('operator_runs', 0)}",
-                f"Hours Saved:           {hours_saved}",
-                f"",
-                f"--- OPERATOR ACTIVITY ---",
-                f"Total operator runs this month: {cur.get('operator_runs', 0)}",
-                f"Failed runs:                    {cur.get('failed_runs', 0)}",
-                f"Avg response time (s):          {cur.get('avg_response_time_seconds', 0)}",
-                f"",
-                f"--- APPROVAL LOG (last 30 days) ---",
+
+            # --- Build PDF with reportlab ---
+            buf = io.BytesIO()
+            doc = SimpleDocTemplate(
+                buf,
+                pagesize=LETTER,
+                rightMargin=0.75 * inch,
+                leftMargin=0.75 * inch,
+                topMargin=0.75 * inch,
+                bottomMargin=0.75 * inch,
+            )
+            styles = getSampleStyleSheet()
+            navy   = colors.HexColor('#0d2b55')
+            accent = colors.HexColor('#0071e3')
+            gray   = colors.HexColor('#64748b')
+            light  = colors.HexColor('#f1f5f9')
+
+            title_style = ParagraphStyle(
+                'ZyrTitle', parent=styles['Title'],
+                fontSize=22, textColor=navy, spaceAfter=4,
+            )
+            sub_style = ParagraphStyle(
+                'ZyrSub', parent=styles['Normal'],
+                fontSize=11, textColor=gray, spaceAfter=2,
+            )
+            section_style = ParagraphStyle(
+                'ZyrSection', parent=styles['Heading2'],
+                fontSize=13, textColor=navy, spaceBefore=14, spaceAfter=6,
+                borderPad=0,
+            )
+            body_style = ParagraphStyle(
+                'ZyrBody', parent=styles['Normal'],
+                fontSize=10, textColor=colors.HexColor('#1e293b'), leading=15,
+            )
+            footer_style = ParagraphStyle(
+                'ZyrFooter', parent=styles['Normal'],
+                fontSize=8, textColor=gray, alignment=TA_CENTER, spaceBefore=20,
+            )
+
+            story = []
+
+            # 1. Business name + license tier
+            story.append(Paragraph('Zyrcon Scorecard Report', title_style))
+            story.append(Paragraph(f'{biz} &nbsp;·&nbsp; {tier.title()} tier', sub_style))
+            story.append(HRFlowable(width='100%', thickness=1, color=accent, spaceAfter=10))
+
+            # 2. Reporting period
+            story.append(Paragraph('Reporting Period', section_style))
+            story.append(Paragraph(period, body_style))
+            story.append(Spacer(1, 6))
+
+            # 3. Key metrics (all 7)
+            story.append(Paragraph('Key Metrics', section_style))
+            metrics_data = [
+                ['Metric', 'Value'],
+                ['Leads Captured',       str(leads_captured)],
+                ['Proposals Drafted',    str(cur.get('proposals_drafted', 0))],
+                ['Emails Sent',          str(emails_sent)],
+                ['Approvals Completed',  str(approvals_completed)],
+                ['Approvals Rejected',   str(cur.get('approvals_rejected', 0))],
+                ['Operator Runs',        str(cur.get('operator_runs', 0))],
+                ['Hours Saved',          str(hours_saved)],
             ]
-            for row in recent:
-                lines.append(
-                    f"  {row.get('date','?')}  "
-                    f"completed={row.get('approvals_completed',0)}  "
-                    f"rejected={row.get('approvals_rejected',0)}"
-                )
-            lines += ["", "Generated by Zyrcon · Local-first AI platform"]
-            content = "\n".join(lines).encode('utf-8')
+            metrics_table = Table(metrics_data, colWidths=[3.5 * inch, 2 * inch])
+            metrics_table.setStyle(TableStyle([
+                ('BACKGROUND',  (0, 0), (-1, 0),  navy),
+                ('TEXTCOLOR',   (0, 0), (-1, 0),  colors.white),
+                ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
+                ('FONTSIZE',    (0, 0), (-1, 0),  10),
+                ('BACKGROUND',  (0, 1), (-1, -1), light),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, light]),
+                ('FONTSIZE',    (0, 1), (-1, -1), 10),
+                ('GRID',        (0, 0), (-1, -1),  0.5, colors.HexColor('#cbd5e1')),
+                ('TOPPADDING',  (0, 0), (-1, -1),  5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ('LEFTPADDING', (0, 0), (-1, -1),  8),
+            ]))
+            story.append(metrics_table)
+            story.append(Spacer(1, 8))
+
+            # 4. Operator activity summary
+            story.append(Paragraph('Operator Activity Summary', section_style))
+            ops_data = [
+                ['Stat', 'Value'],
+                ['Total Operator Runs This Month', str(cur.get('operator_runs', 0))],
+                ['Failed Runs',                    str(cur.get('failed_runs', 0))],
+                ['Avg Response Time (seconds)',     str(cur.get('avg_response_time_seconds', 0))],
+            ]
+            ops_table = Table(ops_data, colWidths=[3.5 * inch, 2 * inch])
+            ops_table.setStyle(TableStyle([
+                ('BACKGROUND',  (0, 0), (-1, 0),  navy),
+                ('TEXTCOLOR',   (0, 0), (-1, 0),  colors.white),
+                ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
+                ('FONTSIZE',    (0, 0), (-1, 0),  10),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, light]),
+                ('FONTSIZE',    (0, 1), (-1, -1), 10),
+                ('GRID',        (0, 0), (-1, -1),  0.5, colors.HexColor('#cbd5e1')),
+                ('TOPPADDING',  (0, 0), (-1, -1),  5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ('LEFTPADDING', (0, 0), (-1, -1),  8),
+            ]))
+            story.append(ops_table)
+            story.append(Spacer(1, 8))
+
+            # 5. Approval log (last 30 days)
+            story.append(Paragraph('Approval Log — Last 30 Days', section_style))
+            if recent:
+                log_data = [['Date', 'Completed', 'Rejected']]
+                for row in recent:
+                    log_data.append([
+                        row.get('date', '—'),
+                        str(row.get('approvals_completed', 0)),
+                        str(row.get('approvals_rejected', 0)),
+                    ])
+                log_table = Table(log_data, colWidths=[2.5 * inch, 1.5 * inch, 1.5 * inch])
+                log_table.setStyle(TableStyle([
+                    ('BACKGROUND',  (0, 0), (-1, 0),  navy),
+                    ('TEXTCOLOR',   (0, 0), (-1, 0),  colors.white),
+                    ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
+                    ('FONTSIZE',    (0, 0), (-1, 0),  10),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, light]),
+                    ('FONTSIZE',    (0, 1), (-1, -1), 10),
+                    ('GRID',        (0, 0), (-1, -1),  0.5, colors.HexColor('#cbd5e1')),
+                    ('TOPPADDING',  (0, 0), (-1, -1),  5),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('LEFTPADDING', (0, 0), (-1, -1),  8),
+                ]))
+                story.append(log_table)
+            else:
+                story.append(Paragraph('No approval activity in the last 30 days.', body_style))
+
+            # 6. Footer
+            story.append(Spacer(1, 20))
+            story.append(HRFlowable(width='100%', thickness=0.5, color=gray))
+            story.append(Paragraph(
+                f'Generated by Zyrcon · Local-first AI platform · {now.isoformat()}',
+                footer_style,
+            ))
+
+            doc.build(story)
+            content  = buf.getvalue()
             filename = f"zyrcon-scorecard-{month}-{year}.pdf"
             return 200, {
                 '__html__': content,
                 '__content_type__': 'application/pdf',
                 '__filename__': filename,
+            }
+        except ImportError:
+            return 501, {
+                'error': 'PDF export requires reportlab',
+                'install': 'pip install reportlab',
+                'message': 'PDF export unavailable on this install',
             }
         except Exception as exc:
             return 500, {'error': str(exc)}
