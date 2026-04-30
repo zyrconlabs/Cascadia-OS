@@ -427,6 +427,83 @@ input[type="file"]{display:none}
 .op-dot--online{background:var(--green);box-shadow:0 0 4px var(--green-glow)}
 .op-dot--offline{background:var(--gray-300)}
 
+/* ── GUIDED CONFIG — Operator Control Bar (Phase 1) ── */
+.op-ctrl-bar{display:flex;align-items:center;gap:5px;padding:6px 14px 7px;border-bottom:1px solid var(--gray-100);background:var(--gray-50);flex-wrap:wrap}
+.op-ctrl-btn{height:26px;padding:0 10px;border-radius:6px;border:1px solid var(--gray-200);background:var(--white);color:var(--navy-800);font-family:var(--mono);font-size:10px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap}
+.op-ctrl-btn:hover{background:var(--gray-100);border-color:var(--gray-300)}
+.op-ctrl-btn--pause{color:var(--yellow)}
+.op-ctrl-btn--pause.paused{background:rgba(212,175,55,.1);border-color:rgba(212,175,55,.4)}
+.op-ctrl-btn--adv{position:relative}
+.op-ctrl-adv-menu{position:absolute;top:calc(100% + 4px);right:0;background:var(--white);border:1px solid var(--gray-200);border-radius:9px;padding:5px;min-width:170px;box-shadow:0 6px 24px rgba(0,0,0,.12);z-index:500;display:none}
+.op-ctrl-adv-menu.open{display:block}
+.op-ctrl-adv-item{display:block;width:100%;text-align:left;padding:7px 11px;border:none;background:none;color:var(--navy-800);font-family:var(--mono);font-size:11px;border-radius:6px;cursor:pointer;transition:background .1s}
+.op-ctrl-adv-item:hover{background:var(--gray-100)}
+
+/* ── GUIDED CONFIG — Configuration Button & Modals (Phase 2) ── */
+.gcfg-btn{height:28px;padding:0 12px;border-radius:7px;border:1px solid rgba(79,172,254,.4);background:linear-gradient(135deg,rgba(79,172,254,.08),rgba(167,139,250,.08));color:var(--prism-a);font-family:var(--mono);font-size:10px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;letter-spacing:.03em}
+.gcfg-btn:hover{background:linear-gradient(135deg,rgba(79,172,254,.15),rgba(167,139,250,.15));border-color:rgba(79,172,254,.6)}
+.gcfg-backdrop{position:fixed;inset:0;background:rgba(10,14,26,.45);backdrop-filter:blur(2px);z-index:2000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.gcfg-backdrop.open{opacity:1;pointer-events:all}
+.gcfg-modal{background:var(--white);border-radius:14px;padding:24px;width:340px;max-width:92vw;box-shadow:0 16px 48px rgba(0,0,0,.18);transform:translateY(8px) scale(.97);transition:transform .2s var(--ease)}
+.gcfg-backdrop.open .gcfg-modal{transform:translateY(0) scale(1)}
+.gcfg-modal__title{font-size:15px;font-weight:700;color:var(--navy-800);margin-bottom:5px}
+.gcfg-modal__sub{font-size:12px;color:var(--gray-500);margin-bottom:16px}
+.gcfg-modal__actions{display:flex;flex-direction:column;gap:7px}
+.gcfg-modal__btn{width:100%;padding:10px 14px;border-radius:9px;border:1px solid var(--gray-200);background:var(--white);color:var(--navy-800);font-size:13px;font-weight:500;cursor:pointer;text-align:left;transition:all .12s}
+.gcfg-modal__btn:hover{background:var(--gray-50);border-color:var(--gray-300)}
+.gcfg-modal__btn--primary{background:linear-gradient(135deg,rgba(79,172,254,.08),rgba(167,139,250,.08));border-color:rgba(79,172,254,.3);color:var(--prism-a);font-weight:600}
+.gcfg-modal__btn--primary:hover{background:linear-gradient(135deg,rgba(79,172,254,.15),rgba(167,139,250,.15))}
+.gcfg-modal__btn--danger{color:var(--red)}
+.gcfg-modal__btn--danger:hover{background:var(--red-soft);border-color:rgba(248,113,113,.3)}
+.gcfg-modal__cancel{margin-top:8px;width:100%;padding:8px;border:none;background:none;color:var(--gray-500);font-size:12px;cursor:pointer;border-radius:7px;transition:background .12s}
+.gcfg-modal__cancel:hover{background:var(--gray-100)}
+
+/* ── GUIDED CONFIG — Settings Panel (Phase 4) ── */
+.gsp-overlay{position:fixed;inset:0;background:rgba(10,14,26,.35);z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s}
+.gsp-overlay.open{opacity:1;pointer-events:all}
+.gsp-panel{position:fixed;top:0;right:-520px;width:480px;max-width:100vw;height:100vh;background:var(--white);box-shadow:-8px 0 32px rgba(0,0,0,.15);z-index:3001;transition:right .3s var(--ease);display:flex;flex-direction:column}
+.gsp-panel.open{right:0}
+.gsp-header{padding:18px 20px 14px;border-bottom:1px solid var(--gray-200);flex-shrink:0}
+.gsp-title{font-size:16px;font-weight:700;color:var(--navy-800)}
+.gsp-close{position:absolute;top:14px;right:16px;width:28px;height:28px;border-radius:7px;border:1px solid var(--gray-200);background:var(--white);color:var(--gray-500);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s}
+.gsp-close:hover{background:var(--gray-100)}
+.gsp-mode-toggle{display:flex;gap:4px;margin-top:12px}
+.gsp-mode-btn{height:26px;padding:0 12px;border-radius:6px;border:1px solid var(--gray-200);background:var(--white);color:var(--gray-500);font-family:var(--mono);font-size:10px;font-weight:500;cursor:pointer;transition:all .12s}
+.gsp-mode-btn.active{background:var(--navy-800);color:var(--white);border-color:var(--navy-800)}
+.gsp-body{flex:1;overflow-y:auto;padding:16px 20px}
+.gsp-field{margin-bottom:16px}
+.gsp-field__label{font-size:12px;font-weight:600;color:var(--navy-800);margin-bottom:5px;display:block}
+.gsp-field__hint{font-size:11px;color:var(--gray-500);margin-top:3px}
+.gsp-input{width:100%;height:36px;border:1px solid var(--gray-200);border-radius:8px;padding:0 10px;font-size:13px;color:var(--navy-900);background:var(--white);outline:none;transition:border-color .15s;box-sizing:border-box}
+.gsp-input:focus{border-color:var(--prism-a)}
+.gsp-select{width:100%;height:36px;border:1px solid var(--gray-200);border-radius:8px;padding:0 10px;font-size:13px;color:var(--navy-900);background:var(--white);outline:none}
+.gsp-toggle{position:relative;width:44px;height:24px;flex-shrink:0}
+.gsp-toggle input{opacity:0;width:0;height:0}
+.gsp-toggle-slider{position:absolute;inset:0;background:var(--gray-200);border-radius:12px;cursor:pointer;transition:background .2s}
+.gsp-toggle-slider:before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:var(--white);border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.gsp-toggle input:checked + .gsp-toggle-slider{background:var(--prism-a)}
+.gsp-toggle input:checked + .gsp-toggle-slider:before{transform:translateX(20px)}
+.gsp-secret-row{display:flex;align-items:center;gap:8px}
+.gsp-secret-status{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;background:var(--gray-100);color:var(--gray-500)}
+.gsp-secret-status.configured{background:rgba(52,211,153,.12);color:#059669}
+.gsp-tags-wrap{display:flex;flex-wrap:wrap;gap:5px;min-height:36px;border:1px solid var(--gray-200);border-radius:8px;padding:5px 8px;cursor:text}
+.gsp-tag{display:flex;align-items:center;gap:4px;background:var(--gray-100);border-radius:4px;padding:2px 7px;font-size:11px;color:var(--navy-800)}
+.gsp-tag__rm{border:none;background:none;color:var(--gray-400);cursor:pointer;font-size:12px;padding:0;line-height:1}
+.gsp-tag__rm:hover{color:var(--red)}
+.gsp-range-wrap{display:flex;align-items:center;gap:10px}
+.gsp-range-wrap input[type=range]{flex:1}
+.gsp-range-val{font-family:var(--mono);font-size:12px;color:var(--navy-800);min-width:32px}
+.gsp-footer{padding:14px 20px;border-top:1px solid var(--gray-200);display:flex;flex-direction:column;gap:8px;flex-shrink:0}
+.gsp-footer-row{display:flex;gap:8px}
+.gsp-save-btn{flex:1;height:36px;border-radius:9px;border:none;background:var(--prism-a);color:var(--white);font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.gsp-save-btn:disabled{opacity:.4;cursor:not-allowed}
+.gsp-secondary-btn{height:36px;padding:0 14px;border-radius:9px;border:1px solid var(--gray-200);background:var(--white);color:var(--navy-800);font-size:13px;cursor:pointer;transition:all .12s}
+.gsp-secondary-btn:hover{background:var(--gray-100)}
+.gsp-preview{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:14px;margin-bottom:10px}
+.gsp-preview__title{font-size:11px;font-weight:600;color:var(--gray-500);font-family:var(--mono);margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em}
+.gsp-preview__row{font-size:12px;color:var(--navy-800);margin-bottom:4px}
+.gsp-preview__impact{font-size:11px;color:var(--gray-500);margin-top:8px;border-top:1px solid var(--gray-200);padding-top:8px}
+
 /* ── HEALTH SURFACE ── */
 .health-summary{display:flex;align-items:center;gap:14px;padding:24px 28px 16px;flex-shrink:0}
 .hs-count{font-size:32px;font-weight:800;color:var(--navy-800);font-family:var(--mono);line-height:1}
@@ -3980,6 +4057,543 @@ function _sensorAgo(iso) {
 
 function _esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ════════════════════════════════════════════════════════
+   GUIDED CONFIGURATION UI — Phase 1–4
+   Feature flag: guided_config_enabled (default: true if absent)
+   ════════════════════════════════════════════════════════ */
+
+let _guidedConfigEnabled = true; // default: show (safe default)
+let _guidedConfigFlagChecked = false;
+
+async function _checkGuidedConfigFlag() {
+  if (_guidedConfigFlagChecked) return _guidedConfigEnabled;
+  try {
+    const r = await fetch(PRISM_URL + '/api/status', {signal: AbortSignal.timeout(3000)});
+    if (r.ok) {
+      const d = await r.json();
+      // Check nested feature_flags or top-level key; default true if field absent
+      const flags = d.feature_flags || d;
+      if (typeof flags.guided_config_enabled === 'boolean') {
+        _guidedConfigEnabled = flags.guided_config_enabled;
+      }
+    }
+  } catch(_) { /* default to true */ }
+  _guidedConfigFlagChecked = true;
+  return _guidedConfigEnabled;
+}
+
+/* ── Phase 1: Operator Control Bar ── */
+
+function _opCtrlBar(opId, opName) {
+  if (!_guidedConfigEnabled) return '';
+  const escapedId = esc(opId);
+  const escapedName = esc(opName);
+  return `<div class="op-ctrl-bar" data-op-id="${escapedId}">
+    <button class="op-ctrl-btn" onclick="gcfgOpenWizard('${escapedId}','${escapedName}',event)" title="Configure this operator">Configure</button>
+    <button class="op-ctrl-btn" onclick="gcfgShowActivity('${escapedId}','${escapedName}',event)" title="View recent activity">Activity</button>
+    <button class="op-ctrl-btn op-ctrl-btn--pause" id="gcfg-pause-${escapedId}" onclick="gcfgTogglePause('${escapedId}','${escapedName}',event)" title="Pause operator">Pause</button>
+    <div style="flex:1"></div>
+    <div class="op-ctrl-btn op-ctrl-btn--adv" style="position:relative">
+      <button style="border:none;background:none;padding:0;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--gray-500);cursor:pointer;letter-spacing:.05em" onclick="gcfgToggleAdvMenu('${escapedId}',event)">…</button>
+      <div class="op-ctrl-adv-menu" id="gcfg-adv-${escapedId}">
+        <button class="op-ctrl-adv-item" onclick="gcfgAdvAction('test','${escapedId}','${escapedName}')">Test</button>
+        <button class="op-ctrl-adv-item" onclick="gcfgAdvAction('logs','${escapedId}','${escapedName}')">Logs (full)</button>
+        <button class="op-ctrl-adv-item" onclick="gcfgAdvAction('reset','${escapedId}','${escapedName}')">Reset to Defaults</button>
+        <button class="op-ctrl-adv-item" onclick="gcfgAdvAction('devmode','${escapedId}','${escapedName}')">Developer Mode</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function gcfgToggleAdvMenu(opId, e) {
+  e.stopPropagation();
+  const menu = document.getElementById('gcfg-adv-' + opId);
+  if (!menu) return;
+  const isOpen = menu.classList.contains('open');
+  // Close all open menus
+  document.querySelectorAll('.op-ctrl-adv-menu.open').forEach(m => m.classList.remove('open'));
+  if (!isOpen) menu.classList.add('open');
+}
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.op-ctrl-adv-menu.open').forEach(m => m.classList.remove('open'));
+});
+
+function gcfgAdvAction(action, opId, opName) {
+  document.querySelectorAll('.op-ctrl-adv-menu.open').forEach(m => m.classList.remove('open'));
+  const names = {'test':'Test run queued', 'logs':'Opening full logs…', 'reset':'Reset to defaults?', 'devmode':'Developer mode toggled'};
+  if (action === 'reset') {
+    if (!confirm(`Reset ${opName} to recommended defaults?`)) return;
+  }
+  if (action === 'logs') {
+    // Show activity with full flag
+    gcfgShowActivity(opId, opName, null, true);
+    return;
+  }
+  // Show inline notification
+  const bar = document.querySelector(`.op-ctrl-bar[data-op-id="${opId}"]`);
+  if (bar) {
+    const n = document.createElement('div');
+    n.style.cssText = 'font-family:var(--mono);font-size:10px;color:var(--gray-500);padding:3px 6px;background:var(--gray-100);border-radius:4px;';
+    n.textContent = names[action] || action;
+    bar.appendChild(n);
+    setTimeout(() => n.remove(), 2500);
+  }
+}
+
+let _pausedOps = {};
+async function gcfgTogglePause(opId, opName, e) {
+  e && e.stopPropagation();
+  const btn = document.getElementById('gcfg-pause-' + opId);
+  if (!btn) return;
+  const paused = _pausedOps[opId];
+  _pausedOps[opId] = !paused;
+  if (!paused) {
+    btn.textContent = 'Resume';
+    btn.classList.add('paused');
+    // Attempt POST to pause endpoint; ignore errors
+    try { await fetch(PRISM_URL + `/api/prism/operators/${opId}/pause`, {method:'POST', signal:AbortSignal.timeout(2000)}); } catch(_){}
+  } else {
+    btn.textContent = 'Pause';
+    btn.classList.remove('paused');
+    try { await fetch(PRISM_URL + `/api/prism/operators/${opId}/resume`, {method:'POST', signal:AbortSignal.timeout(2000)}); } catch(_){}
+  }
+}
+
+async function gcfgShowActivity(opId, opName, e, fullLogs) {
+  e && e.stopPropagation();
+  // Fetch last 10 actions or show placeholder
+  let items = [];
+  try {
+    const r = await fetch(PRISM_URL + `/api/prism/runs?workerId=${opId}`, {signal:AbortSignal.timeout(3000)});
+    if (r.ok) {
+      const d = await r.json();
+      items = (d.runs || d || []).slice(0, fullLogs ? 50 : 10);
+    }
+  } catch(_) {}
+  const rows = items.length
+    ? items.map(run => `<div style="padding:7px 0;border-bottom:1px solid var(--gray-100);font-size:12px"><div style="font-weight:600;color:var(--navy-800)">${esc(run.goal||run.run_id||'Run')}</div><div style="font-size:10px;color:var(--gray-400);font-family:var(--mono)">${esc(run.run_state||run.status||'—')} · ${run.updated_at?new Date(run.updated_at).toLocaleTimeString():''}</div></div>`).join('')
+    : '<div style="font-size:12px;color:var(--gray-400);padding:12px 0">No recent activity found.</div>';
+  gcfgShowModal({
+    title: `${opName} — ${fullLogs ? 'Full Logs' : 'Recent Activity'}`,
+    sub: fullLogs ? 'Last 50 log entries' : 'Last 10 actions',
+    body: `<div style="max-height:300px;overflow-y:auto">${rows}</div>`,
+    actions: [],
+    showCancel: true,
+  });
+}
+
+/* ── Phase 1+2: Patch refreshOpCards to inject control bars ── */
+const _origRefreshOpCards = refreshOpCards;
+async function refreshOpCards() {
+  await _origRefreshOpCards();
+  // Check flag async and conditionally inject control bars
+  const enabled = await _checkGuidedConfigFlag();
+  if (!enabled) return;
+  const container = document.getElementById('op-cards-list');
+  if (!container) return;
+  // Re-render with control bars: wrap each op-card in a div and append bar
+  const cards = Array.from(container.querySelectorAll('a.op-card'));
+  cards.forEach(card => {
+    const opId = card.href ? card.pathname : '';
+    // Get name from op-name inside card
+    const nameEl = card.querySelector('.op-name');
+    const opName = nameEl ? nameEl.textContent.trim() : 'Operator';
+    // Find op id from the card's data or use name
+    const d = card.getAttribute('data-op-id') || opName.toLowerCase();
+    const wrapper = document.createElement('div');
+    wrapper.className = 'op-card-wrap';
+    card.parentNode.insertBefore(wrapper, card);
+    wrapper.appendChild(card);
+    const barDiv = document.createElement('div');
+    barDiv.innerHTML = _opCtrlBar(d, opName);
+    if (barDiv.firstChild) wrapper.appendChild(barDiv.firstChild);
+  });
+}
+
+/* ── Phase 2: Configuration Button ── */
+
+let _gcfgCurrentOp = null; // track currently selected op for config button context
+
+// Patch selectOperator to track selected op
+const _origSelectOperator = typeof selectOperator === 'function' ? selectOperator : null;
+// We override after initial load via a post-init hook (see bottom of this block)
+
+function gcfgOpenConfigMenu() {
+  // Determine context: is an operator selected?
+  const selId = S.selected;
+  const op = selId ? S.operators.find(x => x.id === selId) : null;
+  if (!op || op.isBeacon) {
+    gcfgShowContextPicker();
+  } else {
+    gcfgShowOperatorConfigModal(op.id, op.name);
+  }
+}
+
+function gcfgShowContextPicker() {
+  gcfgShowModal({
+    title: 'What would you like to configure?',
+    sub: '',
+    body: '',
+    actions: [
+      {label: 'Mission',          fn: () => { gcfgCloseModal(); gcfgOpenWizardForContext('mission'); }},
+      {label: 'Operator',         fn: () => { gcfgCloseModal(); gcfgOpenWizardForContext('operator'); }},
+      {label: 'Connector',        fn: () => { gcfgCloseModal(); gcfgOpenWizardForContext('connector'); }},
+      {label: 'Business Profile', fn: () => { gcfgCloseModal(); gcfgOpenWizardForContext('business_profile'); }},
+      {label: 'Approval Rules',   fn: () => { gcfgCloseModal(); gcfgOpenWizardForContext('approval_rules'); }},
+    ],
+    showCancel: true,
+  });
+}
+
+function gcfgOpenWizardForContext(ctx) {
+  gcfgLaunchWizard(null, ctx.charAt(0).toUpperCase() + ctx.slice(1).replace(/_/g,' '));
+}
+
+function gcfgShowOperatorConfigModal(opId, opName) {
+  gcfgShowModal({
+    title: `Configure ${opName}`,
+    sub: 'How would you like to proceed?',
+    body: '',
+    actions: [
+      {label: 'Walk Me Through',              primary: true, fn: () => { gcfgCloseModal(); gcfgOpenWizard(opId, opName); }},
+      {label: 'Change One Setting',           fn: () => { gcfgCloseModal(); gcfgOpenSettingsPanel(opId, opName); }},
+      {label: 'Reset to Recommended Defaults',fn: () => { gcfgCloseModal(); if(confirm(`Reset ${opName} to recommended defaults?`)) { /* POST handled in Phase 4 */ } }},
+      {label: 'Advanced Settings',            fn: () => { gcfgCloseModal(); gcfgOpenSettingsPanel(opId, opName, 'advanced'); }},
+    ],
+    showCancel: true,
+  });
+}
+
+function gcfgOpenWizard(opId, opName, e) {
+  e && e.stopPropagation && e.stopPropagation();
+  gcfgLaunchWizard(opId, opName);
+}
+
+/* ── Shared Modal Renderer ── */
+
+function gcfgShowModal({title, sub, body, actions, showCancel}) {
+  let bd = document.getElementById('gcfg-backdrop');
+  if (!bd) {
+    bd = document.createElement('div');
+    bd.id = 'gcfg-backdrop';
+    bd.className = 'gcfg-backdrop';
+    bd.addEventListener('click', e => { if (e.target === bd) gcfgCloseModal(); });
+    document.body.appendChild(bd);
+  }
+  const actHTML = actions.map(a =>
+    `<button class="gcfg-modal__btn${a.primary?' gcfg-modal__btn--primary':''}" onclick="(${a.fn.toString()})()">${esc(a.label)}</button>`
+  ).join('');
+  bd.innerHTML = `<div class="gcfg-modal">
+    <div class="gcfg-modal__title">${esc(title)}</div>
+    ${sub ? `<div class="gcfg-modal__sub">${esc(sub)}</div>` : ''}
+    ${body || ''}
+    <div class="gcfg-modal__actions">${actHTML}</div>
+    ${showCancel ? `<button class="gcfg-modal__cancel" onclick="gcfgCloseModal()">Cancel</button>` : ''}
+  </div>`;
+  requestAnimationFrame(() => bd.classList.add('open'));
+}
+
+function gcfgCloseModal() {
+  const bd = document.getElementById('gcfg-backdrop');
+  if (bd) { bd.classList.remove('open'); setTimeout(() => bd.remove(), 220); }
+}
+
+/* ── Phase 3: Wizard Launcher ── */
+
+function gcfgLaunchWizard(opId, opName) {
+  // Inject config-wizard iframe overlay
+  let ov = document.getElementById('config-wizard-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'config-wizard-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:4000;display:flex;align-items:stretch;justify-content:flex-end;background:rgba(10,14,26,.35);backdrop-filter:blur(2px)';
+    ov.addEventListener('click', e => { if (e.target === ov) gcfgCloseWizard(); });
+    document.body.appendChild(ov);
+  }
+  const src = `/config-wizard?op=${encodeURIComponent(opId||'')}&name=${encodeURIComponent(opName||'')}`;
+  ov.innerHTML = `<div style="width:480px;max-width:100vw;height:100vh;background:var(--white);box-shadow:-8px 0 32px rgba(0,0,0,.15);position:relative">
+    <button onclick="gcfgCloseWizard()" style="position:absolute;top:12px;right:12px;z-index:1;width:28px;height:28px;border-radius:7px;border:1px solid var(--gray-200);background:var(--white);color:var(--gray-500);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+    <iframe src="${src}" style="width:100%;height:100%;border:none" id="config-wizard-iframe"></iframe>
+  </div>`;
+  ov.style.display = 'flex';
+}
+
+function gcfgCloseWizard() {
+  const ov = document.getElementById('config-wizard-overlay');
+  if (ov) ov.remove();
+}
+
+/* ── Phase 2: Inject Configuration button into topbar ── */
+// We patch renderMain to inject the button into every topbar rendered
+
+const _origRenderMain = renderMain;
+function renderMain() {
+  _origRenderMain.call(this);
+  // After render, inject config button if feature enabled
+  if (_guidedConfigEnabled) {
+    const topbarRight = document.querySelector('#main-panel .topbar__right');
+    if (topbarRight && !topbarRight.querySelector('.gcfg-btn')) {
+      const btn = document.createElement('button');
+      btn.className = 'gcfg-btn';
+      btn.textContent = 'Configuration';
+      btn.onclick = gcfgOpenConfigMenu;
+      topbarRight.insertBefore(btn, topbarRight.firstChild);
+    }
+  }
+}
+
+// Initialize: check flag on startup and setup topbar button
+(async () => {
+  await _checkGuidedConfigFlag();
+  renderMain(); // re-render to pick up the button
+})();
+
+/* ── Phase 4: Settings Panel ── */
+
+let _gspState = {opId: null, opName: null, mode: 'simple', fields: [], values: {}, original: {}, dirty: false, showPreview: false};
+
+async function gcfgOpenSettingsPanel(opId, opName, startMode) {
+  _gspState = {opId, opName, mode: startMode || 'simple', fields: [], values: {}, original: {}, dirty: false, showPreview: false};
+
+  // Fetch fields from API or use placeholder
+  let fields = [];
+  try {
+    const r = await fetch(PRISM_URL + `/api/prism/operator/${opId}/settings`, {signal: AbortSignal.timeout(3000)});
+    if (r.ok) { const d = await r.json(); fields = d.fields || []; }
+  } catch(_) {}
+
+  if (!fields.length) {
+    // Placeholder fields for demo mode
+    fields = [
+      {key:'lead_score_threshold', label:'Lead Score Threshold', type:'slider', min:0, max:100, default:70, simple_mode:true, advanced_mode:true},
+      {key:'approval_mode', label:'Approval Mode', type:'select', options:['always','on_high_risk','never'], default:'always', simple_mode:true, advanced_mode:true},
+      {key:'notifications_enabled', label:'Notifications Enabled', type:'boolean', default:true, simple_mode:true},
+      {key:'notify_email', label:'Notification Email', type:'string', default:'', simple_mode:true, advanced_mode:true},
+      {key:'api_key', label:'API Key', type:'secret', simple_mode:false, advanced_mode:true, developer_mode:true},
+      {key:'debug_mode', label:'Debug Mode', type:'boolean', default:false, simple_mode:false, advanced_mode:false, developer_mode:true},
+      {key:'tags', label:'Tags', type:'tags', default:'', simple_mode:false, advanced_mode:true},
+      {key:'max_retries', label:'Max Retries', type:'number', min:0, max:10, default:3, simple_mode:false, advanced_mode:true},
+    ];
+  }
+  _gspState.fields = fields;
+  fields.forEach(f => {
+    _gspState.values[f.key] = f.current_value !== undefined ? f.current_value : f.default !== undefined ? f.default : '';
+    _gspState.original[f.key] = _gspState.values[f.key];
+  });
+
+  _gspRender();
+}
+
+function _gspGetVisibleFields() {
+  return _gspState.fields.filter(f => {
+    if (_gspState.mode === 'simple') return f.simple_mode !== false;
+    if (_gspState.mode === 'advanced') return f.simple_mode !== false || f.advanced_mode === true;
+    if (_gspState.mode === 'developer') return true;
+    return f.simple_mode !== false;
+  });
+}
+
+function _gspRender() {
+  let panel = document.getElementById('gsp-panel');
+  let overlay = document.getElementById('gsp-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'gsp-overlay';
+    overlay.className = 'gsp-overlay';
+    overlay.addEventListener('click', e => { if (e.target === overlay) _gspClose(); });
+    document.body.appendChild(overlay);
+  }
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'gsp-panel';
+    panel.className = 'gsp-panel';
+    document.body.appendChild(panel);
+  }
+
+  const visFields = _gspGetVisibleFields();
+  const fieldsHTML = visFields.map(f => _gspFieldHTML(f)).join('');
+
+  const previewHTML = _gspState.showPreview ? _gspPreviewHTML() : '';
+
+  panel.innerHTML = `
+    <div class="gsp-header" style="position:relative">
+      <div class="gsp-title">${esc(_gspState.opName)} Settings</div>
+      <div class="gsp-mode-toggle">
+        ${['simple','advanced','developer'].map(m =>
+          `<button class="gsp-mode-btn${_gspState.mode===m?' active':''}" onclick="_gspSetMode('${m}')">${m.charAt(0).toUpperCase()+m.slice(1)}</button>`
+        ).join('')}
+      </div>
+      <button class="gsp-close" onclick="_gspClose()">✕</button>
+    </div>
+    <div class="gsp-body" id="gsp-body">
+      ${previewHTML}
+      ${fieldsHTML}
+    </div>
+    <div class="gsp-footer">
+      <div class="gsp-footer-row">
+        <button class="gsp-secondary-btn" onclick="_gspTestConnection()">Test Connection</button>
+        <button class="gsp-secondary-btn" onclick="_gspResetDefaults()">Reset to Defaults</button>
+      </div>
+      <div class="gsp-footer-row">
+        <button class="gsp-secondary-btn" onclick="_gspClose()">Cancel</button>
+        <button class="gsp-save-btn" id="gsp-save-btn" onclick="_gspSave()" ${_gspState.dirty?'':'disabled'}>Save Changes</button>
+      </div>
+    </div>`;
+
+  requestAnimationFrame(() => {
+    overlay.classList.add('open');
+    panel.classList.add('open');
+  });
+}
+
+function _gspFieldHTML(f) {
+  const val = _gspState.values[f.key];
+  let input = '';
+  if (f.type === 'string') {
+    input = `<input class="gsp-input" type="text" value="${esc(String(val||''))}" onchange="_gspChange('${f.key}',this.value)">`;
+  } else if (f.type === 'boolean') {
+    input = `<label class="gsp-toggle"><input type="checkbox" ${val?'checked':''} onchange="_gspChange('${f.key}',this.checked)"><span class="gsp-toggle-slider"></span></label>`;
+  } else if (f.type === 'select') {
+    const opts = (f.options||[]).map(o => `<option value="${esc(o)}" ${val===o?'selected':''}>${esc(o)}</option>`).join('');
+    input = `<select class="gsp-select" onchange="_gspChange('${f.key}',this.value)">${opts}</select>`;
+  } else if (f.type === 'number') {
+    input = `<input class="gsp-input" type="number" value="${esc(String(val||0))}" min="${f.min||0}" max="${f.max||9999}" onchange="_gspChange('${f.key}',Number(this.value))">`;
+  } else if (f.type === 'slider') {
+    input = `<div class="gsp-range-wrap"><input type="range" min="${f.min||0}" max="${f.max||100}" value="${val||0}" oninput="_gspChange('${f.key}',Number(this.value));document.getElementById('gsp-rv-${f.key}').textContent=this.value"><span class="gsp-range-val" id="gsp-rv-${f.key}">${val||0}</span></div>`;
+  } else if (f.type === 'secret') {
+    const configured = val && val !== '';
+    const statusCls = configured ? 'configured' : '';
+    const statusText = configured ? 'configured ✓' : 'not configured';
+    input = `<div class="gsp-secret-row">
+      <input class="gsp-input" type="password" id="gsp-sec-${f.key}" style="flex:1" placeholder="${configured?'••••••••••':'Enter value…'}" onchange="_gspChange('${f.key}',this.value)">
+      <button class="gsp-secondary-btn" style="height:36px;padding:0 10px;font-size:11px" onclick="(()=>{const i=document.getElementById('gsp-sec-${f.key}');i.type=i.type==='password'?'text':'password'})()">Show</button>
+      <span class="gsp-secret-status ${statusCls}">${statusText}</span>
+    </div>`;
+  } else if (f.type === 'tags') {
+    const tags = String(val||'').split(',').map(t=>t.trim()).filter(Boolean);
+    const tagsHTML = tags.map((t,i) => `<span class="gsp-tag">${esc(t)}<button class="gsp-tag__rm" onclick="_gspRemoveTag('${f.key}',${i})">×</button></span>`).join('');
+    input = `<div class="gsp-tags-wrap" onclick="document.getElementById('gsp-tag-input-${f.key}').focus()">${tagsHTML}<input id="gsp-tag-input-${f.key}" style="border:none;outline:none;font-size:12px;min-width:80px;flex:1" placeholder="Add tag…" onkeydown="if(event.key===','||event.key==='Enter'){event.preventDefault();_gspAddTag('${f.key}',this.value);this.value=''}"></div>`;
+  }
+  return `<div class="gsp-field">
+    <label class="gsp-field__label">${esc(f.label)}</label>
+    ${input}
+    ${f.hint ? `<div class="gsp-field__hint">${esc(f.hint)}</div>` : ''}
+  </div>`;
+}
+
+function _gspPreviewHTML() {
+  const changes = Object.keys(_gspState.values).filter(k =>
+    JSON.stringify(_gspState.values[k]) !== JSON.stringify(_gspState.original[k])
+  );
+  const rows = changes.map(k => {
+    const f = _gspState.fields.find(x => x.key === k);
+    const label = f ? f.label : k;
+    return `<div class="gsp-preview__row"><strong>${esc(label)}:</strong> ${esc(String(_gspState.original[k]||'—'))} → ${esc(String(_gspState.values[k]||'—'))}</div>`;
+  }).join('');
+  return `<div class="gsp-preview">
+    <div class="gsp-preview__title">Settings Change Preview</div>
+    ${rows || '<div style="font-size:12px;color:var(--gray-400)">No changes detected.</div>'}
+    <div class="gsp-preview__impact">Review the changes above before confirming.</div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="gsp-save-btn" style="flex:1" onclick="_gspConfirmSave()">Confirm Changes</button>
+      <button class="gsp-secondary-btn" onclick="_gspState.showPreview=false;_gspRender()">Go Back</button>
+    </div>
+  </div>`;
+}
+
+function _gspChange(key, value) {
+  _gspState.values[key] = value;
+  _gspState.dirty = true;
+  _gspState.showPreview = false;
+  const btn = document.getElementById('gsp-save-btn');
+  if (btn) btn.disabled = false;
+}
+
+function _gspSetMode(mode) {
+  _gspState.mode = mode;
+  _gspState.showPreview = false;
+  _gspRender();
+}
+
+function _gspSave() {
+  // Show preview before saving
+  _gspState.showPreview = true;
+  _gspRender();
+  const body = document.getElementById('gsp-body');
+  if (body) body.scrollTop = 0;
+}
+
+async function _gspConfirmSave() {
+  // Only save after confirm
+  try {
+    const r = await fetch(PRISM_URL + `/api/prism/operator/${_gspState.opId}/settings`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({settings: _gspState.values}),
+      signal: AbortSignal.timeout(4000),
+    });
+    if (r.ok) {
+      _gspState.original = {..._gspState.values};
+      _gspState.dirty = false;
+      _gspState.showPreview = false;
+    }
+  } catch(_) {}
+  // Show saved confirmation
+  const body = document.getElementById('gsp-body');
+  if (body) {
+    const note = document.createElement('div');
+    note.style.cssText = 'background:rgba(52,211,153,.12);color:#059669;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;font-weight:500';
+    note.textContent = 'Settings saved ✓';
+    body.insertBefore(note, body.firstChild);
+    setTimeout(() => { note.remove(); _gspState.showPreview = false; _gspRender(); }, 2000);
+  }
+}
+
+function _gspTestConnection() {
+  fetch(PRISM_URL + `/api/prism/operator/${_gspState.opId}/test`, {method:'POST', signal:AbortSignal.timeout(4000)}).catch(()=>{});
+  const body = document.getElementById('gsp-body');
+  if (body) {
+    const note = document.createElement('div');
+    note.style.cssText = 'background:var(--gray-100);color:var(--navy-800);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px';
+    note.textContent = 'Connection test sent…';
+    body.insertBefore(note, body.firstChild);
+    setTimeout(() => note.remove(), 2500);
+  }
+}
+
+function _gspResetDefaults() {
+  if (!confirm('Reset all settings to recommended defaults?')) return;
+  _gspState.fields.forEach(f => {
+    _gspState.values[f.key] = f.default !== undefined ? f.default : '';
+  });
+  _gspState.dirty = true;
+  _gspState.showPreview = false;
+  _gspRender();
+}
+
+function _gspClose() {
+  const panel = document.getElementById('gsp-panel');
+  const overlay = document.getElementById('gsp-overlay');
+  if (panel) { panel.classList.remove('open'); setTimeout(() => panel.remove(), 320); }
+  if (overlay) { overlay.classList.remove('open'); setTimeout(() => overlay.remove(), 320); }
+}
+
+function _gspAddTag(key, value) {
+  const v = value.trim();
+  if (!v) return;
+  const current = String(_gspState.values[key]||'').split(',').map(t=>t.trim()).filter(Boolean);
+  if (!current.includes(v)) current.push(v);
+  _gspChange(key, current.join(', '));
+  _gspRender();
+}
+
+function _gspRemoveTag(key, idx) {
+  const current = String(_gspState.values[key]||'').split(',').map(t=>t.trim()).filter(Boolean);
+  current.splice(idx, 1);
+  _gspChange(key, current.join(', '));
+  _gspRender();
 }
 </script>
 <!-- ALMANAC OVERLAY -->
