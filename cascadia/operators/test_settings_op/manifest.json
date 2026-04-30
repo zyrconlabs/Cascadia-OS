@@ -1,0 +1,86 @@
+{
+  "id": "test-settings-op",
+  "name": "Test Settings Operator",
+  "type": "operator",
+  "version": "1.0.0",
+  "description": "Test operator for settings engine validation. Not for production use. Not in DEPOT catalog.",
+  "author": "Zyrcon Labs",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 8999,
+  "entry_point": "operator.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "runtime",
+  "industries": ["general"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "risk_level": "low",
+  "permissions": ["test.read"],
+  "requires_approval_for": [],
+  "data_access": ["test_data"],
+  "writes_external_systems": false,
+  "network_access": false,
+  "capabilities": ["test.read"],
+  "required_dependencies": [],
+  "requested_permissions": [],
+  "autonomy_level": "manual_only",
+  "health_hook": "/api/health",
+  "setup_fields": [
+    {
+      "name": "business_name",
+      "label": "Business Name",
+      "type": "string",
+      "required": true,
+      "default": "Demo Business",
+      "simple_mode": true,
+      "help_text": "Your business name for reports"
+    },
+    {
+      "name": "lead_source",
+      "label": "Lead Source",
+      "type": "select",
+      "options": ["gmail", "google_sheets", "webhook"],
+      "default": "gmail",
+      "simple_mode": true,
+      "help_text": "Where do your leads come from?"
+    },
+    {
+      "name": "ask_before_sending",
+      "label": "Ask Before Sending",
+      "type": "boolean",
+      "default": true,
+      "simple_mode": true,
+      "requires_approval_if_enabled": ["email.send"]
+    },
+    {
+      "name": "api_key",
+      "label": "API Key",
+      "type": "secret",
+      "secret": true,
+      "vault_key": "test_settings_op:api_key",
+      "required": false,
+      "help_text": "Optional API key for testing"
+    },
+    {
+      "name": "retry_limit",
+      "label": "Retry Limit",
+      "type": "number",
+      "default": 3,
+      "min": 1,
+      "max": 10,
+      "advanced_mode": true,
+      "help_text": "How many times to retry on failure"
+    },
+    {
+      "name": "raw_prompt_override",
+      "label": "Raw Prompt Override",
+      "type": "string",
+      "default": null,
+      "simple_mode": false,
+      "developer_mode": true,
+      "help_text": "Override system prompt (developer only)"
+    }
+  ]
+}
