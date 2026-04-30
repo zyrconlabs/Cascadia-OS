@@ -620,28 +620,26 @@ async function activateLicense() {
   const key = state.licenseKey.trim();
   const msg = document.getElementById('lic-msg');
   if (!key) { msg.innerHTML = '<span class="err">Please enter a license key</span>'; return; }
-  // Client-side validation: any key starting with ZYR- is "valid" for UI purposes
-  // Try real endpoint first
+  // Route through the real license activation endpoint — never fake-unlock tiers client-side
   try {
     const r = await fetch(PRISM + '/api/prism/license/activate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ license_key: key }),
       signal: AbortSignal.timeout(5000),
     });
     const d = await r.json();
-    if (d.tier && d.tier !== 'lite') {
+    if (r.ok && d.tier) {
       state.licenseTier = d.tier;
       msg.innerHTML = `<span class="ok">✓ ${d.tier.charAt(0).toUpperCase()+d.tier.slice(1)} unlocked</span>`;
-      return;
+    } else {
+      state.licenseTier = 'lite';
+      msg.innerHTML = `<span class="err">${d.error || 'Invalid license key'} — continuing as Lite</span>`;
     }
-  } catch(_) {}
-  // Fallback: mock validation
-  if (key.toUpperCase().startsWith('ZYR-')) {
-    state.licenseTier = 'pro';
-    msg.innerHTML = '<span class="ok">✓ Pro unlocked</span>';
-  } else {
-    msg.innerHTML = '<span class="err">Invalid key — keys start with ZYR-</span>';
+  } catch(e) {
+    console.warn('[Zyrcon] License server unavailable:', e);
+    state.licenseTier = 'lite';
+    msg.innerHTML = '<span class="err">License server unavailable — continuing as Lite</span>';
   }
 }
 
