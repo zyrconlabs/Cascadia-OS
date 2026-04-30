@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Setup — Zyrcon</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f5f7fa;
+  --white: #ffffff;
+  --navy-900: #111827;
+  --navy-800: #374151;
+  --navy-700: #4a5568;
+  --gray-400: #94a3b8;
+  --gray-300: #94a3b8;
+  --gray-200: #e8edf4;
+  --gray-150: #e8edf4;
+  --gray-100: #f0f4f8;
+  --gray-50: #f5f7fa;
+  --green: #34d399;
+  --green-soft: rgba(52,211,153,.12);
+  --red: #f87171;
+  --accent: #4facfe;
+  --accent-soft: rgba(79,172,254,.1);
+  --font: 'Inter', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --ease: cubic-bezier(.25,1,.5,1);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { min-height: 100vh; font-family: var(--font); background: var(--bg); color: var(--navy-900); -webkit-font-smoothing: antialiased; }
+button { cursor: pointer; font-family: var(--font); }
+input, textarea, select { font-family: var(--font); }
+
+/* Layout */
+.wizard-wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.wizard-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 560px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.06);
+  overflow: hidden;
+}
+
+/* Progress bar */
+.wiz-progress {
+  height: 3px;
+  background: var(--gray-200);
+}
+.wiz-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4facfe, #a78bfa);
+  border-radius: 0 2px 2px 0;
+  transition: width .4s var(--ease);
+}
+
+/* Header */
+.wiz-header {
+  padding: 24px 28px 0;
+}
+.wiz-step-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--gray-400);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.wiz-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--navy-900);
+  line-height: 1.2;
+  margin-bottom: 6px;
+}
+.wiz-body-text {
+  font-size: 14px;
+  color: var(--navy-700);
+  line-height: 1.5;
+}
+
+/* Content */
+.wiz-content {
+  padding: 20px 28px;
+  min-height: 200px;
+}
+
+/* Footer */
+.wiz-footer {
+  padding: 16px 28px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--gray-150);
+}
+
+/* Buttons */
+.btn {
+  height: 38px;
+  padding: 0 20px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  transition: all .15s;
+}
+.btn-primary {
+  background: var(--navy-900);
+  color: #fff;
+}
+.btn-primary:hover { background: #000; }
+.btn-primary:disabled { background: var(--gray-300); cursor: not-allowed; }
+.btn-ghost {
+  background: transparent;
+  color: var(--navy-700);
+  border: 1px solid var(--gray-200);
+}
+.btn-ghost:hover { background: var(--gray-100); }
+.btn-ghost:disabled { color: var(--gray-300); cursor: not-allowed; }
+.btn-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.btn-outline:hover { background: var(--accent-soft); }
+
+/* Radio cards */
+.radio-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.radio-card {
+  border: 1.5px solid var(--gray-200);
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all .15s;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.radio-card:hover { border-color: var(--accent); background: var(--accent-soft); }
+.radio-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.radio-card input[type="radio"] { margin-top: 2px; accent-color: var(--accent); }
+.radio-card-label { font-size: 13px; font-weight: 600; color: var(--navy-800); }
+.radio-card-sub { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+
+/* Toggles */
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--gray-150);
+}
+.toggle-row:last-child { border-bottom: none; }
+.toggle-row-text { flex: 1; }
+.toggle-row-title { font-size: 13px; font-weight: 600; color: var(--navy-800); }
+.toggle-row-sub { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+.toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--gray-300);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background .2s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+.toggle input:checked + .toggle-slider { background: var(--green); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+/* Operator install cards */
+.op-cards { display: flex; flex-direction: column; gap: 10px; }
+.op-card {
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.op-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: linear-gradient(135deg,#4facfe,#a78bfa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.op-info { flex: 1; }
+.op-name { font-size: 13px; font-weight: 700; color: var(--navy-800); }
+.op-desc { font-size: 11.5px; color: var(--gray-400); margin-top: 2px; }
+.op-add-btn {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.op-add-btn:hover { background: var(--accent-soft); }
+.op-add-btn.added { border-color: var(--green); color: var(--green); background: var(--green-soft); cursor: default; }
+
+/* Email connect buttons */
+.email-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--navy-800);
+  cursor: pointer;
+  transition: all .15s;
+  margin-bottom: 10px;
+}
+.email-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.email-btn .cs-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--gray-400);
+  font-family: var(--mono);
+  letter-spacing: .04em;
+}
+
+/* License input */
+.license-row {
+  display: flex;
+  gap: 8px;
+}
+.license-input {
+  flex: 1;
+  height: 40px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: 9px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--navy-800);
+  outline: none;
+  transition: border-color .15s;
+}
+.license-input:focus { border-color: var(--accent); }
+.license-msg {
+  margin-top: 10px;
+  font-size: 12px;
+  min-height: 20px;
+}
+.license-msg.ok { color: var(--green); }
+.license-msg.err { color: var(--red); }
+
+/* Flow diagram */
+.flow-diagram {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  margin: 16px 0;
+}
+.flow-step {
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy-800);
+}
+.flow-arrow {
+  font-size: 14px;
+  color: var(--gray-300);
+  padding: 0 6px;
+}
+
+/* Finish buttons */
+.finish-btns { display: flex; flex-direction: column; gap: 10px; }
+</style>
+</head>
+<body>
+<div class="wizard-wrap">
+  <div class="wizard-card">
+    <div class="wiz-progress"><div class="wiz-progress-fill" id="prog-fill" style="width:14%"></div></div>
+    <div id="wiz-inner"><!-- rendered by JS --></div>
+  </div>
+  <div style="margin-top:16px;font-size:11px;color:var(--gray-400);font-family:var(--mono)">Cascadia OS · Zyrcon Labs</div>
+</div>
+
+<script>
+const PRISM = 'http://127.0.0.1:6300';
+const TOTAL_STEPS = 7;
+
+const state = {
+  step: 1,
+  licenseKey: '',
+  licenseTier: 'lite',
+  businessType: '',
+  approvalRules: { email: true, api: true, crm: true },
+  installedOps: [],
+};
+
+// Persist progress on page unload (mid-wizard exit)
+window.addEventListener('beforeunload', () => {
+  if (state.step > 1 && state.step < TOTAL_STEPS) {
+    fetch(PRISM + '/api/wizard/save-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: state.step }),
+      keepalive: true,
+    }).catch(() => {});
+  }
+});
+
+function setProgress(step) {
+  document.getElementById('prog-fill').style.width = Math.round((step / TOTAL_STEPS) * 100) + '%';
+}
+
+function render() {
+  setProgress(state.step);
+  const inner = document.getElementById('wiz-inner');
+  inner.innerHTML = steps[state.step]();
+  // Auto-focus first input if any
+  const inp = inner.querySelector('input[type="text"],input[type="password"]');
+  if (inp) setTimeout(() => inp.focus(), 50);
+}
+
+function next() {
+  if (state.step < TOTAL_STEPS) {
+    state.step++;
+    render();
+    // Save progress to backend
+    fetch(PRISM + '/api/wizard/save-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: state.step }),
+    }).catch(() => {});
+  }
+}
+
+function back() {
+  if (state.step > 1) { state.step--; render(); }
+}
+
+function footer(backDisabled) {
+  const nextLabel = state.step === TOTAL_STEPS ? 'Finish' : 'Next';
+  const nextAction = state.step === TOTAL_STEPS ? 'completeWizard()' : 'next()';
+  return `<div class="wiz-footer">
+    <button class="btn btn-ghost" onclick="back()" ${backDisabled ? 'disabled' : ''}>Back</button>
+    <button class="btn btn-primary" onclick="${nextAction}">${nextLabel}</button>
+  </div>`;
+}
+
+// ─── STEP RENDERERS ───────────────────────────────────────────────────────────
+
+const steps = {
+  1: () => `
+    <div class="wiz-header">
+      <div class="wiz-step-label">Step 1 of ${TOTAL_STEPS}</div>
+      <div class="wiz-title">Welcome to Zyrcon</div>
+      <div class="wiz-body-text">Private AI operators for your business. Let's get you set up in under 5 minutes.</div>
+    </div>
+    <div class="wiz-content" style="display:flex;flex-direction:column;gap:12px;justify-content:center">
+      <div style="background:linear-gradient(135deg,rgba(79,172,254,.08),rgba(167,139,250,.08));border:1px solid rgba(79,172,254,.15);border-radius:12px;padding:20px 18px">
+        <div style="font-size:13px;font-weight:700;color:var(--navy-800);margin-bottom:8px">What Zyrcon does:</div>
+        <ul style="font-size:13px;color:var(--navy-700);line-height:1.7;padding-left:16px">
+          <li>AI operators handle routine tasks — leads, quotes, follow-ups</li>
+          <li>Nothing is sent without your approval</li>
+          <li>Runs entirely on your machine — your data stays private</li>
+        </ul>
+      </div>
+    </div>
+    <div class="wiz-footer">
+      <div></div>
+      <button class="btn btn-primary" onclick="next()">Get Started</button>
+    </div>`,
+
+  2: () => `
+    <div class="wiz-header">
+      <div class="wiz-step-label">Step 2 of ${TOTAL_STEPS}</div>
+      <div class="wiz-title">Activate License</div>
+      <div class="wiz-body-text">Enter your license key to unlock Pro features, or continue with the free Lite plan.</div>
+    </div>
+    <div class="wiz-content">
+      <div class="license-row">
+        <input class="license-input" id="lic-input" type="text" placeholder="ZYRCON-PRO-xxxxxxxxxxxxxxxx" value="${esc(state.licenseKey)}" oninput="state.licenseKey=this.value.trim()">
+        <button class="btn btn-outline" onclick="activateLicense()">Activate</button>
+      </div>
+      <div class="license-msg" id="lic-msg">${state.licenseTier !== 'lite' ? '<span class="ok">✓ ' + state.licenseTier.charAt(0).toUpperCase()+state.licenseTier.slice(1) + ' unlocked</span>' : ''}</div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--gray-150)">
+        <button class="btn btn-ghost" style="width:100%" onclick="skipLicense()">Continue with Lite (free)</button>
+      </div>
+    </div>
+    ${footer(false)}`,
+
+  3: () => {
+    const types = [
+      {id:'contractor',   label:'Contractor / Construction', sub:'Leads, quotes, scheduling'},
+      {id:'warehouse',    label:'Warehouse / Industrial',    sub:'Logistics, inventory, ops'},
+      {id:'professional', label:'Professional Services',     sub:'Proposals, billing, clients'},
+      {id:'medical',      label:'Medical / Clinic',          sub:'Intake, follow-up, records'},
+      {id:'retail',       label:'Retail / E-commerce',       sub:'Orders, invoices, social'},
+      {id:'general',      label:'General Small Business',    sub:'Leads, quotes, follow-up'},
+    ];
+    return `
+    <div class="wiz-header">
+      <div class="wiz-step-label">Step 3 of ${TOTAL_STEPS}</div>
+      <div class="wiz-title">Choose Business Type</div>
+      <div class="wiz-body-text">We'll suggest the right operators for your industry.</div>
+    </div>
+    <div class="wiz-content">
+      <div class="radio-grid">
+        ${types.map(t => `
+          <label class="radio-card${state.businessType===t.id?' selected':''}" onclick="selectBizType('${t.id}')">
+            <input type="radio" name="biz" value="${t.id}" ${state.businessType===t.id?'checked':''} onchange="selectBizType('${t.id}')">
+            <div>
+              <div class="radio-card-label">${t.label}</div>
+              <div class="radio-card-sub">${t.sub}</div>
+            </div>
+          </label>`).join('')}
+      </div>
+    </div>
+    ${footer(false)}`;
+  },
+
+  4: () => `
+    <div class="wiz-header">
+      <div class="wiz-step-label">Step 4 of ${TOTAL_STEPS}</div>
+      <div class="wiz-title">Connect Email (optional)</div>
+      <div class="wiz-body-text">Connect your email so operators can draft and send messages on your behalf.</div>
+    </div>
+    <div class="wiz-content">
+      <button class="email-btn" onclick="showEmailComingSoon('Gmail')">
+        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 24.8l-22.4-16H46.4z"/><path fill="#FBBC05" d="M1.6 8.8v30.4L16 25.6z"/><path fill="#34A853" d="M46.4 8.8L32 25.6l14.4 13.6z"/><path fill="#4285F4" d="M1.6 39.2L19.2 27.2l4.8 3.6 4.8-3.6 17.6 12z"/></svg>
+        Connect Gmail
+        <span class="cs-badge">coming soon</span>
+      </button>
+      <button class="email-btn" onclick="showEmailComingSoon('Outlook')">
+        <svg width="20" height="20" viewBox="0 0 48 48"><rect fill="#0078D4" width="48" height="48" rx="4"/><path fill="white" d="M8 12h14v24H8zm20 0h12v5H28zm0 9h12v5H28zm0 9h12v6H28z"/></svg>
+        Connect Outlook
+        <span class="cs-badge">coming soon</span>
+      </button>
+      <div style="margin-top:14px;padding:12px;background:var(--gray-50);border-radius:9px;font-size:12px;color:var(--gray-400)">
+        Operators will never send email without your explicit approval.
+      </div>
+      <div id="email-msg" style="margin-top:10px;font-size:12px;min-height:18px;color:var(--navy-700)"></div>
+    </div>
+    ${footer(false)}`,
+
+  5: () => {
+    const suggestions = {
+      contractor:   [{id:'scout',label:'Scout',icon:'🔍',desc:'Qualify incoming leads automatically'},{id:'quote',label:'Quote',icon:'📄',desc:'Draft proposals and pricing'},{id:'recon',label:'Recon',icon:'🏢',desc:'Research companies and contacts'}],
+      warehouse:    [{id:'scout',label:'Scout',icon:'🔍',desc:'Qualify incoming leads'},{id:'recon',label:'Recon',icon:'🏢',desc:'Research suppliers and vendors'},{id:'invoice',label:'Invoice',icon:'💰',desc:'Draft and send invoices'}],
+      professional: [{id:'scout',label:'Scout',icon:'🔍',desc:'Qualify client leads'},{id:'quote',label:'Quote',icon:'📄',desc:'Draft service proposals'},{id:'invoice',label:'Invoice',icon:'💰',desc:'Automate billing'}],
+      medical:      [{id:'scout',label:'Scout',icon:'🔍',desc:'Qualify patient inquiries'},{id:'intakeform',label:'Intake Form',icon:'📋',desc:'Collect patient information'},{id:'followup',label:'Follow-Up',icon:'📞',desc:'Automated patient follow-up'}],
+      retail:       [{id:'scout',label:'Scout',icon:'🔍',desc:'Score and qualify leads'},{id:'invoice',label:'Invoice',icon:'💰',desc:'Automate order invoicing'},{id:'socialscheduler',label:'Social Scheduler',icon:'📱',desc:'Schedule social media posts'}],
+      general:      [{id:'scout',label:'Scout',icon:'🔍',desc:'Qualify incoming leads'},{id:'quote',label:'Quote',icon:'📄',desc:'Draft proposals'},{id:'recon',label:'Recon',icon:'🏢',desc:'Research contacts and companies'}],
+    };
+    const ops = suggestions[state.businessType] || suggestions.general;
+    return `
+    <div class="wiz-header">
+      <div class="wiz-step-label">Step 5 of ${TOTAL_STEPS}</div>
+      <div class="wiz-title">Install First Operator</div>
+      <div class="wiz-body-text">Based on your business type, we recommend these operators to get started.</div>
+    </div>
+    <div class="wiz-content">
+      <div class="op-cards">
+        ${ops.map(op => `
+          <div class="op-card">
+            <div class="op-icon">${op.icon}</div>
+            <div class="op-info">
+              <div class="op-name">${op.label}</div>
+              <div class="op-desc">${op.desc}</div>
+            </div>
+            <button class="op-add-btn${state.installedOps.includes(op.id)?' added':''}" id="op-btn-${op.id}"
+              onclick="installOp('${op.id}', this)">
+              ${state.installedOps.includes(op.id) ? '✓ Added' : '+ Install'}
+            </button>
+          </div>`).join('')}
+      </div>
+    </div>
+    ${footer(false)}`;
+  },
+
+  6: () => `
+    <div class="wiz-header">
+      <div class="wiz-step-label">Step 6 of ${TOTAL_STEPS}</div>
+      <div class="wiz-title">Set Approval Rules</div>
+      <div class="wiz-body-text">Control when operators need your sign-off before taking action.</div>
+    </div>
+    <div class="wiz-content">
+      <div class="toggle-row">
+        <div class="toggle-row-text">
+          <div class="toggle-row-title">Always require approval before sending email</div>
+          <div class="toggle-row-sub">Operators draft; you review and send</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="rule-email" ${state.approvalRules.email?'checked':''} onchange="state.approvalRules.email=this.checked">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-row-text">
+          <div class="toggle-row-title">Always require approval before external API calls</div>
+          <div class="toggle-row-sub">CRM writes, webhooks, third-party calls</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="rule-api" ${state.approvalRules.api?'checked':''} onchange="state.approvalRules.api=this.checked">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-row-text">
+          <div class="toggle-row-title">Always require approval before writing CRM records</div>
+          <div class="toggle-row-sub">New contacts, deals, notes, updates</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="rule-crm" ${state.approvalRules.crm?'checked':''} onchange="state.approvalRules.crm=this.checked">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    ${footer(false)}`,
+
+  7: () => `
+    <div class="wiz-header">
+      <div class="wiz-step-label">Step 7 of ${TOTAL_STEPS}</div>
+      <div class="wiz-title">You're Ready</div>
+      <div class="wiz-body-text">Here's how Zyrcon works in your business:</div>
+    </div>
+    <div class="wiz-content">
+      <div class="flow-diagram">
+        <div class="flow-step">Lead arrives</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Operator works</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">You approve</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Action completes</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Audit recorded</div>
+      </div>
+      <div style="margin-top:16px;font-size:13px;color:var(--navy-700);line-height:1.6">
+        Every action is logged and chain-verified. You stay in control — always.
+      </div>
+      <div class="finish-btns" style="margin-top:20px">
+        <button class="btn btn-primary" style="width:100%;height:44px;font-size:14px" onclick="completeWizard()">Open Dashboard</button>
+        <button class="btn btn-ghost" style="width:100%;height:44px" onclick="runDemo()">Run Demo First</button>
+      </div>
+    </div>
+    <div class="wiz-footer" style="border-top:none;padding-top:0">
+      <button class="btn btn-ghost" onclick="back()">Back</button>
+      <div></div>
+    </div>`,
+};
+
+// ─── ACTIONS ─────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function selectBizType(id) {
+  state.businessType = id;
+  // Re-render radio cards only
+  document.querySelectorAll('.radio-card').forEach(el => {
+    const inp = el.querySelector('input[type="radio"]');
+    if (inp) {
+      const sel = inp.value === id;
+      el.classList.toggle('selected', sel);
+      inp.checked = sel;
+    }
+  });
+}
+
+async function activateLicense() {
+  const key = state.licenseKey.trim();
+  const msg = document.getElementById('lic-msg');
+  if (!key) { msg.innerHTML = '<span class="err">Please enter a license key</span>'; return; }
+  // Client-side validation: any key starting with ZYR- is "valid" for UI purposes
+  // Try real endpoint first
+  try {
+    const r = await fetch(PRISM + '/api/prism/license/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const d = await r.json();
+    if (d.tier && d.tier !== 'lite') {
+      state.licenseTier = d.tier;
+      msg.innerHTML = `<span class="ok">✓ ${d.tier.charAt(0).toUpperCase()+d.tier.slice(1)} unlocked</span>`;
+      return;
+    }
+  } catch(_) {}
+  // Fallback: mock validation
+  if (key.toUpperCase().startsWith('ZYR-')) {
+    state.licenseTier = 'pro';
+    msg.innerHTML = '<span class="ok">✓ Pro unlocked</span>';
+  } else {
+    msg.innerHTML = '<span class="err">Invalid key — keys start with ZYR-</span>';
+  }
+}
+
+function skipLicense() {
+  state.licenseTier = 'lite';
+  next();
+}
+
+function showEmailComingSoon(provider) {
+  document.getElementById('email-msg').textContent = provider + ' integration coming soon — you can connect it later in Settings.';
+}
+
+function installOp(id, btn) {
+  if (!state.installedOps.includes(id)) state.installedOps.push(id);
+  btn.classList.add('added');
+  btn.textContent = '✓ Added to recommended operators';
+  btn.disabled = true;
+}
+
+async function completeWizard() {
+  try {
+    await fetch(PRISM + '/api/wizard/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_type: state.businessType,
+        approval_rules: state.approvalRules,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch(_) {}
+  window.location.href = '/';
+}
+
+async function runDemo() {
+  try {
+    await fetch(PRISM + '/api/demo/seed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch(_) {}
+  await completeWizard();
+  window.location.href = '/?demo=1';
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
