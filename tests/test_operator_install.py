@@ -36,13 +36,15 @@ def crew(tmp_path, monkeypatch):
     import cascadia.registry.crew as crew_module
     monkeypatch.setattr(crew_module, "_OPERATORS_DIR", tmp_path / "operators")
     # Build a minimal fake config so CrewService doesn't blow up
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
     mock_runtime = MagicMock()
     mock_runtime.port = 5100
     mock_runtime.logger = MagicMock()
     svc = CrewService.__new__(CrewService)
     svc.registry = {}
     svc.runtime = mock_runtime
+    # Point registry writes to tmp so the real registry.json is never touched
+    svc._config = {'operators_registry_path': str(tmp_path / 'registry.json')}
     return svc
 
 
