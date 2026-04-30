@@ -1,0 +1,22 @@
+{
+  "id": "google-calendar-connector",
+  "name": "Google Calendar Connector",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Read and create Google Calendar events via the Calendar API v3. Approval required before creating events.",
+  "author": "Zyrcon Labs",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 9502,
+  "entry_point": "connector.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "productivity",
+  "industries": ["all"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "auth_type": "oauth2",
+  "nats_subjects": ["cascadia.connectors.google-calendar-connector.>"],
+  "approval_required_for_writes": true
+}
