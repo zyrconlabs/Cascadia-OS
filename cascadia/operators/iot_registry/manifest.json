@@ -1,0 +1,19 @@
+{
+  "id": "iot-registry",
+  "name": "IoT Device Registry",
+  "type": "operator",
+  "version": "1.0.0",
+  "description": "Register, discover, and manage IoT devices connected to Cascadia OS.",
+  "author": "Zyrcon",
+  "price": 0,
+  "tier_required": "pro",
+  "port": 8301,
+  "entry_point": "operator.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "iot",
+  "industries": ["agriculture", "manufacturing", "general"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true
+}
