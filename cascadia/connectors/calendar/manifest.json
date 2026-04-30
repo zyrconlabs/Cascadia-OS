@@ -1,0 +1,23 @@
+{
+  "id": "calendar-connector",
+  "name": "Calendar Connector",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Unified calendar connector for listing, creating, and managing events across providers.",
+  "author": "Zyrcon",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 9031,
+  "entry_point": "connector.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "communication",
+  "industries": ["general"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "auth_type": "oauth2",
+  "actions": ["list_events", "create_event", "update_event", "delete_event", "get_event"],
+  "approval_required_for_writes": true,
+  "nats_subjects": ["cascadia.connectors.calendar-connector.>"]
+}

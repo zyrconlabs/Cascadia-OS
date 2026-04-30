@@ -1,0 +1,34 @@
+{
+  "id": "email-connector",
+  "name": "Email Connector (SMTP/IMAP)",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Send and receive email via SMTP and IMAP without cloud account lock-in.",
+  "author": "Zyrcon",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 9010,
+  "entry_point": "connector.py",
+  "dependencies": [
+    "nats-py"
+  ],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "communication",
+  "industries": [
+    "general"
+  ],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "auth_type": "basic",
+  "actions": [
+    "send_email",
+    "list_inbox",
+    "get_message",
+    "search_messages"
+  ],
+  "approval_required_for_writes": true,
+  "nats_subjects": [
+    "cascadia.connectors.email-connector.>"
+  ]
+}

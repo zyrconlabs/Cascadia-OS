@@ -1,0 +1,22 @@
+{
+  "id": "zapier-connector",
+  "name": "Zapier Inbound Connector",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Receive Zapier webhook triggers and send data to Zapier webhook actions.",
+  "author": "Zyrcon",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 9030,
+  "entry_point": "connector.py",
+  "dependencies": ["nats-py"],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "integration",
+  "industries": ["general"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "actions": ["receive_webhook", "send_to_zapier", "list_hooks", "register_hook", "delete_hook"],
+  "approval_required_for_writes": true,
+  "nats_subjects": ["cascadia.connectors.zapier-connector.>"]
+}
