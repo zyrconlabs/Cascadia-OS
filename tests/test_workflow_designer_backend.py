@@ -7,40 +7,44 @@ import sqlite3
 from pathlib import Path
 
 
-# ----- FEATURE_TIERS tests -----
+# ----- License tier + operator-limit tests (via public license_gate interface) -----
 
-def test_feature_tiers_workflow_designer_is_pro():
-    from cascadia.licensing.tier_validator import FEATURE_TIERS
-    assert FEATURE_TIERS['workflow_designer'] == 'pro'
-
-
-def test_feature_tiers_workflow_viewer_is_lite():
-    from cascadia.licensing.tier_validator import FEATURE_TIERS
-    assert FEATURE_TIERS['workflow_viewer'] == 'lite'
+def test_pro_operator_limit_exceeds_lite():
+    from cascadia.licensing.license_gate import OPERATOR_LIMITS
+    assert OPERATOR_LIMITS['pro'] > OPERATOR_LIMITS['lite']
 
 
-def test_can_access_workflow_designer_lite_false():
-    from cascadia.licensing.tier_validator import TierValidator
-    v = TierValidator('secret', tier='lite')
-    assert v.can_access('workflow_designer') is False
+def test_business_operator_limit_exceeds_pro():
+    from cascadia.licensing.license_gate import OPERATOR_LIMITS
+    assert OPERATOR_LIMITS['business'] > OPERATOR_LIMITS['pro']
 
 
-def test_can_access_workflow_designer_pro_true():
-    from cascadia.licensing.tier_validator import TierValidator
-    v = TierValidator('secret', tier='pro')
-    assert v.can_access('workflow_designer') is True
+def test_lite_has_minimum_operator_limit():
+    from cascadia.licensing.license_gate import _build_status
+    result = _build_status('ZYRCON-LITE-abcdef1234567890')
+    assert result['valid'] is True
+    assert result['operator_limit'] == 2
 
 
-def test_can_access_workflow_designer_enterprise_true():
-    from cascadia.licensing.tier_validator import TierValidator
-    v = TierValidator('secret', tier='enterprise')
-    assert v.can_access('workflow_designer') is True
+def test_pro_key_grants_higher_limit():
+    from cascadia.licensing.license_gate import _build_status, OPERATOR_LIMITS
+    result = _build_status('ZYRCON-PRO-1234567890abcdef')
+    assert result['valid'] is True
+    assert result['operator_limit'] >= OPERATOR_LIMITS['pro']
 
 
-def test_can_access_workflow_viewer_lite_true():
-    from cascadia.licensing.tier_validator import TierValidator
-    v = TierValidator('secret', tier='lite')
-    assert v.can_access('workflow_viewer') is True
+def test_enterprise_key_grants_large_limit():
+    from cascadia.licensing.license_gate import _build_status
+    result = _build_status('ZYRCON-ENTERPRISE-fedcba9876543210')
+    assert result['valid'] is True
+    assert result['operator_limit'] >= 100
+
+
+def test_invalid_key_falls_back_to_lite_limit():
+    from cascadia.licensing.license_gate import _build_status, OPERATOR_LIMITS
+    result = _build_status(None)
+    assert result['valid'] is False
+    assert result['operator_limit'] == OPERATOR_LIMITS['lite']
 
 
 # ----- WorkflowStore tests -----
