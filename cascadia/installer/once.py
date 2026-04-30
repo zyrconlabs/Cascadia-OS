@@ -232,6 +232,49 @@ class OnceInstaller:
             return 1
 
 
+class WizardState:
+    """
+    Read/write wizard completion state in config.json without touching other keys.
+    Used by the PRISM onboarding wizard and its backend handlers.
+    Atomic write: write to .tmp then rename.
+    """
+
+    def __init__(self, config_path: str = 'config.json') -> None:
+        self._path = Path(config_path)
+
+    def _read(self) -> Dict[str, Any]:
+        try:
+            return json.loads(self._path.read_text())
+        except Exception:
+            return {}
+
+    def _write(self, updates: Dict[str, Any]) -> None:
+        """Merge updates into config without overwriting unrelated keys."""
+        existing = self._read()
+        existing.update(updates)
+        tmp = self._path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(existing, indent=2))
+        os.replace(str(tmp), str(self._path))
+
+    def is_complete(self) -> bool:
+        return self._read().get('wizard_complete') is True
+
+    def get_current_step(self) -> int:
+        return int(self._read().get('wizard_current_step', 1))
+
+    def save_progress(self, step: int) -> None:
+        self._write({'wizard_complete': False, 'wizard_current_step': step})
+
+    def complete(self, business_type: str = '', approval_rules: Optional[Dict[str, Any]] = None) -> None:
+        from datetime import datetime, timezone
+        self._write({
+            'wizard_complete':       True,
+            'wizard_completed_at':   datetime.now(timezone.utc).isoformat(),
+            'wizard_business_type':  business_type,
+            'wizard_approval_rules': approval_rules or {},
+        })
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description='ONCE - Cascadia OS installer')
     p.add_argument('--dir', default='.', help='Installation directory')
