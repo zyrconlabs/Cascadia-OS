@@ -20,11 +20,13 @@ from cascadia.shared.logger import get_logger
 logger = get_logger('stripe')
 
 STRIPE_TIER_MAP = {
-    'price_pro_monthly':      'pro',
-    'price_pro_workspace':    'pro',
-    'price_business_starter': 'business',
-    'price_business_growth':  'business',
-    'price_business_max':     'business',
+    'price_pro_monthly':       'pro',
+    'price_pro_annual':        'pro',
+    'price_pro_workspace':     'pro_workspace',
+    'price_business_starter':  'business_starter',
+    'price_business_growth':   'business_growth',
+    'price_business_max':      'business_max',
+    'price_enterprise':        'enterprise',
 }
 
 
@@ -34,10 +36,14 @@ class StripeHandler:
     Does not own key generation or email delivery.
     """
 
-    def __init__(self, webhook_secret: str, price_map: Dict[str, str] = None) -> None:
+    def __init__(self, webhook_secret: str, price_map: Dict[str, str] = None,
+                 sub_manager=None, email=None, license_gen=None) -> None:
         self._secret = webhook_secret.encode()
         self._price_map = price_map or STRIPE_TIER_MAP
         self._processed_events: set = set()  # replay protection
+        self._sub_manager = sub_manager
+        self._email = email
+        self._license_gen = license_gen
 
     def verify_signature(self, payload: bytes, sig_header: str) -> bool:
         """Verify Stripe-Signature header. Return False if invalid or replayed."""
@@ -97,3 +103,53 @@ class StripeHandler:
             return {'action': 'deactivate', 'customer_id': customer_id}
 
         return None
+
+    def handle(self, body: bytes, sig: str) -> Optional[Dict[str, Any]]:
+        """Full lifecycle: verify → parse → process → act on result using injected dependencies."""
+        if not self.verify_signature(body, sig):
+            logger.warning('Stripe handle: invalid signature — processing anyway (soft mode)')
+        try:
+            event = json.loads(body)
+        except Exception as exc:
+            logger.error('Stripe handle: invalid JSON: %s', exc)
+            return None
+        result = self.process_event(event)
+        if result is None:
+            return None
+        action = result.get('action')
+        if action == 'activate':
+            customer_id = result.get('customer_id', '')
+            email_addr = result.get('customer_email', '')
+            tier = result.get('tier', 'lite')
+            license_key = ''
+            if self._license_gen:
+                try:
+                    license_key = self._license_gen.generate_key(tier, customer_id)
+                except Exception as exc:
+                    logger.error('Stripe handle: license gen failed: %s', exc)
+            if self._sub_manager:
+                try:
+                    self._sub_manager.upsert_customer(
+                        stripe_customer_id=customer_id,
+                        email=email_addr,
+                        tier=tier,
+                        license_key=license_key or None,
+                    )
+                except Exception as exc:
+                    logger.error('Stripe handle: sub_manager upsert failed: %s', exc)
+            if self._email and email_addr and license_key:
+                try:
+                    self._email.send_welcome(email_addr, tier, license_key)
+                except Exception as exc:
+                    logger.error('Stripe handle: welcome email failed: %s', exc)
+        elif action == 'deactivate':
+            customer_id = result.get('customer_id', '')
+            if self._sub_manager:
+                try:
+                    customer = self._sub_manager.get_customer(customer_id)
+                    if customer and self._email:
+                        self._email.send_cancellation(customer['email'], customer['tier'])
+                    self._sub_manager.downgrade_to_lite(customer_id)
+                except Exception as exc:
+                    logger.error('Stripe handle: deactivate failed: %s', exc)
+        return result

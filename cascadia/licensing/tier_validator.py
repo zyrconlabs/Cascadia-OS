@@ -18,7 +18,16 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 
-VALID_TIERS = ('lite', 'pro', 'enterprise')
+VALID_TIERS = (
+    'lite',
+    'pro',
+    'pro_workspace',
+    'business',
+    'business_starter',
+    'business_growth',
+    'business_max',
+    'enterprise',
+)
 _KEY_PREFIX = 'zyrcon_'
 
 FEATURE_TIERS = {
@@ -34,7 +43,16 @@ FEATURE_TIERS = {
     'iot_actuators':      'enterprise',
 }
 
-TIER_RANKS = {'lite': 0, 'pro': 1, 'enterprise': 2}
+TIER_RANKS = {
+    'lite':             0,
+    'pro':              1,
+    'pro_workspace':    2,
+    'business':         3,
+    'business_starter': 3,
+    'business_growth':  4,
+    'business_max':     5,
+    'enterprise':       6,
+}
 
 
 def _sign(secret: str, message: str) -> str:
@@ -64,17 +82,30 @@ class TierValidator:
             return self._fail('Invalid key format')
 
         body = key[len(_KEY_PREFIX):]
-        parts = body.split('_')
-        if len(parts) < 4:
+
+        # Match tier first (sort longest to shortest to avoid prefix collisions).
+        tier = None
+        rest = ''
+        for candidate in sorted(VALID_TIERS, key=len, reverse=True):
+            if body.startswith(candidate + '_'):
+                tier = candidate
+                rest = body[len(candidate) + 1:]
+                break
+
+        if tier is None:
+            # No known tier prefix matched — check if it looks like an unknown tier
+            first_part = body.split('_')[0]
+            return self._fail(f'Unknown tier: {first_part!r}')
+
+        # rest = <customer_id>_<expiry>_<hmac>
+        # hmac is last, expiry is second-to-last (numeric), customer_id is everything before
+        parts = rest.split('_')
+        if len(parts) < 3:
             return self._fail('Invalid key format — expected 4 segments')
 
-        tier = parts[0]
-        customer_id = parts[1]
-        expiry_str = parts[2]
-        provided_hmac = parts[3]
-
-        if tier not in VALID_TIERS:
-            return self._fail(f'Unknown tier: {tier!r}')
+        provided_hmac = parts[-1]
+        expiry_str = parts[-2]
+        customer_id = '_'.join(parts[:-2])
 
         try:
             expiry_epoch = int(expiry_str)
@@ -123,6 +154,11 @@ class TierValidator:
             'days_remaining': 0,
             'error': error,
         }
+
+    def is_at_least(self, validated_result: dict, minimum_tier: str) -> bool:
+        """Returns True if the validated license meets or exceeds the minimum_tier requirement."""
+        tier = validated_result.get('tier', 'lite')
+        return TIER_RANKS.get(tier, 0) >= TIER_RANKS.get(minimum_tier, 0)
 
     def can_access(self, feature: str) -> bool:
         """Return True if the current tier has access to the given feature."""

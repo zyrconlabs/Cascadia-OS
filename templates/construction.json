@@ -1,0 +1,72 @@
+{
+  "id": "construction_lead_to_proposal",
+  "name": "Construction: Lead to Proposal",
+  "description": "Incoming lead → qualify → research company → draft proposal → follow-up sequence. Typical cycle: 2-4 hours automated vs 1-2 days manual.",
+  "industry": "construction",
+  "tier_required": "business_starter",
+  "operators": [
+    {
+      "step": 1,
+      "operator": "SCOUT",
+      "action": "qualify_lead",
+      "trigger": "webhook",
+      "approval_required": false,
+      "config": {
+        "qualification_criteria": [
+          "project_type",
+          "budget_range",
+          "location",
+          "timeline"
+        ],
+        "auto_reject_if": [
+          "outside_service_area",
+          "budget_below_minimum"
+        ]
+      }
+    },
+    {
+      "step": 2,
+      "operator": "RECON",
+      "action": "research_company",
+      "approval_required": false,
+      "config": {
+        "research_fields": [
+          "company_background",
+          "previous_projects",
+          "decision_maker",
+          "recent_activity"
+        ]
+      }
+    },
+    {
+      "step": 3,
+      "operator": "QUOTE",
+      "action": "draft_proposal",
+      "approval_required": true,
+      "approval_message": "Review and approve this proposal before it sends.",
+      "config": {
+        "template": "construction_standard",
+        "include_sections": [
+          "executive_summary",
+          "scope_of_work",
+          "pricing",
+          "timeline",
+          "next_steps"
+        ]
+      }
+    },
+    {
+      "step": 4,
+      "operator": "EMAIL",
+      "action": "send_proposal",
+      "approval_required": true,
+      "approval_message": "Approve to send this proposal to the prospect.",
+      "config": {
+        "subject_template": "Proposal: {project_name}",
+        "follow_up_days": [3, 7, 14]
+      }
+    }
+  ],
+  "estimated_time_saved_hours_per_month": 15,
+  "roi_basis": "One recovered lead at $3,000-$10,000 avg job value covers subscription cost."
+}

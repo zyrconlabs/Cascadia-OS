@@ -1,0 +1,80 @@
+{
+  "id": "legal_new_client_intake_to_engagement",
+  "name": "Legal: New Client Intake to Engagement Letter",
+  "description": "New client inquiry → conflict check → case research → intake review → engagement letter. Attorney-client data never leaves your hardware.",
+  "industry": "legal",
+  "tier_required": "business_starter",
+  "privacy_note": "Attorney-client data never leaves your hardware. All steps require attorney approval before any client communication.",
+  "operators": [
+    {
+      "step": 1,
+      "operator": "SCOUT",
+      "action": "conflict_check",
+      "trigger": "webhook",
+      "approval_required": true,
+      "approval_message": "Review conflict check results before proceeding with intake.",
+      "config": {
+        "qualification_criteria": [
+          "matter_type",
+          "opposing_parties",
+          "jurisdiction",
+          "client_contact"
+        ],
+        "conflict_check_fields": [
+          "client_name",
+          "opposing_party_names",
+          "related_entities"
+        ]
+      }
+    },
+    {
+      "step": 2,
+      "operator": "RECON",
+      "action": "research_case_background",
+      "approval_required": false,
+      "config": {
+        "research_fields": [
+          "case_background",
+          "relevant_precedents",
+          "parties_background",
+          "recent_filings"
+        ]
+      }
+    },
+    {
+      "step": 3,
+      "operator": "CHIEF",
+      "action": "review_intake_completeness",
+      "approval_required": true,
+      "approval_message": "Attorney: review intake package for completeness before engagement.",
+      "config": {
+        "checklist": [
+          "conflict_check_cleared",
+          "fee_agreement_discussed",
+          "scope_defined",
+          "retainer_amount_set"
+        ]
+      }
+    },
+    {
+      "step": 4,
+      "operator": "EMAIL",
+      "action": "send_engagement_letter",
+      "approval_required": true,
+      "approval_message": "Attorney: approve engagement letter before sending to client.",
+      "config": {
+        "subject_template": "Engagement Letter: {matter_type} — {client_name}",
+        "include_sections": [
+          "scope_of_representation",
+          "fee_structure",
+          "retainer_terms",
+          "client_responsibilities",
+          "signature_block"
+        ],
+        "require_countersignature": true
+      }
+    }
+  ],
+  "estimated_time_saved_hours_per_month": 10,
+  "roi_basis": "One additional retained matter at $2,000+ average retainer covers subscription cost many times over."
+}

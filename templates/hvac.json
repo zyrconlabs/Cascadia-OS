@@ -1,0 +1,71 @@
+{
+  "id": "hvac_service_request_to_appointment",
+  "name": "HVAC: Service Request to Appointment",
+  "description": "Service request form → qualify → pull service history → draft estimate → book appointment. Typical cycle: 1-2 hours automated vs half-day manual.",
+  "industry": "hvac",
+  "tier_required": "business_starter",
+  "operators": [
+    {
+      "step": 1,
+      "operator": "SCOUT",
+      "action": "qualify_lead",
+      "trigger": "webhook",
+      "approval_required": false,
+      "config": {
+        "qualification_criteria": [
+          "service_type",
+          "urgency",
+          "location",
+          "equipment_age"
+        ],
+        "auto_reject_if": [
+          "outside_service_area"
+        ]
+      }
+    },
+    {
+      "step": 2,
+      "operator": "RECON",
+      "action": "pull_service_history",
+      "approval_required": false,
+      "config": {
+        "research_fields": [
+          "previous_service_records",
+          "equipment_model",
+          "warranty_status",
+          "last_maintenance_date"
+        ]
+      }
+    },
+    {
+      "step": 3,
+      "operator": "QUOTE",
+      "action": "draft_estimate",
+      "approval_required": true,
+      "approval_message": "Review this estimate before sending to the customer.",
+      "config": {
+        "template": "hvac_standard",
+        "include_sections": [
+          "diagnosis_summary",
+          "parts_and_labor",
+          "pricing",
+          "warranty_info"
+        ]
+      }
+    },
+    {
+      "step": 4,
+      "operator": "EMAIL",
+      "action": "send_estimate_and_book",
+      "approval_required": true,
+      "approval_message": "Approve to send estimate and appointment confirmation.",
+      "config": {
+        "subject_template": "HVAC Service Estimate: {service_type}",
+        "include_booking_link": true,
+        "follow_up_days": [2, 5]
+      }
+    }
+  ],
+  "estimated_time_saved_hours_per_month": 12,
+  "roi_basis": "One additional service call at $300-$500 covers subscription cost."
+}

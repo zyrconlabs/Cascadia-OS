@@ -1,0 +1,73 @@
+{
+  "id": "medical_patient_intake_to_appointment",
+  "name": "Medical: Patient Intake to Appointment",
+  "description": "Patient intake form → qualify appointment type → pre-auth check → schedule → pre-appointment instructions. All patient data stays on your hardware.",
+  "industry": "medical",
+  "tier_required": "business_starter",
+  "privacy_note": "Patient data stays on your hardware. This template never connects to external cloud services by default.",
+  "operators": [
+    {
+      "step": 1,
+      "operator": "SCOUT",
+      "action": "qualify_appointment",
+      "trigger": "webhook",
+      "approval_required": false,
+      "config": {
+        "qualification_criteria": [
+          "appointment_type",
+          "insurance_provider",
+          "new_or_existing_patient",
+          "urgency"
+        ],
+        "auto_route_if": [
+          "emergency → direct_to_staff",
+          "routine → continue_workflow"
+        ]
+      }
+    },
+    {
+      "step": 2,
+      "operator": "RECON",
+      "action": "insurance_preauth_check",
+      "approval_required": true,
+      "approval_message": "Review pre-authorization requirements before scheduling.",
+      "config": {
+        "research_fields": [
+          "insurance_coverage",
+          "preauth_requirements",
+          "copay_estimate",
+          "in_network_status"
+        ]
+      }
+    },
+    {
+      "step": 3,
+      "operator": "AURELIA",
+      "action": "schedule_appointment",
+      "approval_required": true,
+      "approval_message": "Confirm appointment slot before booking.",
+      "config": {
+        "calendar_integration": "local_only",
+        "send_confirmation": true,
+        "reminder_days_before": [3, 1]
+      }
+    },
+    {
+      "step": 4,
+      "operator": "EMAIL",
+      "action": "send_pre_appointment_instructions",
+      "approval_required": false,
+      "config": {
+        "subject_template": "Your appointment on {date}: preparation instructions",
+        "include_sections": [
+          "appointment_details",
+          "preparation_instructions",
+          "what_to_bring",
+          "cancellation_policy"
+        ]
+      }
+    }
+  ],
+  "estimated_time_saved_hours_per_month": 20,
+  "roi_basis": "Reducing no-shows by 1 per week at $150 avg visit recovers subscription cost in week one."
+}

@@ -184,6 +184,15 @@ class PrismService:
         # DEPOT one-button install/remove (Sprint 4 Task 7)
         self.runtime.register_route('POST', '/api/prism/depot/install',                  self.depot_install)
         self.runtime.register_route('POST', '/api/prism/depot/remove',                   self.depot_remove)
+        # Billing sprint — Stripe webhook, billing portal, checkout, waitlist, notifications, tier
+        self.runtime.register_route('POST', '/api/stripe/webhook',                       self.billing_stripe_webhook)
+        self.runtime.register_route('GET',  '/api/prism/billing',                        self.get_billing_status)
+        self.runtime.register_route('POST', '/api/prism/billing/portal',                 self.create_portal_session)
+        self.runtime.register_route('POST', '/api/prism/billing/checkout',               self.create_checkout_session)
+        self.runtime.register_route('POST', '/api/waitlist',                             self.handle_waitlist)
+        self.runtime.register_route('GET',  '/api/waitlist/export',                      self.waitlist_export)
+        self.runtime.register_route('POST', '/api/prism/notifications/register',         self.register_device_token)
+        self.runtime.register_route('GET',  '/api/prism/tier',                           self.tier_status)
 
         # Start operator watchdog
         try:
@@ -1821,6 +1830,215 @@ class PrismService:
         if result is None:
             return 502, {'error': 'CREW not reachable'}
         return 200, result
+
+    # ------------------------------------------------------------------
+    # Billing sprint handlers
+    # ------------------------------------------------------------------
+
+    def billing_stripe_webhook(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/stripe/webhook — receive and process Stripe events."""
+        import json as _json
+        import os as _os
+        try:
+            from cascadia.billing.stripe_handler import StripeHandler
+            from cascadia.billing.subscription_manager import SubscriptionManager
+            from cascadia.billing.email_delivery import EmailDelivery
+            from cascadia.billing.license_generator import LicenseGenerator
+        except ImportError as exc:
+            return 200, {'received': True, 'error': f'billing module unavailable: {exc}'}
+        webhook_secret = _os.environ.get('STRIPE_WEBHOOK_SECRET',
+                                         self.config.get('stripe', {}).get('webhook_secret', ''))
+        sig = payload.get('__headers__', {}).get('Stripe-Signature', '')
+        # Re-serialize without injected runtime metadata for signature verification
+        clean = {k: v for k, v in payload.items() if not k.startswith('__')}
+        body = _json.dumps(clean, separators=(',', ':')).encode()
+        try:
+            stripe_handler = StripeHandler(
+                webhook_secret=webhook_secret or 'placeholder',
+                sub_manager=SubscriptionManager(),
+                email=EmailDelivery(self.config),
+                license_gen=LicenseGenerator(self.config),
+            )
+            stripe_handler.handle(body, sig)
+        except Exception as exc:
+            self.runtime.logger.error('Stripe webhook error: %s', exc)
+        return 200, {'received': True}
+
+    def get_billing_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/billing — subscription stats for PRISM billing dashboard."""
+        try:
+            from cascadia.billing.subscription_manager import SubscriptionManager
+            sub_mgr = SubscriptionManager()
+            return 200, {
+                'stats': sub_mgr.get_stats(),
+                'customers': sub_mgr.list_customers(),
+            }
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def create_portal_session(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/billing/portal — create Stripe billing portal session."""
+        import json as _json
+        import urllib.request as _ur
+        import os as _os
+        stripe_customer_id = payload.get('stripe_customer_id', '')
+        secret = _os.environ.get('STRIPE_SECRET_KEY', '')
+        if not secret or not stripe_customer_id:
+            return 400, {'error': 'Missing configuration'}
+        try:
+            data = (
+                f'customer={stripe_customer_id}'
+                f'&return_url=http://localhost:6300'
+            ).encode()
+            req = _ur.Request(
+                'https://api.stripe.com/v1/billing_portal/sessions',
+                data=data, method='POST',
+                headers={
+                    'Authorization': f'Bearer {secret}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+            )
+            with _ur.urlopen(req, timeout=10) as r:
+                result = _json.loads(r.read())
+            return 200, {'url': result.get('url', '')}
+        except Exception as exc:
+            self.runtime.logger.error('Portal session error: %s', exc)
+            return 500, {'error': str(exc)}
+
+    def create_checkout_session(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/billing/checkout — create Stripe checkout session."""
+        import json as _json
+        import urllib.request as _ur
+        import os as _os
+        price_id = payload.get('price_id', '')
+        email = payload.get('email', '')
+        secret = _os.environ.get('STRIPE_SECRET_KEY', '')
+        if not secret or not price_id:
+            return 400, {'error': 'Missing price_id'}
+        try:
+            data = (
+                f'line_items[0][price]={price_id}'
+                f'&line_items[0][quantity]=1'
+                f'&mode=subscription'
+                f'&customer_email={email}'
+                f'&success_url=http://localhost:6300?checkout=success'
+                f'&cancel_url=http://localhost:6300?checkout=cancelled'
+            ).encode()
+            req = _ur.Request(
+                'https://api.stripe.com/v1/checkout/sessions',
+                data=data, method='POST',
+                headers={
+                    'Authorization': f'Bearer {secret}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+            )
+            with _ur.urlopen(req, timeout=10) as r:
+                result = _json.loads(r.read())
+            return 200, {'url': result.get('url', '')}
+        except Exception as exc:
+            self.runtime.logger.error('Checkout session error: %s', exc)
+            return 500, {'error': str(exc)}
+
+    def handle_waitlist(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/waitlist — join product waitlist."""
+        import sqlite3 as _sqlite3
+        email = payload.get('email', '').strip()
+        product = payload.get('product', 'Zyrcon')
+        source = payload.get('source', 'website')
+        if not email or '@' not in email:
+            return 400, {'error': 'Valid email required'}
+        try:
+            db_path = Path(self.config.get('database_path', './data/runtime/cascadia.db'))
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            with _sqlite3.connect(str(db_path)) as conn:
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS waitlist (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        email TEXT NOT NULL,
+                        product TEXT NOT NULL,
+                        source TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                ''')
+                conn.execute(
+                    'INSERT INTO waitlist (email, product, source, created_at) VALUES (?,?,?,?)',
+                    (email, product, source, _now()),
+                )
+            try:
+                from cascadia.billing.email_delivery import EmailDelivery
+                EmailDelivery(self.config).send_waitlist_confirmation(email, product)
+            except Exception:
+                pass
+            self.runtime.logger.info('Waitlist: %s → %s', email, product)
+            return 200, {'joined': True}
+        except Exception as exc:
+            self.runtime.logger.error('Waitlist error: %s', exc)
+            return 500, {'error': str(exc)}
+
+    def waitlist_export(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/waitlist/export — CSV export of waitlist entries. Requires X-Cascadia-Key."""
+        import os as _os
+        import sqlite3 as _sqlite3
+        key_header = payload.get('__headers__', {}).get('X-Cascadia-Key', '')
+        expected = _os.environ.get('CASCADIA_INTERNAL_KEY', '')
+        if expected and key_header != expected:
+            return 401, {'error': 'unauthorized'}
+        try:
+            db_path = str(self.config.get('database_path', './data/runtime/cascadia.db'))
+            with _sqlite3.connect(db_path) as conn:
+                conn.row_factory = _sqlite3.Row
+                rows = conn.execute(
+                    'SELECT email, product, source, created_at FROM waitlist ORDER BY created_at DESC'
+                ).fetchall()
+            lines = ['email,product,source,created_at']
+            for r in rows:
+                lines.append(f'{r["email"]},{r["product"]},{r["source"]},{r["created_at"]}')
+            return 200, {'__html__': '\n'.join(lines).encode(), 'content_type': 'text/csv'}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def register_device_token(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/notifications/register — store APNs device token."""
+        import sqlite3 as _sqlite3
+        device_token = payload.get('device_token', '').strip()
+        platform = payload.get('platform', 'ios')
+        if not device_token:
+            return 400, {'error': 'device_token required'}
+        try:
+            db_path = Path(self.config.get('database_path', './data/runtime/cascadia.db'))
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            with _sqlite3.connect(str(db_path)) as conn:
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS device_tokens (
+                        device_token TEXT PRIMARY KEY,
+                        platform TEXT NOT NULL,
+                        registered_at TEXT NOT NULL
+                    )
+                ''')
+                conn.execute('''
+                    INSERT OR REPLACE INTO device_tokens (device_token, platform, registered_at)
+                    VALUES (?,?,?)
+                ''', (device_token, platform, _now()))
+            self.runtime.logger.info('APNs: registered token for platform=%s', platform)
+            return 200, {'registered': True}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def tier_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/tier — return current license tier and rank."""
+        from cascadia.licensing.tier_validator import TierValidator, TIER_RANKS
+        license_key = self.config.get('license_key', '')
+        license_secret = self.config.get('license_secret', '')
+        if not license_key or not license_secret:
+            return 200, {'tier': 'lite', 'rank': 0}
+        try:
+            result = TierValidator(license_secret).validate(license_key)
+            if result.get('valid'):
+                tier = result['tier']
+                return 200, {'tier': tier, 'rank': TIER_RANKS.get(tier, 0)}
+        except Exception:
+            pass
+        return 200, {'tier': 'lite', 'rank': 0}
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')

@@ -18,15 +18,31 @@ from cascadia.shared.logger import get_logger
 
 logger = get_logger('license_gen')
 
+STRIPE_TIER_MAP = {
+    'price_pro_monthly':       'pro',
+    'price_pro_annual':        'pro',
+    'price_pro_workspace':     'pro_workspace',
+    'price_business_starter':  'business_starter',
+    'price_business_growth':   'business_growth',
+    'price_business_max':      'business_max',
+    'price_enterprise':        'enterprise',
+}
+
 
 class LicenseGenerator:
     """Owns license key generation, VAULT storage, and email delivery."""
 
-    def __init__(self, signing_secret: str, handshake_port: int,
-                 vault_port: int) -> None:
-        self._secret = signing_secret
-        self._handshake_port = handshake_port
-        self._vault_port = vault_port
+    def __init__(self, config_or_secret, handshake_port: int = None,
+                 vault_port: int = None) -> None:
+        if isinstance(config_or_secret, dict):
+            self._secret = config_or_secret.get('license_secret', '')
+            ports = {c['name']: c.get('port') for c in config_or_secret.get('components', [])}
+            self._handshake_port = ports.get('handshake', 6203)
+            self._vault_port = ports.get('vault', 5101)
+        else:
+            self._secret = config_or_secret
+            self._handshake_port = handshake_port or 6203
+            self._vault_port = vault_port or 5101
 
     def generate_key(self, tier: str, customer_id: str, days: int = 365) -> str:
         """Generate a signed license key. Same format as scripts/generate_license.py."""
