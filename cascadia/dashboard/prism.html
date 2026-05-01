@@ -4331,7 +4331,7 @@ function gcfgCloseWizard() {
 /* ── Phase 2: Inject Configuration button into topbar ── */
 // We patch renderMain to inject the button into every topbar rendered
 
-const _origRenderMain = renderMain;
+var _origRenderMain = renderMain;
 function renderMain() {
   _origRenderMain.call(this);
   // After render, inject config button if feature enabled
