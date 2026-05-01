@@ -1,0 +1,102 @@
+{
+  "id": "mqtt-connector",
+  "name": "MQTT Connector",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Connects Cascadia to any MQTT broker. Receives sensor data from IoT devices and publishes commands back.",
+  "author": "Zyrcon Labs",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 8305,
+  "entry_point": "server.py",
+  "dependencies": ["paho-mqtt"],
+  "install_hook": "",
+  "uninstall_hook": "",
+  "category": "iot",
+  "industries": ["all"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "auth_type": "api_key",
+  "risk_level": "medium",
+  "permissions": ["mqtt.subscribe", "mqtt.publish"],
+  "requires_approval_for": ["mqtt.publish.command"],
+  "data_access": ["mqtt_messages"],
+  "writes_external_systems": true,
+  "network_access": true,
+  "capabilities": ["mqtt.subscribe", "mqtt.publish"],
+  "required_dependencies": [],
+  "requested_permissions": ["mqtt.subscribe"],
+  "autonomy_level": "manual_only",
+  "health_hook": "/api/health",
+  "setup_fields": [
+    {
+      "name": "broker_host",
+      "label": "MQTT Broker Host",
+      "type": "string",
+      "required": true,
+      "default": "localhost",
+      "simple_mode": true,
+      "placeholder": "broker.example.com",
+      "help_text": "MQTT broker hostname or IP address"
+    },
+    {
+      "name": "broker_port",
+      "label": "MQTT Broker Port",
+      "type": "number",
+      "required": true,
+      "default": 1883,
+      "min": 1,
+      "max": 65535,
+      "advanced_mode": true,
+      "help_text": "1883 (standard) or 8883 (TLS)"
+    },
+    {
+      "name": "username",
+      "label": "MQTT Username",
+      "type": "string",
+      "required": false,
+      "default": null,
+      "advanced_mode": true,
+      "help_text": "Leave empty if broker requires no auth"
+    },
+    {
+      "name": "password",
+      "label": "MQTT Password",
+      "type": "secret",
+      "required": false,
+      "secret": true,
+      "vault_key": "mqtt:password",
+      "advanced_mode": true,
+      "help_text": "MQTT broker password"
+    },
+    {
+      "name": "use_tls",
+      "label": "Use TLS encryption",
+      "type": "boolean",
+      "required": false,
+      "default": false,
+      "advanced_mode": true,
+      "help_text": "Enable TLS for encrypted MQTT connection"
+    },
+    {
+      "name": "approval_before_command",
+      "label": "Require approval before publishing commands",
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "simple_mode": true,
+      "help_text": "Always approve before operators publish control commands",
+      "requires_approval_if_enabled": ["mqtt.publish.command"]
+    },
+    {
+      "name": "default_topics",
+      "label": "Default sensor topics to subscribe",
+      "type": "string",
+      "required": false,
+      "default": null,
+      "advanced_mode": true,
+      "placeholder": "sensors/#, devices/+/status",
+      "help_text": "Comma-separated MQTT topics to subscribe to"
+    }
+  ]
+}
