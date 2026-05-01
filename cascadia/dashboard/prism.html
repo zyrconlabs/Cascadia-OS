@@ -85,6 +85,21 @@ button{cursor:pointer;font-family:var(--font)}input,textarea,select{font-family:
 .tag--neutral{color:var(--navy-500);background:var(--navy-50)}.tag--worker{color:var(--navy-700);background:var(--navy-100)}
 .tag--preview{color:var(--purple);background:var(--purple-soft);font-size:9px}.tag--approval{color:#b85c00;background:rgba(212,160,23,.15)}
 
+/* ── SIDEBAR GROUPS ── */
+.sb-group{border-bottom:1px solid var(--gray-100);user-select:none}
+.sb-group__hdr{display:flex;align-items:center;gap:6px;padding:7px 12px;cursor:pointer;transition:background .15s}
+.sb-group__hdr:hover{background:var(--gray-50)}
+.sb-group__arrow{font-size:10px;color:var(--gray-400);transition:transform .2s;line-height:1;flex-shrink:0}
+.sb-group__arrow--open{transform:rotate(90deg)}
+.sb-group__label{font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--gray-400);letter-spacing:.08em;text-transform:uppercase;flex:1}
+.sb-group__badge{font-family:var(--mono);font-size:9px;color:var(--gray-400);background:var(--gray-100);border-radius:10px;padding:1px 5px}
+.sb-group__body{overflow:hidden}
+.sb-group__body--collapsed{display:none}
+.sb-sys-item{display:flex;align-items:center;gap:8px;padding:5px 16px}
+.sb-sys-name{font-size:11px;color:var(--navy-700);font-weight:500;flex:1;text-transform:capitalize}
+.sb-sys-state{font-family:var(--mono);font-size:9px;color:var(--gray-400)}
+.dot--grey{background:var(--gray-300)}
+
 /* ── MAIN ── */
 .main{flex:1;display:flex;flex-direction:column;height:100vh;min-width:0;background:var(--white);overflow-y:auto}
 .main__empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
@@ -1421,15 +1436,53 @@ function highlightPendingApprovals() {
   });
 }
 
+/* ═══ SIDEBAR GROUP HELPERS ═══ */
+function getSbGroupState(key, defaultOpen) {
+  const v = localStorage.getItem('sb_'+key);
+  return v === null ? defaultOpen : v === '1';
+}
+function setSbGroupState(key, open) { localStorage.setItem('sb_'+key, open ? '1' : '0'); }
+function toggleSbGroup(key) {
+  const open = getSbGroupState(key, true);
+  setSbGroupState(key, !open);
+  const body = document.getElementById('sb-body-'+key);
+  const arrow = document.getElementById('sb-arrow-'+key);
+  if (body) body.classList.toggle('sb-group__body--collapsed', open);
+  if (arrow) arrow.classList.toggle('sb-group__arrow--open', !open);
+}
+function buildSbGroup(key, label, badge, defaultOpen, bodyHTML) {
+  const open = getSbGroupState(key, defaultOpen);
+  return `<div class="sb-group"><div class="sb-group__hdr" onclick="toggleSbGroup('${key}')"><span id="sb-arrow-${key}" class="sb-group__arrow${open?' sb-group__arrow--open':''}">▶</span><span class="sb-group__label">${label}</span>${badge!==null?`<span class="sb-group__badge">${badge}</span>`:''}</div><div id="sb-body-${key}" class="sb-group__body${open?'':' sb-group__body--collapsed'}">${bodyHTML}</div></div>`;
+}
+function buildOpItem(c) {
+  const a=S.selected===c.id?' op-item--active':'', d=SD[c.status]||'dot--offline', tg=ST[c.status]||'tag--offline', lb=SL[c.status]||'Offline';
+  const avCls=c.isWorker?'op-avatar--worker':'op-avatar--operator';
+  const pend=S.approvals.filter(ap=>ap.workerId===c.id&&ap.status==='pending').length;
+  const ovOp=S.overview?.operators?.find(o=>o.id===c.id);
+  const runsToday=ovOp?.runs_today||0;
+  const lastRunRel=ovOp?.last_run?relativeTime(new Date(ovOp.last_run)):'';
+  const runCount=(S.runs[c.id]||[]).length;
+  return `<div class="op-item${a}" onclick="selectOperator('${c.id}')"><div class="op-avatar ${avCls}">${initials(c.name)}<div class="op-dot ${d}"></div></div><div class="op-body"><div class="op-name">${esc(c.name)}</div><div class="op-role">${esc(c.role)}</div><div class="op-meta"><span class="tag ${tg}">${lb}</span><span class="tag ${c.isWorker?'tag--worker':'tag--neutral'}">${c.isWorker?'Worker':'Operator'}</span>${pend?`<span class="tag tag--approval">⚠${pend}</span>`:''}${runsToday?`<span class="tag tag--neutral">${runsToday} today</span>`:''}${lastRunRel?`<span class="tag tag--neutral">${lastRunRel}</span>`:runCount?`<span class="tag tag--neutral">${runCount} runs</span>`:''}</div></div></div>`;
+}
+function buildConnItem(c) {
+  const a=S.selected===c.id?' op-item--active':'', d=SD[c.status]||'dot--offline', tg=ST[c.status]||'tag--offline', lb=SL[c.status]||'Offline';
+  const dim=c.status==='offline'?' style="opacity:0.5"':'';
+  return `<div class="op-item${a}"${dim} onclick="selectOperator('${c.id}')"><div class="op-avatar op-avatar--operator">${initials(c.name)}<div class="op-dot ${d}"></div></div><div class="op-body"><div class="op-name">${esc(c.name)}</div><div class="op-role">${esc(c.role)}</div><div class="op-meta"><span class="tag ${tg}">${lb}</span></div></div></div>`;
+}
+
 /* ═══ SIDEBAR ═══ */
 function renderSidebar() {
   const list=document.getElementById('op-list'); if(!list)return;
   const q=S.filter.toLowerCase();
   const operators=q?S.operators.filter(c=>c.name.toLowerCase().includes(q)||c.role.toLowerCase().includes(q)):S.operators;
   const beacon=operators.find(c=>c.isBeacon);
-  const allWorkers=operators.filter(c=>!c.isBeacon);
-  const workers=allWorkers.filter(c=>c.status!=='offline');
+  const CONNECTOR_IDS=new Set(['telegram','whatsapp','big-connector','google-accounts','email']);
+  const isConnector=c=>CONNECTOR_IDS.has(c.id)||['connector','channel'].includes(c.category);
+  const nonBeacon=operators.filter(c=>!c.isBeacon);
+  const coreOps=nonBeacon.filter(c=>!isConnector(c));
+  const connOps=nonBeacon.filter(c=>isConnector(c));
   let html='';
+  // Beacon pinned at top
   if (beacon) {
     const a=S.selected==='beacon'?' op-item--active':'';
     const d=SD[beacon.status]||'dot--offline';
@@ -1442,18 +1495,24 @@ function renderSidebar() {
       </div>
     </div>`;
   }
-  if (workers.length) html+=`<div class="sidebar__section">Operators</div>`;
-  workers.forEach(c=>{
-    const a=S.selected===c.id?' op-item--active':'', d=SD[c.status]||'dot--offline', tg=ST[c.status]||'tag--offline', lb=SL[c.status]||'Offline';
-    const avCls=c.isWorker?'op-avatar--worker':'op-avatar--operator';
-    const pend=S.approvals.filter(ap=>ap.workerId===c.id&&ap.status==='pending').length;
-    const runCount=(S.runs[c.id]||[]).length;
-    const ovOp=S.overview?.operators?.find(o=>o.id===c.id);
-    const runsToday=ovOp?.runs_today||0;
-    const lastRunRel=ovOp?.last_run?relativeTime(new Date(ovOp.last_run)):'';
-    html+=`<div class="op-item${a}" onclick="selectOperator('${c.id}')"><div class="op-avatar ${avCls}">${initials(c.name)}<div class="op-dot ${d}"></div></div><div class="op-body"><div class="op-name">${esc(c.name)}</div><div class="op-role">${esc(c.role)}</div><div class="op-meta"><span class="tag ${tg}">${lb}</span><span class="tag ${c.isWorker?'tag--worker':'tag--neutral'}">${c.isWorker?'Worker':'Operator'}</span>${pend?`<span class="tag tag--approval">⚠${pend}</span>`:''}${runsToday?`<span class="tag tag--neutral">${runsToday} today</span>`:''}${lastRunRel?`<span class="tag tag--neutral">${lastRunRel}</span>`:runCount?`<span class="tag tag--neutral">${runCount} runs</span>`:''}</div></div></div>`;
-  });
-  html+=`<div style="font-family:var(--mono);font-size:9px;color:var(--gray-400);padding:6px 12px 10px">${allWorkers.length} operators available — ${workers.length} online</div>`;
+  // OPERATORS group
+  const onlineCount=coreOps.filter(c=>c.status!=='offline').length;
+  const opsBody=coreOps.length?coreOps.map(buildOpItem).join(''):`<div style="padding:8px 16px;font-size:11px;color:var(--gray-400)">No operators</div>`;
+  html+=buildSbGroup('operators','Operators',`${onlineCount}/${coreOps.length}`,true,opsBody);
+  // CONNECTORS group
+  const connOnline=connOps.filter(c=>c.status!=='offline').length;
+  const connBody=connOps.length?connOps.map(buildConnItem).join(''):`<div style="padding:8px 16px;font-size:11px;color:var(--gray-400)">No connectors</div>`;
+  html+=buildSbGroup('connectors','Connectors',`${connOnline}/${connOps.length}`,false,connBody);
+  // SYSTEM group
+  const compStates=S.overview?.system?.component_states||{};
+  const sysEntries=Object.entries(compStates);
+  const sysBody=sysEntries.length
+    ?sysEntries.map(([name,state])=>{
+        const dot=state==='ready'?'dot--online':'dot--grey';
+        return `<div class="sb-sys-item"><span class="op-dot ${dot}" style="flex-shrink:0"></span><span class="sb-sys-name">${esc(name)}</span><span class="sb-sys-state">${esc(state)}</span></div>`;
+      }).join('')
+    :`<div style="padding:8px 16px;font-size:11px;color:var(--gray-400)">No data</div>`;
+  html+=buildSbGroup('system','System',null,false,sysBody);
   list.innerHTML=html;
 }
 
@@ -3523,9 +3582,6 @@ function renderOverviewPanel(panel) {
     `<div class="roi-tile"><div class="roi-tile__val ${t.cls}">${t.val}</div><div class="roi-tile__label">${t.label}</div></div>`
   ).join('');
 
-  // Use S.operators (from /api/prism/operators via refreshOperators) — richer data than overview response
-  const ops = S.operators.filter(o => !o.isBeacon);
-  const opsHTML = renderOperatorGroups(ops);
   const catSummaryText = categorySummary(ov.categories);
 
   const healthCls = {healthy:'shp--healthy',degraded:'shp--degraded',critical:'shp--critical'}[ov.system_health]||'shp--degraded';
@@ -3547,8 +3603,6 @@ function renderOverviewPanel(panel) {
     </div>
     <div class="surface">
       <div class="roi-bar">${roiHTML}</div>
-      <div style="font-family:var(--mono);font-size:9.5px;font-weight:500;color:var(--gray-400);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">Active Operators &amp; Connectors</div>
-      <div class="ov-ops">${opsHTML}</div>
       <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--gray-400)">Last updated: ${new Date(ov.generated_at).toLocaleTimeString()}</div>
     </div>`;
 }
