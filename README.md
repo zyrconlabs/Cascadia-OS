@@ -221,6 +221,19 @@ Tested in `tests/test_crash_recovery.py`. Not just claimed.
 
 ---
 
+## Tests
+
+965 tests passing, 0 failing.
+
+```bash
+cd cascadia-os
+pytest
+```
+
+Test coverage includes: crash recovery, durability layer, operator registry, approval gates, SENTINEL security, VAULT persistence, FLINT process supervision, BELL messaging, PRISM dashboard API, Workflow Designer backend, and connector framework.
+
+---
+
 ## PRISM Dashboard
 
 Open `http://localhost:6300/` while Cascadia is running.
