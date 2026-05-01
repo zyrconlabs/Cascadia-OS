@@ -1,0 +1,59 @@
+{
+  "id": "generic-alert",
+  "name": "Generic Alert",
+  "type": "operator",
+  "version": "1.0.0",
+  "description": "Universal IoT to Approval Center bridge. Converts sensor threshold violations into approval requests.",
+  "author": "Zyrcon Labs",
+  "price": 0,
+  "tier_required": "lite",
+  "port": 8304,
+  "entry_point": "server.py",
+  "dependencies": [],
+  "category": "iot",
+  "industries": ["all"],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "risk_level": "low",
+  "permissions": ["alert.create", "alert.resolve"],
+  "requires_approval_for": ["alert.resolve", "rule.configure", "rule.delete"],
+  "data_access": ["sensor_readings", "alert_history"],
+  "writes_external_systems": false,
+  "network_access": false,
+  "capabilities": ["alert.create", "alert.resolve", "rule.configure"],
+  "required_dependencies": [],
+  "requested_permissions": ["alert.create"],
+  "autonomy_level": "manual_only",
+  "health_hook": "/api/health",
+  "setup_fields": [
+    {
+      "name": "default_severity",
+      "label": "Default alert severity",
+      "type": "select",
+      "required": false,
+      "default": "warning",
+      "simple_mode": true,
+      "help_text": "Default severity for new alert rules",
+      "options": ["info", "warning", "critical"]
+    },
+    {
+      "name": "critical_requires_approval",
+      "label": "Critical alerts always require approval",
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "simple_mode": true,
+      "help_text": "Critical severity alerts always go to Approval Center",
+      "requires_approval_if_enabled": ["alert.critical"]
+    },
+    {
+      "name": "auto_resolve_info",
+      "label": "Auto-resolve info-level alerts",
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "simple_mode": true,
+      "help_text": "Info alerts resolve automatically without approval"
+    }
+  ]
+}
