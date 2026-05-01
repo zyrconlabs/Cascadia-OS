@@ -89,3 +89,4 @@ ai-tasks/
 claude_*.tmp
 scripts/record_demo.sh
 *.p8
+cascadia/operators/generic_alert/alerts.db
