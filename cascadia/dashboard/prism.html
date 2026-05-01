@@ -3468,18 +3468,16 @@ function categorySummary(categories) {
 }
 function renderOperatorGroups(ops) {
   if (!ops.length) return `<div style="font-size:12px;color:var(--gray-400);padding:16px 0">No autostart operators configured — add operators to registry.json</div>`;
-  const grouped = {};
-  for (const cat of CATEGORY_ORDER) grouped[cat] = [];
-  for (const op of ops) {
-    const cat = op.category && CATEGORY_ORDER.includes(op.category) ? op.category : 'operator';
-    grouped[cat].push(op);
-  }
-  return CATEGORY_ORDER.filter(cat => grouped[cat].length).map(cat => {
-    const cfg = CATEGORY_CONFIG[cat];
-    const open = getCategoryState(cat);
-    const count = grouped[cat].length;
-    const healthy = grouped[cat].filter(o => o.status === 'online').length;
-    const opCards = grouped[cat].map(op => {
+  const CONN_CATS = ['connector', 'channel'];
+  const groups = [
+    { key: 'operators',  label: 'OPERATORS',  items: ops.filter(o => !CONN_CATS.includes(o.category)) },
+    { key: 'connectors', label: 'CONNECTORS', items: ops.filter(o =>  CONN_CATS.includes(o.category)) },
+  ].filter(g => g.items.length);
+  return groups.map(g => {
+    const open = getCategoryState(g.key);
+    const count = g.items.length;
+    const healthy = g.items.filter(o => o.status === 'online').length;
+    const opCards = g.items.map(op => {
       const online = op.status === 'online';
       const dotCls = online ? 'ov-op__dot--online' : 'ov-op__dot--offline';
       const ini = (op.name||'').slice(0,2).toUpperCase();
@@ -3495,12 +3493,12 @@ function renderOperatorGroups(ops) {
       </div>`;
     }).join('');
     return `<div class="ov-cat">
-      <div class="ov-cat__header" onclick="toggleCategory('${cat}')">
-        <span id="ov-cat-arrow-${cat}" class="ov-cat__arrow${open?' ov-cat__arrow--open':''}">&#9658;</span>
-        <span class="ov-cat__label">${cfg.label}</span>
+      <div class="ov-cat__header" onclick="toggleCategory('${g.key}')">
+        <span id="ov-cat-arrow-${g.key}" class="ov-cat__arrow${open?' ov-cat__arrow--open':''}">&#9658;</span>
+        <span class="ov-cat__label">${g.label}</span>
         <span class="ov-cat__count">${healthy}/${count}</span>
       </div>
-      <div id="ov-cat-body-${cat}" class="ov-cat__body${open?'':' ov-cat__body--collapsed'}">${opCards}</div>
+      <div id="ov-cat-body-${g.key}" class="ov-cat__body${open?'':' ov-cat__body--collapsed'}">${opCards}</div>
     </div>`;
   }).join('');
 }
@@ -3546,7 +3544,7 @@ function renderOverviewPanel(panel) {
     </div>
     <div class="surface">
       <div class="roi-bar">${roiHTML}</div>
-      <div style="font-family:var(--mono);font-size:9.5px;font-weight:500;color:var(--gray-400);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">Active Operators</div>
+      <div style="font-family:var(--mono);font-size:9.5px;font-weight:500;color:var(--gray-400);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">Active Operators &amp; Connectors</div>
       <div class="ov-ops">${opsHTML}</div>
       <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--gray-400)">Last updated: ${new Date(ov.generated_at).toLocaleTimeString()}</div>
     </div>`;
