@@ -3468,21 +3468,23 @@ function categorySummary(categories) {
 }
 function renderOperatorGroups(ops) {
   if (!ops.length) return `<div style="font-size:12px;color:var(--gray-400);padding:16px 0">No autostart operators configured — add operators to registry.json</div>`;
-  const CONN_CATS = ['connector', 'channel'];
+  const CONNECTOR_IDS = new Set(['telegram','whatsapp','big-connector','google-accounts']);
+  const isConnector = o => CONNECTOR_IDS.has(o.id) || ['connector','channel'].includes(o.category);
+  const isOnline = o => o.status !== 'offline';
   const groups = [
-    { key: 'operators',  label: 'OPERATORS',  items: ops.filter(o => !CONN_CATS.includes(o.category)) },
-    { key: 'connectors', label: 'CONNECTORS', items: ops.filter(o =>  CONN_CATS.includes(o.category)) },
+    { key: 'operators',  label: 'OPERATORS',  items: ops.filter(o => !isConnector(o)) },
+    { key: 'connectors', label: 'CONNECTORS', items: ops.filter(o =>  isConnector(o)) },
   ].filter(g => g.items.length);
   return groups.map(g => {
     const open = getCategoryState(g.key);
     const count = g.items.length;
-    const healthy = g.items.filter(o => o.status === 'online').length;
+    const healthy = g.items.filter(isOnline).length;
     const opCards = g.items.map(op => {
-      const online = op.status === 'online';
+      const online = isOnline(op);
       const dotCls = online ? 'ov-op__dot--online' : 'ov-op__dot--offline';
       const ini = (op.name||'').slice(0,2).toUpperCase();
       const lastRel = op.last_run ? relativeTime(new Date(op.last_run)) : '';
-      return `<div class="ov-op">
+      return `<div class="ov-op"${online ? '' : ' style="opacity:0.45"'}>
         <div class="ov-op__dot ${dotCls}"></div>
         <div style="width:28px;height:28px;border-radius:7px;background:${online?'linear-gradient(135deg,var(--prism-a),var(--prism-b))':'var(--gray-200)'};color:${online?'#fff':'var(--gray-400)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${ini}</div>
         <div class="ov-op__name">${esc(op.name)}</div>
@@ -3521,7 +3523,8 @@ function renderOverviewPanel(panel) {
     `<div class="roi-tile"><div class="roi-tile__val ${t.cls}">${t.val}</div><div class="roi-tile__label">${t.label}</div></div>`
   ).join('');
 
-  const ops = ov.operators || [];
+  // Use S.operators (from /api/prism/operators via refreshOperators) — richer data than overview response
+  const ops = S.operators.filter(o => !o.isBeacon);
   const opsHTML = renderOperatorGroups(ops);
   const catSummaryText = categorySummary(ov.categories);
 
