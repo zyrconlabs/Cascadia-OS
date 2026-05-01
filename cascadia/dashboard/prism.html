@@ -722,7 +722,7 @@ input[type="file"]{display:none}
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__header">
-      <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v0.44</div></div>
+      <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v0.48</div></div>
       <div id="conn-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gray-300);flex-shrink:0" title="Gateway status"></div>
       <div id="sys-health-pill" class="sys-health-pill" style="display:none"></div>
     </div>
@@ -1231,7 +1231,7 @@ async function handleCommand(id, cmd) {
       return `<div class="status-card" style="animation-delay:${i*.04}s"><div class="sc-dot ${dc}"></div><div class="sc-info"><div class="sc-name">${name.toUpperCase()}</div><div class="sc-task">${state}</div></div><div class="sc-pct">${ok?'●':state==='starting'?'◑':'◯'}</div></div>`;
     }).join('');
     S.messages[id].push({time:t,type:'agent',html:`
-      <div class="msg-text" style="margin-bottom:10px">Cascadia OS v0.44 — System Overview</div>
+      <div class="msg-text" style="margin-bottom:10px">Cascadia OS v0.48 — System Overview</div>
       <div style="display:grid;grid-template-columns:repeat(${hw.available?'5':'4'},1fr);gap:6px;margin-bottom:10px">
         <div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:8px;padding:9px 11px">
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--navy-800)">${healthy}</div>
@@ -1427,7 +1427,8 @@ function renderSidebar() {
   const q=S.filter.toLowerCase();
   const operators=q?S.operators.filter(c=>c.name.toLowerCase().includes(q)||c.role.toLowerCase().includes(q)):S.operators;
   const beacon=operators.find(c=>c.isBeacon);
-  const workers=operators.filter(c=>!c.isBeacon);
+  const allWorkers=operators.filter(c=>!c.isBeacon);
+  const workers=allWorkers.filter(c=>c.status!=='offline');
   let html='';
   if (beacon) {
     const a=S.selected==='beacon'?' op-item--active':'';
@@ -1452,6 +1453,7 @@ function renderSidebar() {
     const lastRunRel=ovOp?.last_run?relativeTime(new Date(ovOp.last_run)):'';
     html+=`<div class="op-item${a}" onclick="selectOperator('${c.id}')"><div class="op-avatar ${avCls}">${initials(c.name)}<div class="op-dot ${d}"></div></div><div class="op-body"><div class="op-name">${esc(c.name)}</div><div class="op-role">${esc(c.role)}</div><div class="op-meta"><span class="tag ${tg}">${lb}</span><span class="tag ${c.isWorker?'tag--worker':'tag--neutral'}">${c.isWorker?'Worker':'Operator'}</span>${pend?`<span class="tag tag--approval">⚠${pend}</span>`:''}${runsToday?`<span class="tag tag--neutral">${runsToday} today</span>`:''}${lastRunRel?`<span class="tag tag--neutral">${lastRunRel}</span>`:runCount?`<span class="tag tag--neutral">${runCount} runs</span>`:''}</div></div></div>`;
   });
+  html+=`<div style="font-family:var(--mono);font-size:9px;color:var(--gray-400);padding:6px 12px 10px">${allWorkers.length} operators available — ${workers.length} online</div>`;
   list.innerHTML=html;
 }
 
@@ -2627,9 +2629,10 @@ function switchToRuns(id) { S.selected=id; S.surface='runs'; switchSurface('runs
 async function selectOperator(id) {
   stopThoughtPolling(S.selected);
   S.selected=id; S.cmdMenuOpen[id]=false; S.modelDDOpen=false; delete S.activity[id];
+  if (S.surface!=='ops') switchSurface('ops');
   if (!S.messages[id]||!S.messages[id].length) { const v=await Vault.loadMessages(id); if(v)S.messages[id]=v; else S.messages[id]=[]; }
   renderSidebar();
-  if (S.surface!=='ops') switchSurface('ops'); else renderMain();
+  renderMain();
   if (isWorker(id)) startThoughtPolling(id);
 }
 function filterOperators(q) { S.filter=q; renderSidebar(); }
@@ -4639,7 +4642,7 @@ function _gspRemoveTag(key, idx) {
 <!-- ALMANAC OVERLAY -->
 <div class="welcome-backdrop" id="welcome-backdrop">
   <div class="welcome-card">
-    <div class="welcome-logo">CASCADIA OS · v0.44</div>
+    <div class="welcome-logo">CASCADIA OS · v0.48</div>
     <div class="welcome-title">Welcome to PRISM</div>
     <div class="welcome-sub">Your command center for the Cascadia OS operator platform. Here's what you're looking at:</div>
     <div class="welcome-grid">
