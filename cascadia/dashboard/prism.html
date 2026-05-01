@@ -2460,7 +2460,7 @@ async function refreshOpCards() {
       : '<span class="op-badge op-badge--offline">offline</span>';
     const href = online && op.ui_url ? op.ui_url : '#';
     const target = online && op.ui_url ? ' target="_blank"' : '';
-    return `<a class="op-card" href="${href}"${target}>
+    return `<a class="op-card" data-op-id="${op.id}" href="${href}"${target}>
       <div class="op-icon ${catCls}">${icon}</div>
       <div class="op-body">
         <div class="op-name">${op.name}</div>
@@ -4197,12 +4197,11 @@ async function refreshOpCards() {
   // Re-render with control bars: wrap each op-card in a div and append bar
   const cards = Array.from(container.querySelectorAll('a.op-card'));
   cards.forEach(card => {
-    const opId = card.href ? card.pathname : '';
     // Get name from op-name inside card
     const nameEl = card.querySelector('.op-name');
     const opName = nameEl ? nameEl.textContent.trim() : 'Operator';
-    // Find op id from the card's data or use name
-    const d = card.getAttribute('data-op-id') || opName.toLowerCase();
+    // Read op ID from data-op-id attribute (set during card render); fall back to lowercased name
+    const d = card.dataset.opId || card.getAttribute('data-op-id') || opName.toLowerCase();
     const wrapper = document.createElement('div');
     wrapper.className = 'op-card-wrap';
     card.parentNode.insertBefore(wrapper, card);
@@ -4527,27 +4526,68 @@ function _gspSave() {
 }
 
 async function _gspConfirmSave() {
-  // Only save after confirm
+  // Only fires after user clicks [Confirm Changes] in the preview — never auto-confirmed
+  const secretFields = _gspState.fields.filter(f => f.type === 'secret' || f.secret === true).map(f => f.key);
+  const changes = {};
+  Object.keys(_gspState.values).forEach(k => {
+    if (JSON.stringify(_gspState.values[k]) !== JSON.stringify(_gspState.original[k])) {
+      changes[k] = _gspState.values[k];
+    }
+  });
+
+  // Secret fields must not be written directly — reject and instruct user
+  const secretChanges = secretFields.filter(k => k in changes);
+  if (secretChanges.length > 0) {
+    const body = document.getElementById('gsp-body');
+    if (body) {
+      const note = document.createElement('div');
+      note.style.cssText = 'background:rgba(239,68,68,.10);color:#dc2626;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;font-weight:500';
+      note.textContent = 'Secret fields cannot be saved here — use /api/vault/set for secrets: ' + secretChanges.join(', ');
+      body.insertBefore(note, body.firstChild);
+      setTimeout(() => note.remove(), 4000);
+    }
+    return;
+  }
+
+  const targetType = 'operator';
+  const targetId = _gspState.opId;
+  let ok = false;
+  let errorMsg = '';
   try {
-    const r = await fetch(PRISM_URL + `/api/prism/operator/${_gspState.opId}/settings`, {
+    const r = await fetch(PRISM_URL + `/api/config/${targetType}/${targetId}/save`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({settings: _gspState.values}),
+      body: JSON.stringify({changes, confirmed: true, source: 'configuration_button'}),
       signal: AbortSignal.timeout(4000),
     });
-    if (r.ok) {
+    const data = await r.json().catch(() => ({}));
+    if (r.ok && data.ok !== false) {
+      ok = true;
       _gspState.original = {..._gspState.values};
       _gspState.dirty = false;
       _gspState.showPreview = false;
+    } else {
+      errorMsg = data.error || ('Server error ' + r.status);
     }
-  } catch(_) {}
-  // Show saved confirmation
+  } catch(err) {
+    errorMsg = err && err.message ? err.message : 'Network error — please try again';
+  }
+
   const body = document.getElementById('gsp-body');
-  if (body) {
+  if (!body) return;
+  if (ok) {
+    // Show inline confirmation then dismiss panel after 1500ms
     const note = document.createElement('div');
     note.style.cssText = 'background:rgba(52,211,153,.12);color:#059669;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;font-weight:500';
     note.textContent = 'Settings saved ✓';
     body.insertBefore(note, body.firstChild);
-    setTimeout(() => { note.remove(); _gspState.showPreview = false; _gspRender(); }, 2000);
+    setTimeout(() => { _gspClose(); }, 1500);
+  } else {
+    // Show error and keep panel open for retry
+    const note = document.createElement('div');
+    note.style.cssText = 'background:rgba(239,68,68,.10);color:#dc2626;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;font-weight:500';
+    note.textContent = errorMsg;
+    body.insertBefore(note, body.firstChild);
+    setTimeout(() => note.remove(), 5000);
   }
 }
 
