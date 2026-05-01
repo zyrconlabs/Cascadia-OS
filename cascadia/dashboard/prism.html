@@ -2482,6 +2482,20 @@ async function refreshOpCards() {
       <div class="op-dot ${dotCls}"></div>
     </a>`;
   }).join('');
+  const enabled = await _checkGuidedConfigFlag();
+  if (!enabled) return;
+  Array.from(container.querySelectorAll('a.op-card')).forEach(card => {
+    const nameEl = card.querySelector('.op-name');
+    const opName = nameEl ? nameEl.textContent.trim() : 'Operator';
+    const opId = card.dataset.opId || card.getAttribute('data-op-id') || opName.toLowerCase();
+    const wrap = document.createElement('div');
+    wrap.className = 'op-card-wrap';
+    card.parentNode.insertBefore(wrap, card);
+    wrap.appendChild(card);
+    const barDiv = document.createElement('div');
+    barDiv.innerHTML = _opCtrlBar(opId, opName);
+    if (barDiv.firstChild) wrap.appendChild(barDiv.firstChild);
+  });
 }
 
 function startLivePoll() {
@@ -4195,33 +4209,6 @@ async function gcfgShowActivity(opId, opName, e, fullLogs) {
     body: `<div style="max-height:300px;overflow-y:auto">${rows}</div>`,
     actions: [],
     showCancel: true,
-  });
-}
-
-/* ── Phase 1+2: Patch refreshOpCards to inject control bars ── */
-const _origRefreshOpCards = refreshOpCards;
-async function refreshOpCards() {
-  await _origRefreshOpCards();
-  // Check flag async and conditionally inject control bars
-  const enabled = await _checkGuidedConfigFlag();
-  if (!enabled) return;
-  const container = document.getElementById('op-cards-list');
-  if (!container) return;
-  // Re-render with control bars: wrap each op-card in a div and append bar
-  const cards = Array.from(container.querySelectorAll('a.op-card'));
-  cards.forEach(card => {
-    // Get name from op-name inside card
-    const nameEl = card.querySelector('.op-name');
-    const opName = nameEl ? nameEl.textContent.trim() : 'Operator';
-    // Read op ID from data-op-id attribute (set during card render); fall back to lowercased name
-    const d = card.dataset.opId || card.getAttribute('data-op-id') || opName.toLowerCase();
-    const wrapper = document.createElement('div');
-    wrapper.className = 'op-card-wrap';
-    card.parentNode.insertBefore(wrapper, card);
-    wrapper.appendChild(card);
-    const barDiv = document.createElement('div');
-    barDiv.innerHTML = _opCtrlBar(d, opName);
-    if (barDiv.firstChild) wrapper.appendChild(barDiv.firstChild);
   });
 }
 
