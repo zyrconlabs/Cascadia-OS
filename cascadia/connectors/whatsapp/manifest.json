@@ -37,5 +37,36 @@
     "phone_numbers"
   ],
   "writes_external_systems": true,
-  "network_access": true
+  "network_access": true,
+  "setup_fields": [
+    {
+      "name": "api_key",
+      "label": "WhatsApp Business API Key",
+      "type": "secret",
+      "required": true,
+      "secret": true,
+      "vault_key": "whatsapp:api_key",
+      "simple_mode": true,
+      "help_text": "From Meta Business Developer portal"
+    },
+    {
+      "name": "phone_number_id",
+      "label": "Phone Number ID",
+      "type": "string",
+      "required": true,
+      "default": null,
+      "simple_mode": true,
+      "help_text": "WhatsApp phone number ID from Meta"
+    },
+    {
+      "name": "approval_before_send",
+      "label": "Require approval before sending messages",
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "simple_mode": true,
+      "help_text": "Always approve before operators send WhatsApp",
+      "requires_approval_if_enabled": ["whatsapp.send"]
+    }
+  ]
 }

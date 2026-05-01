@@ -38,5 +38,36 @@
     "channel_members"
   ],
   "writes_external_systems": true,
-  "network_access": true
+  "network_access": true,
+  "setup_fields": [
+    {
+      "name": "bot_token",
+      "label": "Slack Bot Token",
+      "type": "secret",
+      "required": true,
+      "secret": true,
+      "vault_key": "slack:bot_token",
+      "simple_mode": true,
+      "help_text": "From your Slack app settings"
+    },
+    {
+      "name": "default_channel",
+      "label": "Default Notification Channel",
+      "type": "string",
+      "required": false,
+      "default": "#general",
+      "simple_mode": true,
+      "placeholder": "#zyrcon-alerts",
+      "help_text": "Channel for operator notifications"
+    },
+    {
+      "name": "approval_notifications",
+      "label": "Send approval requests to Slack",
+      "type": "boolean",
+      "required": false,
+      "default": false,
+      "simple_mode": true,
+      "help_text": "Receive approval requests in Slack"
+    }
+  ]
 }

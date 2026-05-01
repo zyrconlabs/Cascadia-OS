@@ -37,5 +37,35 @@
     "contacts"
   ],
   "writes_external_systems": true,
-  "network_access": true
+  "network_access": true,
+  "setup_fields": [
+    {
+      "name": "bot_token",
+      "label": "Telegram Bot Token",
+      "type": "secret",
+      "required": true,
+      "secret": true,
+      "vault_key": "telegram:bot_token",
+      "simple_mode": true,
+      "help_text": "Get from @BotFather on Telegram"
+    },
+    {
+      "name": "owner_chat_id",
+      "label": "Your Telegram Chat ID",
+      "type": "string",
+      "required": false,
+      "default": null,
+      "simple_mode": true,
+      "help_text": "Your personal chat ID for approval alerts"
+    },
+    {
+      "name": "approval_notifications",
+      "label": "Send approval requests via Telegram",
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "simple_mode": true,
+      "help_text": "Receive approval requests in Telegram"
+    }
+  ]
 }
