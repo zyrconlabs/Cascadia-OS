@@ -739,7 +739,6 @@ input[type="file"]{display:none}
     <div class="sidebar__header">
       <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v0.48</div></div>
       <div id="conn-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gray-300);flex-shrink:0" title="Gateway status"></div>
-      <div id="sys-health-pill" class="sys-health-pill" style="display:none"></div>
     </div>
     <div class="sidebar__search"><input type="text" placeholder="Search operators…" oninput="filterOperators(this.value)"></div>
     <div class="sidebar__list" id="op-list"></div>
@@ -3584,19 +3583,16 @@ function renderOverviewPanel(panel) {
 
   const catSummaryText = categorySummary(ov.categories);
 
-  const healthCls = {healthy:'shp--healthy',degraded:'shp--degraded',critical:'shp--critical'}[ov.system_health]||'shp--degraded';
-  const healthLabel = ov.system_health ? ov.system_health.charAt(0).toUpperCase()+ov.system_health.slice(1) : '—';
-  const healthClick = ov.system_health === 'critical'
-    ? `onclick="switchSurface('approvals');requestAnimationFrame(highlightPendingApprovals)" title="Click to view pending approvals"`
-    : ov.system_health === 'degraded'
-      ? `onclick="switchSurface('health')" title="Click to view health &amp; observability"`
-      : '';
+  const attnCount = (ov.attention_required?.pending_approvals || 0) + (ov.attention_required?.blocked_runs || 0);
+  const attnBadge = attnCount > 0
+    ? `<span class="sys-health-pill shp--degraded sys-health-pill--clickable" onclick="switchSurface('approvals');requestAnimationFrame(highlightPendingApprovals)" title="Click to view pending approvals">Attention · ${attnCount}</span>`
+    : '';
 
   panel.innerHTML = `
     <div class="topbar">
       <div class="topbar__left"><div style="font-size:15px;font-weight:700;color:var(--navy-800)">Overview</div></div>
       <div class="topbar__right">
-        <span class="sys-health-pill ${healthCls}${healthClick?' sys-health-pill--clickable':''}" ${healthClick}>${healthLabel}</span>
+        ${attnBadge}
         ${catSummaryText ? `<span style="font-family:var(--mono);font-size:9.5px;color:var(--gray-400)">${catSummaryText}</span>` : ''}
         <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">auto-refresh 60s</span>
       </div>
@@ -3618,7 +3614,6 @@ async function loadOverview() {
       if (!coreDown) d.system_health = 'healthy';
     }
     S.overview = d;
-    updateHealthIndicator(d.system_health);
     if (S.surface === 'ops' && !S.selected) renderMain();
     renderSidebar();
   }
