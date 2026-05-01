@@ -134,6 +134,19 @@ for i in $(seq 1 45); do
 done
 ok "Cascadia restarted — PRISM cache cleared"
 
+info "Waiting for BELL on :${BELL_PORT}..."
+for i in $(seq 1 30); do
+  BELL_STATE=$(curl -sf --max-time 2 "http://127.0.0.1:${BELL_PORT}/health" 2>/dev/null \
+    | python3 -c "import json,sys; print(json.load(sys.stdin).get('state',''))" 2>/dev/null || echo '')
+  if [[ "$BELL_STATE" == "ready" ]]; then break; fi
+  sleep 1
+done
+if [[ "$BELL_STATE" != "ready" ]]; then
+  echo "  ✗ BELL did not reach state=ready in time. Check data/logs/flint.log"
+  exit 1
+fi
+ok "BELL healthy on :${BELL_PORT}"
+
 # ── Step 2: Submit lead via BELL ──────────────────────────────────────────────
 step "2/6  Inbound lead arrives via BELL"
 info "A warehouse operator contacts Zyrcon Labs..."
