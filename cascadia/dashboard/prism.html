@@ -705,7 +705,7 @@ input[type="file"]{display:none}
   <nav class="nav-rail" id="nav-rail">
     <div class="nav-logo"><span class="nav-logo-text">PRISM</span><div class="nav-logo-bar"></div></div>
     <button class="nav-btn nav-btn--active" onclick="switchSurface('ops')" id="nav-ops"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="nav-tooltip">Ops</span></button>
-    <button class="nav-btn" onclick="switchSurface('runs')" id="nav-runs"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg><span class="nav-tooltip">Runs</span></button>
+    <button class="nav-btn" onclick="switchSurface('runs')" id="nav-runs"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg><span class="nav-tooltip">Missions</span></button>
     <button class="nav-btn" onclick="switchSurface('approvals')" id="nav-approvals"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-tooltip">Approvals</span></button>
     <button class="nav-btn" onclick="switchSurface('scorecard')" id="nav-scorecard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span class="nav-tooltip">Scorecard</span></button>
     <div class="nav-divider"></div>
@@ -1050,9 +1050,9 @@ function createRun(workerId, task) {
     status:'running', startedAt:Date.now(), endedAt:null,
     tokensIn:0, tokensOut:0, cost:0, tools:[], retries:0,
     events:[
-      {type:'run.created', label:'Run created', ts:Date.now(), icon:'🚀'},
+      {type:'run.created', label:'Mission created', ts:Date.now(), icon:'🚀'},
       {type:'run.queued', label:'Queued for dispatch', ts:Date.now()+50, icon:'⏳'},
-      {type:'run.started', label:'Worker started', ts:Date.now()+700, icon:'▶'},
+      {type:'run.started', label:'Mission started', ts:Date.now()+700, icon:'▶'},
     ],
   };
   Vault.saveRun(run);
@@ -1063,7 +1063,7 @@ function createRun(workerId, task) {
     run.status='completed'; run.endedAt=Date.now();
     run.tokensIn=Math.floor(Math.random()*800)+200; run.tokensOut=Math.floor(Math.random()*400)+100;
     run.cost=+((run.tokensIn+run.tokensOut)*0.0000015).toFixed(6);
-    run.events.push({type:'run.completed',label:'Run completed',ts:Date.now(),icon:'✅'});
+    run.events.push({type:'run.completed',label:'Mission completed',ts:Date.now(),icon:'✅'});
     Vault.saveRun(run);
     if (S.surface==='runs') renderRunsSurface();
     if (S.surface==='obs'||S.surface==='health') renderHealthSurface();
@@ -1186,8 +1186,8 @@ async function handleCommand(id, cmd) {
       clearAct(id);
       const summary = vaultRuns.length
         ? vaultRuns.slice(0,5).map((r,i)=>`${i+1}. ${r.task} · ${new Date(r.startedAt).toLocaleTimeString()} · ${r.status} · $${r.cost||'0.000000'}`).join('\n')
-        : 'No runs yet. Interact with this worker to generate run history.';
-      S.messages[id].push({time:t,type:'agent',text:`Recent runs (session):\n${summary}\n\n→ Full history: Runs surface`});
+        : 'No missions yet. Interact with this worker to generate mission history.';
+      S.messages[id].push({time:t,type:'agent',text:`Recent missions (session):\n${summary}\n\n→ Full history: Missions surface`});
       await Vault.saveMessages(id,S.messages[id]);
       renderMain(); scrollChat(); return;
     }
@@ -1205,7 +1205,7 @@ async function handleCommand(id, cmd) {
         clearAct(id);
         const runs=S.runs[id]||[];
         const cost=runs.reduce((s,r)=>s+parseFloat(r.cost||0),0);
-        S.messages[id].push({time:t,type:'agent',text:`${c.name} — Detailed Status\n\n• Status: ${SL[c.status]||'Offline'}\n• Completion: ${c.completion}%\n• Tasks: ${c.done}/${c.total}\n• Hours: ${c.hours}h\n• Model: ${c.model}\n• Runs (session): ${runs.length}\n• Session cost: $${cost.toFixed(6)}\n• Last action: ${c.lastAction||'—'}`});
+        S.messages[id].push({time:t,type:'agent',text:`${c.name} — Detailed Status\n\n• Status: ${SL[c.status]||'Offline'}\n• Completion: ${c.completion}%\n• Tasks: ${c.done}/${c.total}\n• Hours: ${c.hours}h\n• Model: ${c.model}\n• Missions (session): ${runs.length}\n• Session cost: $${cost.toFixed(6)}\n• Last action: ${c.lastAction||'—'}`});
         await Vault.saveMessages(id,S.messages[id]);
         renderMain(); scrollChat();
       },350); return;
@@ -1239,7 +1239,7 @@ async function handleCommand(id, cmd) {
         </div>
         <div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:8px;padding:9px 11px">
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--navy-800)">${runCount}</div>
-          <div style="font-size:9.5px;color:var(--gray-500);margin-top:2px">Total runs</div>
+          <div style="font-size:9.5px;color:var(--gray-500);margin-top:2px">Total missions</div>
         </div>
         <div style="background:${pendingCount?'var(--yellow-soft)':'var(--gray-50)'};border:1px solid ${pendingCount?'rgba(212,175,55,.3)':'var(--gray-150)'};border-radius:8px;padding:9px 11px">
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${pendingCount?'var(--yellow)':'var(--navy-800)'}">${pendingCount}</div>
@@ -1516,7 +1516,7 @@ function renderMain() {
       <div class="topbar__right">
         ${c.isWorker?`<button class="hbtn${wpOpen?' hbtn--active':''}" onclick="toggleWorkerPanel('${c.id}')"><svg viewBox="0 0 24 24"><path d="M1 6l4.5 4.5M1 18l4.5-4.5M8.5 12H23M17 6l4 4.5-4 5" stroke-linecap="round" stroke-linejoin="round"/></svg>Status</button>`:''}
         ${c.hasPanel&&c.port&&c.status==='active'?`<a class="hbtn hbtn--popout" href="http://localhost:${c.port}${c.uiPath||'/'}" target="_blank" style="text-decoration:none">Panel :${c.port} ↗</a>`:''}
-        ${c.isWorker?`<button class="hbtn" onclick="switchToRuns('${c.id}')">Runs →</button>`:''}
+        ${c.isWorker?`<button class="hbtn" onclick="switchToRuns('${c.id}')">Missions →</button>`:''}
       </div>
     </div>
     ${c.isWorker?`<div class="worker-panel${wpOpen?' worker-panel--open':''}" id="worker-panel-${c.id}"><div class="worker-panel__inner" id="wp-inner-${c.id}"><div style="font-family:var(--mono);font-size:11px;color:var(--gray-400)">Loading…</div></div></div>`:''}
@@ -1558,7 +1558,7 @@ function renderRunsSurface() {
   const runs=getFilteredRuns();
   panel.innerHTML=`
     <div class="topbar">
-      <div class="topbar__left"><div style="font-size:15px;font-weight:700;color:var(--navy-800)">Run Timeline</div></div>
+      <div class="topbar__left"><div style="font-size:15px;font-weight:700;color:var(--navy-800)">Mission Timeline</div></div>
       <div class="topbar__right">
         <span id="runs-live-badge" style="font-family:var(--mono);font-size:10px;color:var(--gray-400)"></span>
         <button class="hbtn" onclick="exportRuns()">↓ Export JSON</button>
@@ -1577,10 +1577,10 @@ function renderRunsSurface() {
           ${S.operators.filter(c=>c.isWorker).map(c=>`<option value="${c.id}"${S.runsFilterWorker===c.id?' selected':''}>${c.name}</option>`).join('')}
         </select>
         <span class="spacer"></span>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">${runs.length} runs</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">${runs.length} missions</span>
       </div>
       <div id="live-runs-section"></div>
-      ${runs.length===0&&(!S.liveRuns||S.liveRuns.length===0)?`<div class="runs-empty">No runs yet. Submit a lead through BELL or SCOUT to start a workflow.</div>`:''}
+      ${runs.length===0&&(!S.liveRuns||S.liveRuns.length===0)?`<div class="runs-empty">No missions yet. Submit a lead through BELL or SCOUT to start a mission.</div>`:''}
       ${runs.map(run=>renderRunRow(run)).join('')}
     </div>`;
   // Inject live runs section after innerHTML set
@@ -1675,8 +1675,8 @@ function renderObsSurface() {
         ${workerStats.length?workerStats.map(w=>`<div class="bar-row"><div class="bar-label">${esc(w.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${(w.cost/maxCost*100).toFixed(1)}%"></div></div><div class="bar-val">$${w.cost.toFixed(4)}</div></div>`).join(''):`<div style="font-size:12px;color:var(--gray-400);padding:8px 0">No cost data — interact with workers to generate runs</div>`}
       </div>
       <div class="obs-chart">
-        <div class="obs-chart__title">Runs by worker (session · real data)</div>
-        ${workerStats.length?workerStats.map(w=>{const maxR=Math.max(...workerStats.map(x=>x.runs),1);return`<div class="bar-row"><div class="bar-label">${esc(w.name)}</div><div class="bar-track"><div class="bar-fill bar-fill--green" style="width:${(w.runs/maxR*100).toFixed(1)}%"></div></div><div class="bar-val">${w.runs} runs</div></div>`;}).join(''):`<div style="font-size:12px;color:var(--gray-400);padding:8px 0">No runs yet</div>`}
+        <div class="obs-chart__title">Missions by worker (session · real data)</div>
+        ${workerStats.length?workerStats.map(w=>{const maxR=Math.max(...workerStats.map(x=>x.runs),1);return`<div class="bar-row"><div class="bar-label">${esc(w.name)}</div><div class="bar-track"><div class="bar-fill bar-fill--green" style="width:${(w.runs/maxR*100).toFixed(1)}%"></div></div><div class="bar-val">${w.runs} missions</div></div>`;}).join(''):`<div style="font-size:12px;color:var(--gray-400);padding:8px 0">No missions yet</div>`}
       </div>
       <div class="obs-chart">
         <div class="obs-chart__title">Gateway metrics (requires connection)</div>
@@ -1961,7 +1961,7 @@ async function renderScorecardSurface() {
     {key:'emails_sent',         label:'Emails Sent',          icon:'✉'},
     {key:'approvals_completed', label:'Approvals Completed',  icon:'✓'},
     {key:'approvals_rejected',  label:'Approvals Rejected',   icon:'✗'},
-    {key:'operator_runs',       label:'Operator Runs',        icon:'⚡'},
+    {key:'operator_runs',       label:'Operator Missions',    icon:'⚡'},
     {key:'hours_saved',         label:'Hours Saved',          icon:'⏱', decimal:true},
   ];
   function pct(cur, last) {
@@ -2005,7 +2005,7 @@ async function renderScorecardSurface() {
               <th style="text-align:right;padding:6px 8px;color:var(--gray-400);font-weight:600">Leads</th>
               <th style="text-align:right;padding:6px 8px;color:var(--gray-400);font-weight:600">Proposals</th>
               <th style="text-align:right;padding:6px 8px;color:var(--gray-400);font-weight:600">Emails</th>
-              <th style="text-align:right;padding:6px 8px;color:var(--gray-400);font-weight:600">Runs</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--gray-400);font-weight:600">Missions</th>
             </tr></thead>
             <tbody>${histRows.slice(-30).reverse().map(r=>`
               <tr style="border-bottom:1px solid var(--gray-100)">
@@ -2291,7 +2291,7 @@ async function renderAdminSurface() {
         <div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:9px;padding:12px 14px">
           <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px">
             <div class="chip"><div class="chip__val" style="font-size:14px">${vStats.messages}</div><div class="chip__lbl">Messages</div></div>
-            <div class="chip"><div class="chip__val" style="font-size:14px">${vStats.runs}</div><div class="chip__lbl">Runs</div></div>
+            <div class="chip"><div class="chip__val" style="font-size:14px">${vStats.runs}</div><div class="chip__lbl">Missions</div></div>
             <div class="chip"><div class="chip__val" style="font-size:14px">${vStats.files}</div><div class="chip__lbl">Files indexed</div></div>
             <div class="chip"><div class="chip__val" style="font-size:14px">${vStats.keys}</div><div class="chip__lbl">API keys</div></div>
           </div>
@@ -2311,7 +2311,7 @@ async function renderAdminSurface() {
       <!-- MISSED LEAD RECOVERY -->
       <div class="admin-section">
         <div class="admin-section__title">Missed Lead Recovery</div>
-        ${vStats.runs===0?`<div style="background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.25);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--navy-700);line-height:1.6"><strong>First boot detected.</strong> No runs yet. Paste leads below to score and queue them for follow-up.</div>`:''}
+        ${vStats.runs===0?`<div style="background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.25);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--navy-700);line-height:1.6"><strong>First boot detected.</strong> No missions yet. Paste leads below to score and queue them for follow-up.</div>`:''}
         <div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">Paste CSV leads (one per line: name, email, company, notes) to score with CHIEF and create recovery workflows.</div>
         <textarea id="leads-csv-input" style="width:100%;min-height:100px;font-family:var(--mono);font-size:11px;padding:8px 10px;border:1px solid var(--gray-200);border-radius:6px;background:var(--gray-50);color:var(--navy-800);resize:vertical;box-sizing:border-box" placeholder="John Smith, john@acme.com, Acme Corp, Interested in HVAC automation&#10;Jane Doe, jane@apex.com, Apex Build, Requested callback last week"></textarea>
         <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
@@ -2722,15 +2722,15 @@ async function renderHealthSurface() {
         <div class="obs-chart__title">Cost by worker (session · real data)</div>
         ${workerStats.length
           ? workerStats.map(w=>`<div class="bar-row"><div class="bar-label">${esc(w.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${(w.cost/maxCost*100).toFixed(1)}%"></div></div><div class="bar-val">$${w.cost.toFixed(4)}</div></div>`).join('')
-          : `<div style="font-size:12px;color:var(--gray-400);padding:8px 0">No cost data — interact with workers to generate runs</div>`}
+          : `<div style="font-size:12px;color:var(--gray-400);padding:8px 0">No cost data — interact with workers to generate missions</div>`}
       </div>
 
-      <!-- Runs by worker (original) -->
+      <!-- Missions by worker (original) -->
       <div class="obs-chart">
-        <div class="obs-chart__title">Runs by worker (session · real data)</div>
+        <div class="obs-chart__title">Missions by worker (session · real data)</div>
         ${workerStats.length
-          ? workerStats.map(w=>{const maxR=Math.max(...workerStats.map(x=>x.runs),1);return`<div class="bar-row"><div class="bar-label">${esc(w.name)}</div><div class="bar-track"><div class="bar-fill bar-fill--green" style="width:${(w.runs/maxR*100).toFixed(1)}%"></div></div><div class="bar-val">${w.runs} runs</div></div>`;}).join('')
-          : `<div style="font-size:12px;color:var(--gray-400);padding:8px 0">No runs yet</div>`}
+          ? workerStats.map(w=>{const maxR=Math.max(...workerStats.map(x=>x.runs),1);return`<div class="bar-row"><div class="bar-label">${esc(w.name)}</div><div class="bar-track"><div class="bar-fill bar-fill--green" style="width:${(w.runs/maxR*100).toFixed(1)}%"></div></div><div class="bar-val">${w.runs} missions</div></div>`;}).join('')
+          : `<div style="font-size:12px;color:var(--gray-400);padding:8px 0">No missions yet</div>`}
       </div>
 
       <!-- Gateway metrics (original) -->
@@ -3489,7 +3489,7 @@ function renderOverviewPanel(panel) {
   const tiles = [
     { val: fmtRev(roi.revenue_30d||0), label: 'Revenue 30d',       cls: 'roi-tile__val--green' },
     { val: roi.leads_this_week||0,      label: 'Leads This Week',   cls: '' },
-    { val: roi.workflows_run||0,        label: 'Workflows Run',     cls: '' },
+    { val: roi.workflows_run||0,        label: 'Missions Run',      cls: '' },
     { val: (roi.time_saved_hours||0)+'h', label: 'Time Saved',     cls: 'roi-tile__val--green' },
   ];
   const roiHTML = tiles.map(t =>
@@ -4648,8 +4648,8 @@ function _gspRemoveTag(key, idx) {
         <div class="welcome-item-desc">Real-time status of all 11 components — FLINT, CREW, VAULT, and more. Green means running.</div>
       </div>
       <div class="welcome-item">
-        <div class="welcome-item-title">Runs</div>
-        <div class="welcome-item-desc">Every workflow execution — live state, step history, crash recovery status, and completion logs.</div>
+        <div class="welcome-item-title">Missions</div>
+        <div class="welcome-item-desc">Every mission — live state, step history, crash recovery status, and completion logs.</div>
       </div>
       <div class="welcome-item">
         <div class="welcome-item-title">Approvals</div>

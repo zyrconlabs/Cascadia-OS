@@ -64,9 +64,9 @@ echo "  ║          Local-first AI operator platform                ║"
 echo "  ╚══════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 echo "  What you'll see:"
-echo "    1. Lead arrives → workflow starts automatically"
+echo "    1. Lead arrives → mission starts automatically"
 echo "    2. Approval gate fires — email waits for human decision"
-echo "    3. System crashes mid-run (we kill it)"
+echo "    3. System crashes mid-mission (we kill it)"
 echo "    4. System restarts — resumes from exact same step, no duplication"
 echo "    5. Approval given → email sent → CRM logged → complete"
 echo ""
@@ -91,8 +91,8 @@ HEALTHY=$(echo "$HEALTH" | python3 -c 'import json,sys; d=json.load(sys.stdin); 
 ok "Components healthy: $HEALTHY"
 pause 1
 
-# ── Cleanup: clear stale pending approvals from previous demo runs ────────────
-info "Clearing any pending approvals from previous runs..."
+# ── Cleanup: clear stale pending approvals from previous demo missions ────────
+info "Clearing any pending approvals from previous missions..."
 python3 -c "
 import sqlite3, glob
 db_paths = glob.glob('data/**/*.db', recursive=True) + glob.glob('data/*.db')
@@ -145,7 +145,7 @@ RUN_STATE=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdi
 APPROVAL_ID=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('pending_approval_id',''))" 2>/dev/null)
 DRAFT=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('state_snapshot',{}); print(s.get('draft_subject',''))" 2>/dev/null)
 
-ok "Run created: $RUN_ID"
+ok "Mission created: $RUN_ID"
 ok "State: ${AMBER}${RUN_STATE}${RESET}"
 ok "Draft subject: $DRAFT"
 echo ""
@@ -154,7 +154,7 @@ info "Check PRISM dashboard: http://localhost:${PRISM_PORT}/"
 pause 2
 
 # ── Step 3: Show PRISM state ──────────────────────────────────────────────────
-step "3/6  PRISM dashboard — run state live"
+step "3/6  PRISM dashboard — mission state live"
 OVERVIEW=$(api_get $PRISM_PORT /api/prism/overview 2>/dev/null || echo '{}')
 PENDING=$(echo "$OVERVIEW" | python3 -c "
 import json,sys
@@ -163,13 +163,13 @@ print(d.get('attention_required',{}).get('pending_approvals',0))
 " 2>/dev/null || echo "?")
 
 ok "PRISM reports $PENDING pending approval(s)"
-ok "Run $RUN_ID visible in /api/prism/runs"
+ok "Mission $RUN_ID visible in /api/prism/runs"
 info "Open http://localhost:${PRISM_PORT}/ to see live state"
 pause 2
 
 # ── Step 4: Crash the process ─────────────────────────────────────────────────
 step "4/6  Simulating crash — killing Cascadia mid-run"
-echo -e "  ${AMBER}This is the key moment. The run is waiting_human.${RESET}"
+echo -e "  ${AMBER}This is the key moment. The mission is waiting_human.${RESET}"
 echo -e "  ${AMBER}We kill the process now to prove durability.${RESET}"
 pause 2
 
@@ -184,7 +184,7 @@ else
 fi
 
 echo ""
-echo -e "  ${DIM}Run $RUN_ID is persisted in SQLite.${RESET}"
+echo -e "  ${DIM}Mission $RUN_ID is persisted in SQLite.${RESET}"
 echo -e "  ${DIM}Approval $APPROVAL_ID is waiting in the approvals table.${RESET}"
 echo -e "  ${DIM}Nothing is lost. The step journal is the source of truth.${RESET}"
 pause 3
@@ -226,7 +226,7 @@ if [[ "$PRISM_READY" -eq 0 ]]; then
 fi
 ok "PRISM healthy on :${PRISM_PORT}"
 
-ok "Run $RUN_ID still in database, state: waiting_human"
+ok "Mission $RUN_ID still in database, state: waiting_human"
 ok "No steps were re-executed. No duplicate side effects."
 pause 2
 
@@ -246,7 +246,7 @@ if [[ -z "$APPROVAL_ID" ]]; then
   exit 1
 fi
 
-step "6/6  Operator approves — workflow resumes and completes"
+step "6/6  Operator approves — mission resumes and completes"
 info "Approving via PRISM API (same as clicking Approve in the dashboard)..."
 echo ""
 
@@ -279,7 +279,7 @@ print('Gulf Coast Logistics' if v is True else str(v))
 " 2>/dev/null || echo "—")
 
 echo ""
-ok "Run state: ${GREEN}${FINAL_STATE}${RESET}"
+ok "Mission state: ${GREEN}${FINAL_STATE}${RESET}"
 ok "Email dispatched to: $SENT_TO"
 ok "CRM logged: $CRM"
 echo ""
@@ -293,9 +293,9 @@ echo -e "${RESET}"
 echo "  What just happened:"
 echo "    ✓ Lead classified, enriched, and draft email generated"
 echo "    ✓ Approval gate fired — email held until human approved"
-echo "    ✓ System crashed mid-run — deliberately"
+echo "    ✓ System crashed mid-mission — deliberately"
 echo "    ✓ Restarted — resumed from exact same step, zero duplication"
-echo "    ✓ Approval given — email sent, CRM logged, run complete"
+echo "    ✓ Approval given — email sent, CRM logged, mission complete"
 echo ""
 echo "  The durability layer guarantees:"
 echo "    · Every step is journaled before execution"
