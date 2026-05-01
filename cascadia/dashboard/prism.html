@@ -1546,6 +1546,16 @@ function renderMain() {
   scrollChat();
   if (c.isWorker&&wpOpen) loadWorkerPanel(c.id);
   if (act?.badges?.length) act.badges.forEach((_,i)=>setTimeout(()=>{const el=document.getElementById('ab-'+i);if(el){el.classList.add('vis');if(i>0){const p=document.getElementById('ab-'+(i-1));if(p)p.classList.remove('active')}el.classList.add('active')}},i*350));
+  if (typeof _guidedConfigEnabled !== 'undefined' && _guidedConfigEnabled) {
+    const topbarRight = document.querySelector('#main-panel .topbar__right');
+    if (topbarRight && !topbarRight.querySelector('.gcfg-btn')) {
+      const btn = document.createElement('button');
+      btn.className = 'gcfg-btn';
+      btn.textContent = 'Configuration';
+      btn.onclick = gcfgOpenConfigMenu;
+      topbarRight.insertBefore(btn, topbarRight.firstChild);
+    }
+  }
 }
 
 /* ═══ RUNS SURFACE ═══ */
@@ -3668,7 +3678,7 @@ function renderWorkflowsSurface() {
   main.appendChild(div);
 }
 
-const WF = {
+var WF = {
   nodes: [],
   edges: [],
   viewport: {x: 0, y: 0, zoom: 1},
@@ -4326,25 +4336,6 @@ function gcfgLaunchWizard(opId, opName) {
 function gcfgCloseWizard() {
   const ov = document.getElementById('config-wizard-overlay');
   if (ov) ov.remove();
-}
-
-/* ── Phase 2: Inject Configuration button into topbar ── */
-// We patch renderMain to inject the button into every topbar rendered
-
-var _origRenderMain = renderMain;
-function renderMain() {
-  _origRenderMain.call(this);
-  // After render, inject config button if feature enabled
-  if (_guidedConfigEnabled) {
-    const topbarRight = document.querySelector('#main-panel .topbar__right');
-    if (topbarRight && !topbarRight.querySelector('.gcfg-btn')) {
-      const btn = document.createElement('button');
-      btn.className = 'gcfg-btn';
-      btn.textContent = 'Configuration';
-      btn.onclick = gcfgOpenConfigMenu;
-      topbarRight.insertBefore(btn, topbarRight.firstChild);
-    }
-  }
 }
 
 // Initialize: check flag on startup and setup topbar button
