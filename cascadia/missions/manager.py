@@ -302,6 +302,35 @@ def handle_run_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         return 500, {"error": "internal_error", "detail": str(exc)}
 
 
+def handle_run_mission_body(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    """POST /api/missions/{mission_id}/run — workflow_id in body (no path param)."""
+    return handle_run_mission(payload)
+
+
+def handle_list_all_runs(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    """GET /api/missions/runs — recent runs across all missions."""
+    if _runner is None:
+        return 503, {"error": "runner_not_available"}
+    mission_id = payload.get("mission_id") or None
+    try:
+        limit = int(payload.get("limit", 20))
+    except (TypeError, ValueError):
+        limit = 20
+    runs = _runner.list_recent_runs(mission_id=mission_id, limit=limit)
+    return 200, {"runs": runs, "count": len(runs)}
+
+
+def handle_get_run(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    """GET /api/missions/runs/{run_id} — single run status."""
+    run_id = payload.get("run_id", "")
+    if _runner is None:
+        return 503, {"error": "runner_not_available"}
+    result = _runner.get_run_status(run_id)
+    if result.get("error") == "run_not_found":
+        return 404, result
+    return 200, result
+
+
 def handle_resume_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
     run_id = payload.get("run_id", "")
     if _runner is None:
@@ -430,12 +459,15 @@ class MissionManagerService:
         self.runtime.register_route("POST", "/api/missions/scheduler/stop",                      handle_scheduler_stop)
         self.runtime.register_route("GET",  "/api/missions/events/pending",                      handle_pending_events)
         self.runtime.register_route("POST", "/api/missions/events/delivered",                    handle_delivered_events)
+        self.runtime.register_route("GET",  "/api/missions/runs",                                handle_list_all_runs)
+        self.runtime.register_route("GET",  "/api/missions/runs/{run_id}",                       handle_get_run)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}",                        handle_mission_detail)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}/status",                 handle_status)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}/mobile_schema",          handle_mobile_schema)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}/prism_schema",           handle_prism_schema)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}/health",                 handle_health)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}/runs",                   handle_runs)
+        self.runtime.register_route("POST", "/api/missions/{mission_id}/run",                    handle_run_mission_body)
         self.runtime.register_route("POST", "/api/missions/{mission_id}/run/{workflow_id}",      handle_run_mission)
         self.runtime.register_route("POST", "/api/missions/{mission_id}/runs/{run_id}/resume",   handle_resume_mission)
         self.runtime.register_route("POST", "/api/missions/{mission_id}/runs/{run_id}/retry",    handle_retry_mission)
