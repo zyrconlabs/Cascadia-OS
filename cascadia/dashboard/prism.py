@@ -76,6 +76,19 @@ def _http_post(port: int, path: str, payload: Dict[str, Any], timeout: float = 2
         return None
 
 
+def _http_patch(port: int, path: str, payload: Dict[str, Any], timeout: float = 2.0) -> Optional[Dict[str, Any]]:
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib_request.Request(
+            f'http://127.0.0.1:{port}{path}', data=data, method='PATCH',
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib_request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode())
+    except Exception:
+        return None
+
+
 def _http_delete(port: int, path: str, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
     try:
         req = urllib_request.Request(
@@ -220,8 +233,10 @@ class PrismService:
         # Mission Manager proxy routes — static routes registered before parametric to avoid conflicts
         self.runtime.register_route('GET',  '/api/prism/missions/catalog',                        self.missions_catalog)
         self.runtime.register_route('GET',  '/api/prism/missions/runs',                           self.missions_all_runs)
-        self.runtime.register_route('POST', '/api/prism/missions/{mission_id}/run/{workflow_id}', self.mission_run_workflow)
-        self.runtime.register_route('GET',  '/api/prism/missions/{mission_id}/schema',            self.mission_schema)
+        self.runtime.register_route('POST',  '/api/prism/missions/{mission_id}/run/{workflow_id}',  self.mission_run_workflow)
+        self.runtime.register_route('GET',   '/api/prism/missions/{mission_id}/schema',             self.mission_schema)
+        self.runtime.register_route('GET',   '/api/missions/{mission_id}/items',                    self.mission_items)
+        self.runtime.register_route('PATCH', '/api/missions/items/{item_id}',                       self.mission_item_update)
 
         # Start operator watchdog
         try:
@@ -2970,6 +2985,24 @@ document.getElementById('key').addEventListener('keydown', function(e){
         mission_id = payload.get('mission_id', '')
         workflow_id = payload.get('workflow_id', '')
         data = _http_post(self._ports.get('mission_manager', 6207), f'/api/missions/{mission_id}/run', {'workflow_id': workflow_id})
+        return (200, data) if data is not None else (503, {'error': 'mission_manager_unavailable'})
+
+    def mission_items(self, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+        mission_id = payload.get('mission_id', '')
+        status = payload.get('status', '')
+        limit = payload.get('limit', 20)
+        qs = f'?limit={limit}'
+        if status:
+            qs += f'&status={status}'
+        data = _http_get(self._ports.get('mission_manager', 6207),
+                         f'/api/missions/{mission_id}/items{qs}')
+        return (200, data) if data is not None else (503, {'error': 'mission_manager_unavailable', 'items': [], 'total': 0})
+
+    def mission_item_update(self, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+        item_id = payload.get('item_id', '')
+        data = _http_patch(self._ports.get('mission_manager', 6207),
+                           f'/api/missions/items/{item_id}',
+                           {'status': payload.get('status', '')})
         return (200, data) if data is not None else (503, {'error': 'mission_manager_unavailable'})
 
     def _start_approval_timeout_daemon(self) -> None:
