@@ -71,12 +71,18 @@ class ValidationResult:
 
 # ── Core validator ───────────────────────────────────────────────────────────
 
-def validate_depot_manifest(data: Dict[str, Any]) -> ValidationResult:
+def validate_depot_manifest(data: Dict[str, Any], base_path=None) -> ValidationResult:
     """
     Validate a DEPOT manifest dict against the full schema.
     Returns a ValidationResult with all errors and warnings found.
     Does not raise — callers check result.valid.
     """
+    if data.get("type") == "mission":
+        from cascadia.missions.manifest import MissionManifest
+        mm = MissionManifest()
+        errors = mm.validate(data, base_path)
+        return ValidationResult(valid=len(errors) == 0, errors=errors)
+
     result = ValidationResult(valid=True)
 
     # 1. Required fields present

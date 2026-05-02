@@ -1,0 +1,77 @@
+{
+  "id": "test_growth_desk",
+  "type": "mission",
+  "name": "Test Growth Desk",
+  "version": "0.1.0",
+  "description": "Fixture mission for testing only.",
+  "tier_required": "free",
+  "industries": ["construction"],
+  "operators": {
+    "required": ["brief", "social", "chief"],
+    "optional": []
+  },
+  "connectors": {
+    "required": [],
+    "optional": ["email"]
+  },
+  "schedules": [
+    {
+      "id": "daily_campaign",
+      "workflow": "daily_campaign",
+      "cron": "0 7 * * *",
+      "enabled_by_default": false
+    }
+  ],
+  "approval_flows": [
+    {
+      "action": "campaign.post_external",
+      "approval_required": true,
+      "risk_level": "medium"
+    }
+  ],
+  "database": {
+    "schema_file": "data/schema.sql",
+    "owned_tables": ["campaigns", "campaign_items"]
+  },
+  "workflows": {
+    "daily_campaign": "workflows/daily_campaign.json"
+  },
+  "events": {
+    "produces": ["campaign.drafted"],
+    "consumes": ["schedule.daily"]
+  },
+  "setup_fields": [],
+  "billing": {
+    "included_in": ["free", "pro", "business", "enterprise"],
+    "available_as_addon": false,
+    "addon_price_monthly": null
+  },
+  "limits": {
+    "free": {
+      "enabled": true,
+      "mode": "lite",
+      "max_runs_per_month": 25,
+      "manual_runs_only": true,
+      "auto_schedule": false,
+      "external_actions": false,
+      "connectors_allowed": []
+    },
+    "business": {
+      "enabled": true,
+      "mode": "full",
+      "max_runs_per_month": 10000,
+      "manual_runs_only": false,
+      "auto_schedule": true,
+      "external_actions": "approval_required",
+      "connectors_allowed": ["email"]
+    }
+  },
+  "prism": {
+    "nav_label": "Growth",
+    "nav_icon": "megaphone",
+    "schema": "ui/prism_schema.json"
+  },
+  "mobile": {
+    "schema": "ui/mobile_schema.json"
+  }
+}

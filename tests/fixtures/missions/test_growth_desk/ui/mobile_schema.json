@@ -1,0 +1,39 @@
+{
+  "mission_id": "test_growth_desk",
+  "title": "Test Growth Desk",
+  "subtitle": "Test fixture",
+  "icon": "megaphone",
+  "sections": [
+    {
+      "type": "stat_row",
+      "title": "Today",
+      "metrics": [
+        {
+          "label": "Pending",
+          "source": "/api/missions/test_growth_desk/status",
+          "field": "pending_approvals"
+        }
+      ]
+    },
+    {
+      "type": "approval_cards",
+      "title": "Needs Approval",
+      "source": "/api/approvals?mission_id=test_growth_desk"
+    },
+    {
+      "type": "run_list",
+      "title": "Recent Runs",
+      "source": "/api/missions/test_growth_desk/runs"
+    },
+    {
+      "type": "action_buttons",
+      "actions": [
+        {
+          "label": "Run Daily Campaign",
+          "method": "POST",
+          "endpoint": "/api/missions/test_growth_desk/run/daily_campaign"
+        }
+      ]
+    }
+  ]
+}
