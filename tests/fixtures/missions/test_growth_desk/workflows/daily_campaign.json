@@ -1,0 +1,18 @@
+{
+  "id": "daily_campaign",
+  "name": "Daily Campaign",
+  "description": "Generate daily campaign drafts.",
+  "steps": [
+    {
+      "id": "brief",
+      "operator": "brief",
+      "action": "generate_market_brief"
+    },
+    {
+      "id": "social",
+      "operator": "social",
+      "action": "draft_campaign_posts",
+      "depends_on": ["brief"]
+    }
+  ]
+}
