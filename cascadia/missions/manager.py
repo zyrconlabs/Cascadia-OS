@@ -411,6 +411,102 @@ def handle_delivered_events(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any
     return 200, {"cleared": cleared}
 
 
+# ── Mission items handlers ────────────────────────────────────────────────────
+
+def handle_items(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    mission_id = payload.get("mission_id", "")
+    status_filter = payload.get("status", "")
+    limit = int(payload.get("limit", 20))
+    try:
+        conn = sqlite3.connect(_db_path())
+        conn.row_factory = sqlite3.Row
+        try:
+            if status_filter:
+                cur = conn.execute(
+                    "SELECT * FROM mission_items WHERE mission_id = ? AND status = ? "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (mission_id, status_filter, limit),
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT * FROM mission_items WHERE mission_id = ? "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (mission_id, limit),
+                )
+            rows = [dict(r) for r in cur.fetchall()]
+            total_row = conn.execute(
+                "SELECT COUNT(*) FROM mission_items WHERE mission_id = ?",
+                (mission_id,),
+            ).fetchone()
+            total = total_row[0] if total_row else 0
+        finally:
+            conn.close()
+    except Exception:
+        rows, total = [], 0
+    return 200, {"items": rows, "total": total}
+
+
+def handle_create_item(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    mission_id = payload.get("mission_id", "")
+    item_id = payload.get("id") or str(__import__("uuid").uuid4())
+    item_type = payload.get("item_type", "")
+    title = payload.get("title", "")
+    if not item_type or not title:
+        return 400, {"error": "item_type and title required"}
+    try:
+        conn = sqlite3.connect(_db_path())
+        try:
+            conn.execute(
+                """INSERT INTO mission_items
+                   (id, mission_id, mission_run_id, item_type, title, description,
+                    source_type, source_id, customer_name, company_name, amount,
+                    due_date, confidence, urgency_score, value_score, status,
+                    recommended_action, approval_required, raw_json)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    item_id, mission_id, payload.get("mission_run_id"),
+                    item_type, title, payload.get("description"),
+                    payload.get("source_type"), payload.get("source_id"),
+                    payload.get("customer_name"), payload.get("company_name"),
+                    payload.get("amount"), payload.get("due_date"),
+                    payload.get("confidence"), payload.get("urgency_score", 0),
+                    payload.get("value_score", 0), payload.get("status", "new"),
+                    payload.get("recommended_action"), payload.get("approval_required", 1),
+                    payload.get("raw_json"),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.error("handle_create_item error: %s", exc)
+        return 500, {"error": "internal_error", "detail": str(exc)}
+    return 201, {"id": item_id, "mission_id": mission_id, "status": "created"}
+
+
+def handle_update_item(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    item_id = payload.get("item_id", "")
+    new_status = payload.get("status", "")
+    if new_status not in ("approved", "dismissed", "completed", "new", "in_progress"):
+        return 400, {"error": "invalid status", "allowed": ["approved", "dismissed", "completed", "new", "in_progress"]}
+    try:
+        conn = sqlite3.connect(_db_path())
+        try:
+            result = conn.execute(
+                "UPDATE mission_items SET status = ? WHERE id = ?",
+                (new_status, item_id),
+            )
+            conn.commit()
+            if result.rowcount == 0:
+                return 404, {"error": "item_not_found", "item_id": item_id}
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.error("handle_update_item error: %s", exc)
+        return 500, {"error": "internal_error", "detail": str(exc)}
+    return 200, {"item_id": item_id, "status": new_status}
+
+
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _installed_ids() -> set:
@@ -473,6 +569,9 @@ class MissionManagerService:
         self.runtime.register_route("POST", "/api/missions/{mission_id}/runs/{run_id}/retry",    handle_retry_mission)
         self.runtime.register_route("POST", "/api/missions/{mission_id}/runs/{run_id}/fail",     handle_fail_mission)
         self.runtime.register_route("POST", "/api/missions/{mission_id}/runs/{run_id}/complete", handle_complete_mission)
+        self.runtime.register_route("GET",   "/api/missions/{mission_id}/items",    handle_items)
+        self.runtime.register_route("POST",  "/api/missions/{mission_id}/items",    handle_create_item)
+        self.runtime.register_route("PATCH", "/api/missions/items/{item_id}",       handle_update_item)
 
     def start(self) -> None:
         self.runtime.logger.info("MISSION MANAGER read API active on port %s", PORT)

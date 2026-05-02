@@ -17,6 +17,7 @@ MISSION_TABLES = {
     'organizations', 'missions', 'mission_runs', 'mission_run_steps',
     'leads', 'lead_enrichments', 'quotes', 'purchase_orders', 'invoices',
     'campaigns', 'campaign_items', 'review_requests', 'tasks', 'blockers', 'briefs',
+    'mission_items',
 }
 
 _SCHEMA_PATH = Path(__file__).parent / 'schema.sql'
