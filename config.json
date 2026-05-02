@@ -1,0 +1,175 @@
+{
+  "log_dir": "./data/logs",
+  "database_path": "./data/runtime/cascadia.db",
+  "operators_registry_path": "~/Zyrcon/operators/cascadia-os-operators/registry.json",
+  "operators_dir": "~/Zyrcon/operators/cascadia-os-operators",
+  "llm": {
+    "provider": "llamacpp",
+    "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+    "base_url": "http://0.0.0.0:8080",
+    "configured": true,
+    "note": "models_dir is relative to the cascadia-os install directory. Run setup-llm.sh to download models and configure automatically.",
+    "active_model_id": "qwen2.5-3b",
+    "models_dir": "/Users/andy/Zyrcon/cascadia-os/models",
+    "llama_bin": "/Users/andy/Zyrcon/llama.cpp/build/bin/llama-server",
+    "n_gpu_layers": 99,
+    "ctx_size": 4096
+  },
+  "flint": {
+    "heartbeat_file": "./data/runtime/flint.heartbeat",
+    "heartbeat_interval_seconds": 5,
+    "heartbeat_stale_after_seconds": 15,
+    "status_port": 4011,
+    "health_interval_seconds": 5,
+    "drain_timeout_seconds": 10,
+    "max_restart_attempts": 5,
+    "restart_backoff_seconds": [
+      5,
+      30,
+      120,
+      600
+    ]
+  },
+  "curtain": {
+    "signing_secret": "replace-with-output-of-python3-c-import-secrets-print-secrets-token-hex-32"
+  },
+  "license_secret": "e4806882a41883d35af2aa4ecfa20e89939b3cc53adf103e342f45e1e9661e4d",
+  "components": [
+    {
+      "name": "crew",
+      "module": "cascadia.registry.crew",
+      "port": 5100,
+      "tier": 1,
+      "heartbeat_file": "./data/runtime/crew.heartbeat"
+    },
+    {
+      "name": "vault",
+      "module": "cascadia.memory.vault",
+      "port": 5101,
+      "tier": 1,
+      "heartbeat_file": "./data/runtime/vault.heartbeat"
+    },
+    {
+      "name": "sentinel",
+      "module": "cascadia.security.sentinel",
+      "port": 5102,
+      "tier": 1,
+      "heartbeat_file": "./data/runtime/sentinel.heartbeat"
+    },
+    {
+      "name": "curtain",
+      "module": "cascadia.encryption.curtain",
+      "port": 5103,
+      "tier": 1,
+      "heartbeat_file": "./data/runtime/curtain.heartbeat"
+    },
+    {
+      "name": "beacon",
+      "module": "cascadia.orchestrator.beacon",
+      "port": 6200,
+      "tier": 2,
+      "heartbeat_file": "./data/runtime/beacon.heartbeat",
+      "depends_on": [
+        "crew"
+      ]
+    },
+    {
+      "name": "stitch",
+      "module": "cascadia.automation.stitch",
+      "port": 6201,
+      "tier": 2,
+      "heartbeat_file": "./data/runtime/stitch.heartbeat"
+    },
+    {
+      "name": "vanguard",
+      "module": "cascadia.gateway.vanguard",
+      "port": 6202,
+      "tier": 2,
+      "heartbeat_file": "./data/runtime/vanguard.heartbeat"
+    },
+    {
+      "name": "handshake",
+      "module": "cascadia.bridge.handshake",
+      "port": 6203,
+      "tier": 2,
+      "heartbeat_file": "./data/runtime/handshake.heartbeat"
+    },
+    {
+      "name": "bell",
+      "module": "cascadia.chat.bell",
+      "port": 6204,
+      "tier": 2,
+      "heartbeat_file": "./data/runtime/bell.heartbeat"
+    },
+    {
+      "name": "almanac",
+      "module": "cascadia.guide.almanac",
+      "port": 6205,
+      "tier": 2,
+      "heartbeat_file": "./data/runtime/almanac.heartbeat"
+    },
+    {
+      "name": "mission_manager",
+      "module": "cascadia.missions.manager",
+      "port": 6207,
+      "tier": 2,
+      "heartbeat_file": "./data/runtime/mission_manager.heartbeat"
+    },
+    {
+      "name": "prism",
+      "module": "cascadia.dashboard.prism",
+      "port": 6300,
+      "tier": 3,
+      "heartbeat_file": "./data/runtime/prism.heartbeat",
+      "depends_on": [
+        "crew",
+        "sentinel",
+        "beacon"
+      ]
+    }
+  ],
+  "models": [
+    {
+      "id": "qwen2.5-3b",
+      "name": "Qwen 2.5 3B",
+      "file": "qwen2.5-3b-instruct-q4_k_m.gguf",
+      "alias": "qwen2.5-3b-instruct-q4_k_m.gguf",
+      "desc": "3B \u00b7 Fast \u00b7 Local",
+      "size": "3B",
+      "context": 4096,
+      "recommended_for": "quick tasks, lead classification, drafts"
+    },
+    {
+      "id": "qwen2.5-7b",
+      "name": "Qwen 2.5 7B",
+      "file": "qwen2.5-7b-instruct-q4_k_m.gguf",
+      "alias": "qwen2.5-7b-instruct-q4_k_m.gguf",
+      "desc": "7B \u00b7 Balanced \u00b7 Local",
+      "size": "7B",
+      "context": 8192,
+      "recommended_for": "proposals, analysis, general workflows"
+    },
+    {
+      "id": "qwen2.5-14b",
+      "name": "Qwen 2.5 14B",
+      "file": "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+      "alias": "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+      "desc": "14B \u00b7 Powerful \u00b7 Local",
+      "size": "14B",
+      "context": 8192,
+      "recommended_for": "complex reasoning, large documents, multi-step analysis"
+    },
+    {
+      "id": "qwen2.5-vl-7b",
+      "name": "Qwen 2.5 VL 7B",
+      "file": "qwen2.5-vl-7b-instruct-q4_k_m.gguf",
+      "alias": "qwen2.5-vl-7b-instruct-q4_k_m.gguf",
+      "desc": "7B \u00b7 Vision \u00b7 Local",
+      "size": "7B",
+      "context": 8192,
+      "recommended_for": "image analysis, document OCR, visual workflows"
+    }
+  ],
+  "sentinel_fail_open": false,
+  "sentinel_fail_open_note": "Production default is false (fail-closed): if SENTINEL is unreachable, side-effect steps are blocked. Set true only for dev/demo environments."
+}
