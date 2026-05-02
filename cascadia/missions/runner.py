@@ -488,6 +488,106 @@ class MissionRunner:
         except Exception as exc:
             return {"error": str(exc), "mission_run_id": mission_run_id}
 
+    # ── Query / event-driven public API ───────────────────────────────────────
+
+    def get_run_status(self, mission_run_id: str) -> dict:
+        """Return a mission_run record as a dict, or an error dict if not found."""
+        run = self._get_run(mission_run_id)
+        if run is None:
+            return {"error": "run_not_found", "mission_run_id": mission_run_id}
+        return {
+            "mission_run_id": run["id"],
+            "mission_id": run.get("mission_id", ""),
+            "workflow_id": run.get("workflow_id"),
+            "status": run.get("status", ""),
+            "trigger_type": run.get("trigger_type"),
+            "started_at": run.get("started_at"),
+            "completed_at": run.get("completed_at"),
+            "error": run.get("error"),
+            "retry_count": run.get("retry_count", 0),
+        }
+
+    def list_recent_runs(
+        self,
+        mission_id: Optional[str] = None,
+        limit: int = 20,
+    ) -> list:
+        """Return recent mission_runs ordered by started_at DESC.
+
+        Optionally filter by mission_id. Returns empty list on DB error.
+        """
+        try:
+            conn = sqlite3.connect(self._db_path)
+            conn.row_factory = sqlite3.Row
+            try:
+                if mission_id:
+                    rows = conn.execute(
+                        "SELECT id, mission_id, workflow_id, trigger_type, status, "
+                        "started_at, completed_at, error, retry_count "
+                        "FROM mission_runs WHERE mission_id = ? "
+                        "ORDER BY started_at DESC LIMIT ?",
+                        (mission_id, limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT id, mission_id, workflow_id, trigger_type, status, "
+                        "started_at, completed_at, error, retry_count "
+                        "FROM mission_runs "
+                        "ORDER BY started_at DESC LIMIT ?",
+                        (limit,),
+                    ).fetchall()
+                return [dict(r) for r in rows]
+            finally:
+                conn.close()
+        except Exception as exc:
+            log.error("list_recent_runs failed: %s", exc)
+            return []
+
+    def trigger_from_event(self, event_type: str, event_data: dict) -> Optional[str]:
+        """Start a mission whose manifest declares it consumes this event_type.
+
+        Checks all installed missions. Uses the first workflow whose name
+        matches the event or falls back to the first declared workflow.
+        Returns mission_run_id on success, None if no mission matches or on error.
+        """
+        installed_ids = self._installed_ids()
+        for mission_id in sorted(installed_ids):
+            manifest = self._registry.get_mission(mission_id)
+            if not manifest:
+                continue
+            consumes = (manifest.get("events") or {}).get("consumes", [])
+            if event_type not in consumes:
+                continue
+            # Find best workflow: prefer one whose id matches event name component
+            workflows: dict = manifest.get("workflows") or {}
+            if not workflows:
+                log.warning("trigger_from_event: mission %s has no workflows", mission_id)
+                continue
+            event_tail = event_type.split(".")[-1]
+            workflow_id = next(
+                (wid for wid in workflows if event_tail in wid),
+                next(iter(workflows)),
+            )
+            try:
+                result = self.start_mission(
+                    mission_id=mission_id,
+                    workflow_id=workflow_id,
+                    trigger_type="event",
+                    payload=event_data,
+                )
+                run_id = result.get("mission_run_id")
+                log.info(
+                    "trigger_from_event: %s → %s/%s run=%s",
+                    event_type, mission_id, workflow_id, run_id,
+                )
+                return run_id
+            except Exception as exc:
+                log.error(
+                    "trigger_from_event: failed to start %s/%s: %s",
+                    mission_id, workflow_id, exc,
+                )
+        return None
+
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _installed_ids(self) -> set:
