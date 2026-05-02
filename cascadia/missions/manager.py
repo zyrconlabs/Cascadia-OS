@@ -1,4 +1,4 @@
-"""Mission Manager — read-only API on port 6207."""
+"""Mission Manager — read and write API on port 6207."""
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,14 @@ from pathlib import Path
 from typing import Any, Dict
 
 from cascadia.missions.registry import MissionRegistry
+from cascadia.missions.runner import (
+    MissionNotFoundError,
+    MissionNotInstalledError,
+    MissionRunner,
+    StitchMissionAdapter,
+    TierNotAllowedError,
+    WorkflowNotFoundError,
+)
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
 
@@ -16,6 +24,7 @@ PORT = 6207
 NAME = "mission_manager"
 
 _registry: MissionRegistry | None = None
+_runner: MissionRunner | None = None
 log = logging.getLogger(__name__)
 
 
@@ -103,7 +112,7 @@ def handle_status(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
             ).fetchone()
             pending_approvals = row[0] if row else 0
             row = conn.execute(
-                "SELECT COUNT(*) FROM mission_runs WHERE mission_id = ? AND status IN ('pending','running')",
+                "SELECT COUNT(*) FROM mission_runs WHERE mission_id = ? AND status IN ('running','waiting_approval')",
                 (mission_id,),
             ).fetchone()
             active_runs = row[0] if row else 0
@@ -232,26 +241,28 @@ def handle_runs(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
     runs: list = []
     try:
         conn = sqlite3.connect(_db_path())
+        conn.row_factory = sqlite3.Row
         try:
             cur = conn.execute(
-                "SELECT id, trigger_data, status, started_at, completed_at "
+                "SELECT id, workflow_id, trigger_type, trigger_data, "
+                "status, started_at, completed_at "
                 "FROM mission_runs WHERE mission_id = ? "
                 "ORDER BY started_at DESC LIMIT 20",
                 (mission_id,),
             )
             for row in cur.fetchall():
-                run_id, td_str, status, started_at, completed_at = row
+                row = dict(row)
                 try:
-                    td = json.loads(td_str) if td_str else {}
+                    td = json.loads(row.get("trigger_data") or "{}") if row.get("trigger_data") else {}
                 except Exception:
                     td = {}
                 runs.append({
-                    "id": run_id,
-                    "workflow_id": td.get("workflow_id"),
-                    "status": status,
-                    "trigger_type": td.get("trigger_type"),
-                    "started_at": started_at,
-                    "completed_at": completed_at,
+                    "id": row["id"],
+                    "workflow_id": row.get("workflow_id") or td.get("workflow_id"),
+                    "status": row["status"],
+                    "trigger_type": row.get("trigger_type") or td.get("trigger_type"),
+                    "started_at": row.get("started_at"),
+                    "completed_at": row.get("completed_at"),
                 })
         finally:
             conn.close()
@@ -259,6 +270,73 @@ def handle_runs(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         pass
 
     return 200, {"mission_id": mission_id, "runs": runs}
+
+
+# ── Write handlers ────────────────────────────────────────────────────────────
+
+def handle_run_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    mission_id = payload.get("mission_id", "")
+    workflow_id = payload.get("workflow_id", "")
+    trigger_type = payload.get("trigger_type", "manual")
+    if _runner is None:
+        return 503, {"error": "runner_not_available"}
+    try:
+        result = _runner.start_mission(
+            mission_id, workflow_id, trigger_type, payload.get("input")
+        )
+        return 200, result
+    except MissionNotFoundError:
+        return 404, {"error": "mission_not_found", "mission_id": mission_id}
+    except MissionNotInstalledError:
+        return 409, {"error": "mission_not_installed", "mission_id": mission_id}
+    except WorkflowNotFoundError:
+        return 404, {"error": "workflow_not_found", "workflow_id": workflow_id}
+    except TierNotAllowedError as exc:
+        return 403, {"error": "tier_not_allowed", "detail": str(exc)}
+    except Exception as exc:
+        log.error("handle_run_mission error: %s", exc)
+        return 500, {"error": "internal_error", "detail": str(exc)}
+
+
+def handle_resume_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    run_id = payload.get("run_id", "")
+    if _runner is None:
+        return 503, {"error": "runner_not_available"}
+    result = _runner.resume_mission(run_id, {
+        "decision": payload.get("decision", ""),
+        "approval_id": payload.get("approval_id"),
+        "note": payload.get("note", ""),
+        "edited_payload": payload.get("edited_payload"),
+    })
+    return 200, result
+
+
+def handle_retry_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    run_id = payload.get("run_id", "")
+    if _runner is None:
+        return 503, {"error": "runner_not_available"}
+    result = _runner.retry_mission_run(run_id)
+    return 200, result
+
+
+def handle_fail_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    run_id = payload.get("run_id", "")
+    if _runner is None:
+        return 503, {"error": "runner_not_available"}
+    result = _runner.fail_mission(
+        run_id,
+        payload.get("error", "unknown error"),
+        payload.get("failed_step"),
+    )
+    return 200, result or {}
+
+
+def handle_complete_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    run_id = payload.get("run_id", "")
+    if _runner is None:
+        return 503, {"error": "runner_not_available"}
+    result = _runner.complete_mission(run_id, payload.get("output"))
+    return 200, result or {}
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -281,26 +359,35 @@ def _installed_ids() -> set:
 class MissionManagerService:
 
     def __init__(self, config_path: str, name: str) -> None:
-        global _registry
+        global _registry, _runner
         config = load_config(config_path)
         component = next(c for c in config["components"] if c["name"] == name)
         packages_root = (config.get("missions") or {}).get("packages_root") or None
         _registry = MissionRegistry(packages_root=packages_root)
+        _runner = MissionRunner(
+            registry=_registry,
+            adapter=StitchMissionAdapter(),
+        )
         self.runtime = ServiceRuntime(
             name=name,
             port=component["port"],
             heartbeat_file=component["heartbeat_file"],
             log_dir=config["log_dir"],
         )
-        self.runtime.register_route("GET", "/healthz",                              handle_healthz)
-        self.runtime.register_route("GET", "/api/missions/catalog",                 handle_catalog)
-        self.runtime.register_route("GET", "/api/missions/installed",               handle_installed)
-        self.runtime.register_route("GET", "/api/missions/{mission_id}",            handle_mission_detail)
-        self.runtime.register_route("GET", "/api/missions/{mission_id}/status",     handle_status)
-        self.runtime.register_route("GET", "/api/missions/{mission_id}/mobile_schema", handle_mobile_schema)
-        self.runtime.register_route("GET", "/api/missions/{mission_id}/prism_schema",  handle_prism_schema)
-        self.runtime.register_route("GET", "/api/missions/{mission_id}/health",     handle_health)
-        self.runtime.register_route("GET", "/api/missions/{mission_id}/runs",       handle_runs)
+        self.runtime.register_route("GET",  "/healthz",                                          handle_healthz)
+        self.runtime.register_route("GET",  "/api/missions/catalog",                             handle_catalog)
+        self.runtime.register_route("GET",  "/api/missions/installed",                           handle_installed)
+        self.runtime.register_route("GET",  "/api/missions/{mission_id}",                        handle_mission_detail)
+        self.runtime.register_route("GET",  "/api/missions/{mission_id}/status",                 handle_status)
+        self.runtime.register_route("GET",  "/api/missions/{mission_id}/mobile_schema",          handle_mobile_schema)
+        self.runtime.register_route("GET",  "/api/missions/{mission_id}/prism_schema",           handle_prism_schema)
+        self.runtime.register_route("GET",  "/api/missions/{mission_id}/health",                 handle_health)
+        self.runtime.register_route("GET",  "/api/missions/{mission_id}/runs",                   handle_runs)
+        self.runtime.register_route("POST", "/api/missions/{mission_id}/run/{workflow_id}",      handle_run_mission)
+        self.runtime.register_route("POST", "/api/missions/{mission_id}/runs/{run_id}/resume",   handle_resume_mission)
+        self.runtime.register_route("POST", "/api/missions/{mission_id}/runs/{run_id}/retry",    handle_retry_mission)
+        self.runtime.register_route("POST", "/api/missions/{mission_id}/runs/{run_id}/fail",     handle_fail_mission)
+        self.runtime.register_route("POST", "/api/missions/{mission_id}/runs/{run_id}/complete", handle_complete_mission)
 
     def start(self) -> None:
         self.runtime.logger.info("MISSION MANAGER read API active on port %s", PORT)

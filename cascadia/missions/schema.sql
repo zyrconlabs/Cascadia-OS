@@ -343,6 +343,11 @@ CREATE INDEX IF NOT EXISTS idx_briefs_mission_run_id ON briefs(mission_run_id);
 ALTER TABLE approvals ADD COLUMN mission_id     TEXT;
 ALTER TABLE approvals ADD COLUMN mission_run_id TEXT;
 
+-- mission_runs additional columns (added in s3b)
+ALTER TABLE mission_runs ADD COLUMN workflow_id    TEXT;
+ALTER TABLE mission_runs ADD COLUMN trigger_type   TEXT;
+ALTER TABLE mission_runs ADD COLUMN parent_run_id  TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_approvals_mission_id     ON approvals(mission_id);
 CREATE INDEX IF NOT EXISTS idx_approvals_mission_run_id ON approvals(mission_run_id);
 
