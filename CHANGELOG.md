@@ -2,6 +2,36 @@
 
 ---
 
+## [0.49.0] — 2026-05-02
+
+### Added
+- Mission system: Revenue Desk, Growth Campaigns, Operations Desk
+- Mission Runner with full lifecycle management wrapping STITCH
+- Mission Manager API on port 6207
+- `mission_items` table and full CRUD API (GET / POST / PATCH)
+- Revenue Desk email scanning pipeline — classifies leads, quotes, POs, invoices
+- Urgency and value scoring for mission items (0–100 scale)
+- PRISM proxy endpoints for mission items (`/api/missions/{id}/items`)
+- Gmail OAuth integration for email operator (`send_mode` and `inbound_mode: gmail_api`)
+- Schema-driven connector manifests with `connect_flow` and `setup_fields` support
+- Google Accounts manifest v1.1.0 with OAuth popup and postMessage completion
+- `do_PATCH` HTTP handler in ServiceRuntime
+- `_http_patch` helper in PRISM for downstream PATCH proxying
+
+### Changed
+- Email operator supports Gmail API mode alongside existing SMTP/IMAP
+- `_classify_email` prompt extended with revenue-specific types
+  (`lead`, `quote_request`, `purchase_order`, `invoice`, `overdue_invoice`, `unsold_quote`)
+- Mission Manager extended with items endpoints (GET, POST, PATCH)
+- PRISM route table extended with mission items proxy routes
+- Summary strip in Zyrcon iPhone Revenue Desk shows live item count
+
+### Fixed
+- Migration idempotency with 16-table baseline (added `mission_items`)
+- Test count updated: 1107 passing
+
+---
+
 
 ## [0.46.0] — 2026-04-25
 

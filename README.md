@@ -1,6 +1,7 @@
 # Cascadia OS
 
-> **The execution layer for AI operators that actually finish the work.**
+> AI operating system for small businesses.
+> Runs on your Mac. Connects to Zyrcon on iPhone.
 
 > Architecturally compliant with EU AI Act Articles 8-15 for high-risk AI systems — by design, not by retrofit.
 > → [EU AI Act Compliance Reference](./docs/eu_ai_act_compliance.md)
@@ -19,16 +20,66 @@ I didn't want a chatbot. I wanted an operator I could trust. Something that reme
 
 ---
 
-## Why this is different
+## What It Does
 
-- **Durable by design** — resumes from committed state after failure
-- **Human-controlled** — approval gates block risky actions until explicitly approved
-- **Local-first economics** — useful on local hardware, with cloud used only when it is worth it
-- **Cloud-optional** — runs locally first, with external models as a choice rather than a requirement
+Three AI mission desks that run automatically:
+
+**Revenue Desk** — Scans email for leads, quotes, POs, invoices, and follow-ups. Classifies each one, scores urgency and value, and flags opportunities for your approval before taking action. Connects to the Zyrcon iPhone app so you can act from anywhere.
+
+**Growth Campaigns** — Turns completed jobs, old leads, and seasonal opportunities into approved email, SMS, and social media campaigns. Generates drafts, routes for approval, and dispatches on your schedule.
+
+**Operations Desk** — Reviews projects, tasks, assistant activity, planning gaps, and risks. Surfaces what needs attention without requiring you to ask.
 
 ---
 
-## ⚡ One-Command Install
+## Architecture
+
+```
+Zyrcon iPhone App
+     ↓ REST + WebSocket
+PRISM (6300) — Dashboard and API gateway
+     ↓
+Mission Layer
+  ├── Mission Manager (6207) — catalog, runs, and items API
+  ├── Mission Runner — lifecycle management via STITCH
+  └── Approval Center — BELL (6204)
+     ↓
+Operator Layer
+  ├── CHIEF (orchestrator)
+  ├── Revenue:    SCOUT · RECON · QUOTE · COLLECT
+  ├── Campaigns:  SOCIAL · CAMPAIGN · BRIEF
+  └── Assistant:  Aurelia
+     ↓
+Infrastructure
+  ├── VAULT (5101)     — secure storage and cross-operator secrets
+  ├── STITCH (6201)    — workflow sequencing
+  ├── BEACON (6200)    — capability routing
+  ├── VANGUARD (6202)  — inbound normalization
+  └── HANDSHAKE (6203) — webhooks and SMTP
+```
+
+### Full component table
+
+| Name | Port | What it does |
+|---|---:|---|
+| CREW | 5100 | Operator registry with wildcard capability validation |
+| VAULT | 5101 | Durable SQLite-backed memory, CREW-validated access |
+| SENTINEL | 5102 | Risk classification, blocks denied actions in execution loop |
+| CURTAIN | 5103 | AES-256-GCM field encryption, HMAC-SHA256 signing |
+| BEACON | 6200 | Capability-checked routing, HTTP forwarding to operator ports |
+| STITCH | 6201 | Workflow sequencing with built-in templates |
+| VANGUARD | 6202 | Inbound channel normalization, outbound dispatch via HANDSHAKE |
+| HANDSHAKE | 6203 | Webhook/HTTP/SMTP execution, external API registry |
+| BELL | 6204 | Chat sessions, workflow execution, approval collection |
+| ALMANAC | 6205 | Component catalog, glossary, runbooks |
+| CONDUIT | 6206 | IoT device bridge and sensor event router |
+| Mission Manager | 6207 | Mission catalog, runs, items, and approval lifecycle |
+| DEPOT API | 6208 | Marketplace API — browse, search, install, purchase |
+| PRISM | 6300 | Live system visibility — runs, approvals, operators, mobile API |
+
+---
+
+## Quick Start
 
 **macOS:**
 ```bash
@@ -37,8 +88,8 @@ curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install
 
 Installs Homebrew (if needed), SwiftBar, Cascadia OS, and registers a login agent. Everything starts automatically at boot.
 
-**Requirements:** Python 3.11+ and git  
-→ [macOS quickstart guide](https://github.com/zyrconlabs/Cascadia-OS/blob/main/QUICKSTART_MACOS.md)
+**Requirements:** Python 3.11+ and git
+→ [macOS quickstart guide](./QUICKSTART_MACOS.md)
 
 ---
 
@@ -47,11 +98,11 @@ Installs Homebrew (if needed), SwiftBar, Cascadia OS, and registers a login agen
 curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.sh | bash
 ```
 
-Installs dependencies, Cascadia OS, and sets up system tray integration (Argos for GNOME). Everything starts automatically at boot.
+Installs dependencies, Cascadia OS, and sets up system tray integration (Argos for GNOME).
 
-**Requirements:** Python 3.11+ and git  
-**Optional:** Install [Argos](https://github.com/p-e-w/argos) for GNOME menu bar integration  
-→ [Linux quickstart guide](https://github.com/zyrconlabs/Cascadia-OS/blob/main/QUICKSTART_LINUX.md)
+**Requirements:** Python 3.11+ and git
+**Optional:** Install [Argos](https://github.com/p-e-w/argos) for GNOME menu bar integration
+→ [Linux quickstart guide](./QUICKSTART_LINUX.md)
 
 ---
 
@@ -61,11 +112,11 @@ git clone https://github.com/zyrconlabs/cascadia-os.git
 powershell -ExecutionPolicy Bypass -File cascadia-os\windows\install.ps1
 ```
 
-→ [Windows installation guide](https://github.com/zyrconlabs/Cascadia-OS/blob/main/windows/README.md)
+→ [Windows installation guide](./windows/README.md)
 
 ---
 
-## 🎬 Run the Demo
+## Run the Demo
 
 After installing, run the demo — ~90 seconds end-to-end:
 
@@ -83,127 +134,76 @@ bash demo.sh
 
 ---
 
-## See it working
+## Mission System
 
-Built-in screenshots and terminal captures live in [`assets/`](./assets/).
+Three pre-built missions ship with Cascadia OS. Each one coordinates multiple operators to complete a business objective end-to-end.
 
-**One command installs everything:**
+### Revenue Desk
+Scans your inbox continuously. Each inbound email is classified by BELL, scored for urgency and value, and written to the `mission_items` table as an actionable item. The Zyrcon iPhone app surfaces these items in real time.
 
-![Install](./assets/install.png)
-![Install Complete](./assets/install_complete.png)
+**Triggers:** Inbound email · manual run · daily schedule
+**Creates:** `lead` · `quote_request` · `purchase_order` · `invoice` · `overdue_invoice` · `unsold_quote`
 
-**PRISM dashboard and system setup:**
+### Growth Campaigns
+Generates and schedules marketing campaigns across email, SMS, and social channels. Each campaign draft routes through the approval gate before anything is published.
 
-![PRISM Dashboard](./assets/prism.png)
-![Settings](./assets/settings.png)
+**Triggers:** Manual run · completed job · daily schedule
+**Creates:** Campaign drafts · social posts · email sequences
 
-**Health, observability, and approvals:**
+### Operations Desk
+Reviews business operations and surfaces what needs attention. Produces a daily brief from live operator data.
 
-![Health](./assets/health.png)
-![Observability](./assets/observability.png)
-![Approvals](./assets/approvals.png)
+**Triggers:** Manual run · morning schedule
+**Creates:** Daily plans · project reviews · risk flags
 
-**Operators in action:**
+### Triggering a mission
 
-![CHIEF](./assets/chief.png)
-![Debrief](./assets/debrief.png)
-![Recon Dashboard](./assets/recon_dashboard.png)
+```bash
+# Via PRISM API
+curl -X POST http://localhost:6300/api/missions/revenue_desk/run/daily_campaign
 
-**Crash recovery and durability:**
+# Via Mission Manager directly
+curl -X POST http://localhost:6207/api/missions/revenue_desk/run/daily_campaign
+```
 
-![Demo Start](./assets/demo_start.png)
-![Crash Recovery](./assets/crash_recovery.png)
-![Demo Complete](./assets/demo_complete.png)
+### Approval flow
 
-**Kernel and local inference:**
+High-risk actions (email sends, quote dispatch, invoice sends) are held at an approval gate until a human approves — either via PRISM dashboard or the Zyrcon iPhone app.
 
-![Watchdog](./assets/watchdog.png)
-![Kernel Health](./assets/kernel_health.png)
-![GPU Inference](./assets/gpu_inference.png)
-
----
-
-## Asset library
-
-All built-in assets currently in the repo:
-
-| Asset | What it shows |
-|---|---|
-| [`assets/install.png`](./assets/install.png) | Fresh installer run from terminal |
-| [`assets/install_complete.png`](./assets/install_complete.png) | Full stack started, PRISM opened, boot automation confirmed |
-| [`assets/prism.png`](./assets/prism.png) | Main PRISM dashboard with operators online |
-| [`assets/settings.png`](./assets/settings.png) | Hardware detection and AI mode selection |
-| [`assets/health.png`](./assets/health.png) | Health & observability page for infrastructure and operators |
-| [`assets/observability.png`](./assets/observability.png) | Session metrics, cost, token usage, run counts |
-| [`assets/approvals.png`](./assets/approvals.png) | Approval gate UI with medium/high-risk actions |
-| [`assets/chief.png`](./assets/chief.png) | CHIEF view with Almanac help pane |
-| [`assets/debrief.png`](./assets/debrief.png) | Debrief operator extracting next steps from call notes |
-| [`assets/recon_dashboard.png`](./assets/recon_dashboard.png) | RECON worker dashboard with rows, cycles, and recent results |
-| [`assets/demo_start.png`](./assets/demo_start.png) | Demo starts, inbound lead arrives, approval gate fires |
-| [`assets/crash_recovery.png`](./assets/crash_recovery.png) | Deliberate mid-run crash followed by correct resume behavior |
-| [`assets/demo_complete.png`](./assets/demo_complete.png) | Demo completes with approval, email dispatch, and CRM log |
-| [`assets/watchdog.png`](./assets/watchdog.png) | Full stack startup with services and ports |
-| [`assets/watchdog2.png`](./assets/watchdog2.png) | Menu bar control and PRISM quick actions |
-| [`assets/kernel_health.png`](./assets/kernel_health.png) | Direct component health and FLINT/watchdog process view |
-| [`assets/gpu_inference.png`](./assets/gpu_inference.png) | Local Apple Silicon inference and power usage |
+→ [Full mission system documentation](./docs/missions.md)
 
 ---
 
-## Real operator outputs
+## Connectors
 
-These sample outputs were generated on a MacBook Air M1 using a local Qwen 3B backend. No cloud API required.
-
-| Output | What it shows |
-|---|---|
-| [Houston warehouse leads](./samples/recon-houston-warehouse-leads-2026-04-18.csv) | RECON — 25+ search cycles, hallucination-filtered |
-| [GC Logistics proposal](./samples/proposal-GC-Logistics-2026-04-18.md) | Full proposal from one-paragraph RFQ in 30 seconds |
-| [Morning brief](./samples/chief-brief-2026-04-18.md) | CHIEF — 90-second executive brief from live operator data |
-| [Post-call debrief](./samples/debrief-gc-logistics-2026-04-18.md) | Action items and follow-up draft from raw call notes |
-
----
-
-## What it does
-
-Cascadia OS coordinates AI operators that:
-
-- **Remember** — context, decisions, and state persist across sessions and crashes
-- **Ask** — approval gates block risky actions until a human says yes
-- **Never duplicate** — idempotency enforced at the database layer, not by hope
-- **Recover** — resume from the last committed step, not from scratch
-- **Run supervised** — FLINT watches every process; the watchdog watches FLINT
-
----
-
-## Architecture
-
-### Control plane
-| Module | What it does |
-|---|---|
-| FLINT | Process supervision, tiered startup, health polling, restart/backoff |
-| Watchdog | External FLINT liveness monitor — lives outside the supervision tree |
-
-### Durability layer
-| Module | What it does |
-|---|---|
-| VAULT | SQLite-backed memory, context and state across sessions and crashes |
-| CURTAIN | AES-256-GCM field encryption, HMAC-SHA256 envelope signing |
-
-### Named components
-| Name | Port | What it does |
+| Connector | Port | What it connects |
 |---|---:|---|
-| CREW | 5100 | Operator registry with wildcard capability validation |
-| VAULT | 5101 | Durable SQLite-backed memory, CREW-validated access |
-| SENTINEL | 5102 | Risk classification, blocks denied actions in execution loop |
-| CURTAIN | 5103 | AES-256-GCM field encryption, HMAC-SHA256 signing |
-| BEACON | 6200 | Capability-checked routing, HTTP forwarding to operator ports |
-| STITCH | 6201 | Workflow sequencing with built-in templates |
-| VANGUARD | 6202 | Inbound channel normalization, outbound dispatch via HANDSHAKE |
-| HANDSHAKE | 6203 | Webhook/HTTP/SMTP execution, external API registry |
-| BELL | 6204 | Chat sessions, workflow execution, approval collection |
-| ALMANAC | 6205 | Component catalog, glossary, runbooks |
-| CONDUIT | 6206 | IoT device bridge and sensor event router |
-| DEPOT API | 6208 | Marketplace API — browse, search, install, purchase |
-| PRISM | 6300 | Live system visibility — runs, approvals, operators |
+| Google Accounts | 9020 | Gmail (send + inbound), Calendar, Drive, Contacts |
+| Telegram | 9000 | Inbound messages, bot notifications |
+| WhatsApp Business | 9001 | WhatsApp Business API |
+| Slack | 9003 | Channel messages, notifications |
+| Email / SMTP | built-in | SMTP + IMAP, Gmail API mode |
+
+→ [Connector documentation](./docs/connectors.md)
+
+---
+
+## PRISM Dashboard
+
+Open `http://localhost:6300/` while Cascadia is running.
+
+**Surfaces:** Live operator status · Run timeline · Approvals · Revenue items · Observability · Studio · Admin
+
+```bash
+GET  :6300/api/prism/overview          # Full system snapshot
+GET  :6300/api/prism/runs              # Live run states
+GET  :6300/api/prism/approvals         # Pending human decisions
+POST :6300/api/prism/approve           # Approve or deny a gated action
+GET  :6300/api/missions/{id}/items     # Revenue Desk items
+PATCH :6300/api/missions/items/{id}    # Update item status
+```
+
+→ [Full API reference](./docs/api.md)
 
 ---
 
@@ -223,48 +223,14 @@ Tested in `tests/test_crash_recovery.py`. Not just claimed.
 
 ## Tests
 
-965 tests passing, 0 failing.
+1107 tests passing, 0 failing.
 
 ```bash
 cd cascadia-os
 pytest
 ```
 
-Test coverage includes: crash recovery, durability layer, operator registry, approval gates, SENTINEL security, VAULT persistence, FLINT process supervision, BELL messaging, PRISM dashboard API, Workflow Designer backend, and connector framework.
-
----
-
-## PRISM Dashboard
-
-Open `http://localhost:6300/` while Cascadia is running.
-
-**Surfaces:** Live operator status · Run timeline · Approvals · Observability · Studio · Admin
-
-**API:**
-```bash
-GET  :6300/api/prism/overview    # Full system snapshot
-GET  :6300/api/prism/runs        # Live run states
-GET  :6300/api/prism/approvals   # Pending human decisions
-POST :6300/api/prism/approve     # Approve or deny a gated action
-GET  :6300/api/prism/crew        # Active operators
-```
-
-Full documentation: [PRISM_MANUAL.md](./PRISM_MANUAL.md)
-
----
-
-## Operators
-
-| Operator | Category | Status | What it does |
-|---|---|---|---|
-| RECON | Intelligence | Production | Autonomous web research, extracts contacts to CSV |
-| SCOUT | Inbound | Production | Chat widget, qualifies leads, routes to workflow |
-| QUOTE | Sales | Beta | RFQ to proposal in under 5 minutes |
-| CHIEF | Intelligence | Beta | Daily brief synthesizing all operators |
-| Aurelia | Executive | Beta | EA — commitments, priorities, weekly CEO report |
-| Debrief | Sales | Beta | Post-call logger — action items, follow-up drafts |
-
-Operator registry: [cascadia/operators/registry.json](./cascadia/operators/registry.json)
+Test coverage includes: crash recovery, durability layer, operator registry, approval gates, SENTINEL security, VAULT persistence, FLINT process supervision, BELL messaging, PRISM dashboard API, mission system lifecycle, mission items pipeline, schema-driven connectors, and connector framework.
 
 ---
 
@@ -279,20 +245,34 @@ Operator registry: [cascadia/operators/registry.json](./cascadia/operators/regis
 
 ---
 
-## Docs
+## Screenshots
 
-- [Quickstart](./QUICKSTART.md)
-- [macOS Quickstart](./QUICKSTART_MACOS.md)
-- [Linux Quickstart](./QUICKSTART_LINUX.md)
-- [Windows Installation](./windows/README.md)
-- [Manual](./MANUAL.md)
-- [PRISM Manual](./PRISM_MANUAL.md)
-- [Contributing](./CONTRIBUTING.md)
-- [Security Policy](./SECURITY.md)
-- [Story behind the project](./STORY.md)
+| Asset | What it shows |
+|---|---|
+| [`assets/prism.png`](./assets/prism.png) | Main PRISM dashboard with operators online |
+| [`assets/settings.png`](./assets/settings.png) | Hardware detection and AI mode selection |
+| [`assets/health.png`](./assets/health.png) | Health & observability page |
+| [`assets/approvals.png`](./assets/approvals.png) | Approval gate UI with risk badges |
+| [`assets/chief.png`](./assets/chief.png) | CHIEF with Almanac help pane |
+| [`assets/recon_dashboard.png`](./assets/recon_dashboard.png) | RECON worker dashboard |
+| [`assets/crash_recovery.png`](./assets/crash_recovery.png) | Deliberate mid-run crash + correct resume |
+| [`assets/gpu_inference.png`](./assets/gpu_inference.png) | Local Apple Silicon inference |
 
 ---
 
+## Docs
+
+- [Quickstart — macOS](./QUICKSTART_MACOS.md)
+- [Quickstart — Linux](./QUICKSTART_LINUX.md)
+- [Windows Installation](./windows/README.md)
+- [PRISM Manual](./PRISM_MANUAL.md)
+- [Mission System](./docs/missions.md)
+- [API Reference](./docs/api.md)
+- [Connectors](./docs/connectors.md)
+- [Operators](./docs/operators.md)
+- [Contributing](./CONTRIBUTING.md)
+- [Security Policy](./SECURITY.md)
+- [Story behind the project](./STORY.md)
 
 ---
 
@@ -307,21 +287,16 @@ Cascadia OS average lead response: 4 minutes
 
 ---
 
-## Licence
+## License
 
-Cascadia OS core is licensed under the **Apache License 2.0**.
-See [LICENSE](./LICENSE) for full terms.
+Core: Apache 2.0
+Commercial operators: Zyrcon Commercial License
+See [LICENSING.md](./LICENSING.md) for details.
 
-Certain components — including first-party pre-built business
-operators, hardware appliance images, Cascadia Pro, managed cloud
-services, marketplace infrastructure, and enterprise support —
-are offered under separate commercial terms. See
-[LICENSING.md](./LICENSING.md) and [COMMERCIAL.md](./COMMERCIAL.md)
-for the full breakdown, or contact zyrconlabs@gmail.com for
-commercial inquiries.
+Certain components — including first-party pre-built business operators, hardware appliance images, Cascadia Pro, managed cloud services, marketplace infrastructure, and enterprise support — are offered under separate commercial terms. See [LICENSING.md](./LICENSING.md) and [COMMERCIAL.md](./COMMERCIAL.md) for the full breakdown, or contact zyrconlabs@gmail.com for commercial inquiries.
 
 **Dependencies:** llama.cpp (MIT) · Qwen3 (Apache 2.0)
 
 ---
 
-*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs)*
+*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs) · v0.49.0*
