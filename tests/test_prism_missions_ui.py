@@ -219,7 +219,7 @@ class TestPrismHtmlMissionsJS:
 
     def test_approval_mission_filter_options_present(self):
         html = _html()
-        for key in ('revenue_desk', 'growth_desk', 'operations_desk_lite', '__high_risk__'):
+        for key in ('revenue_desk', 'growth_desk', 'operations_desk', '__high_risk__'):
             assert key in html, f"mission filter key '{key}' missing"
 
     def test_missions_sidebar_group_in_render_sidebar(self):
