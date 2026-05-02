@@ -353,6 +353,16 @@ button{cursor:pointer;font-family:var(--font)}input,textarea,select{font-family:
 .ac-tab--active{color:var(--navy-800);border-bottom-color:var(--navy-600)}
 .ac-tab-badge{background:rgba(212,175,55,.25);color:#7a6000;border-radius:20px;padding:0 6px;font-size:10px;font-weight:700;min-width:16px;text-align:center}
 
+/* ══ MISSIONS ══ */
+.mission-card{background:var(--white);border:1px solid var(--gray-150);border-radius:10px;padding:14px 16px;margin-bottom:8px;cursor:pointer;transition:border-color .15s,box-shadow .15s;animation:cardIn .3s var(--ease) forwards}
+.mission-card:hover{border-color:rgba(79,172,254,.3);box-shadow:0 1px 6px rgba(79,172,254,.1)}
+.mission-card--active{border-color:var(--navy-300);background:rgba(79,172,254,.04)}
+.mission-section{background:var(--white);border:1px solid var(--gray-150);border-radius:10px;padding:14px 16px;margin-bottom:8px;animation:cardIn .3s var(--ease) forwards}
+.mission-filter{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+.mission-filter-btn{font-size:11px;padding:3px 10px;border:1px solid var(--gray-200);border-radius:20px;background:transparent;color:var(--gray-500);cursor:pointer;transition:all .12s}
+.mission-filter-btn:hover{border-color:var(--navy-300);color:var(--navy-700)}
+.mission-filter-btn--active{background:var(--navy-700);border-color:var(--navy-700);color:#fff}
+
 /* ══ STUDIO ══ */
 .studio-surface{flex:1;display:flex;flex-direction:column;min-height:0}
 .studio-toolbar{display:flex;align-items:center;gap:6px;padding:8px 16px;border-bottom:1px solid var(--gray-200);flex-shrink:0;flex-wrap:wrap}
@@ -720,7 +730,8 @@ input[type="file"]{display:none}
   <nav class="nav-rail" id="nav-rail">
     <div class="nav-logo"><span class="nav-logo-text">PRISM</span><div class="nav-logo-bar"></div></div>
     <button class="nav-btn nav-btn--active" onclick="switchSurface('ops')" id="nav-ops"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="nav-tooltip">Ops</span></button>
-    <button class="nav-btn" onclick="switchSurface('runs')" id="nav-runs"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg><span class="nav-tooltip">Missions</span></button>
+    <button class="nav-btn" onclick="switchSurface('runs')" id="nav-runs"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg><span class="nav-tooltip">Run History</span></button>
+    <button class="nav-btn" onclick="switchSurface('missions')" id="nav-missions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg><span class="nav-tooltip">Missions</span></button>
     <button class="nav-btn" onclick="switchSurface('approvals')" id="nav-approvals"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-tooltip">Approvals</span></button>
     <button class="nav-btn" onclick="switchSurface('scorecard')" id="nav-scorecard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span class="nav-tooltip">Scorecard</span></button>
     <div class="nav-divider"></div>
@@ -1493,6 +1504,18 @@ function renderSidebar() {
       </div>
     </div>`;
   }
+  // MISSIONS group (above Operators)
+  const mCat=S.missionCatalog||[];
+  const mEnabled=mCat.filter(m=>m.enabled!==false&&m.status!=='disabled').length;
+  const missBody=mCat.length
+    ?mCat.map(m=>{
+        const sel=S.selectedMission===m.id?' op-item--active':'';
+        const dot=m.status==='active'?'dot--online':'dot--grey';
+        const initAv=esc((m.name||m.id||'M').slice(0,2).toUpperCase());
+        return `<div class="op-item${sel}" onclick="selectMission('${esc(m.id)}')"><div class="op-avatar op-avatar--operator" style="background:var(--navy-600);color:#fff;font-size:10px;font-weight:700">${initAv}<div class="op-dot ${dot}"></div></div><div class="op-body"><div class="op-name">${esc(m.name||m.id)}</div><div class="op-role">${esc(m.description||m.category||'')}</div></div></div>`;
+      }).join('')
+    :`<div style="padding:8px 16px;font-size:11px;color:var(--gray-400)">No missions installed</div>`;
+  html+=buildSbGroup('missions','Missions',mCat.length?`${mEnabled}`:null,true,missBody);
   // OPERATORS group
   const onlineCount=coreOps.filter(c=>c.status!=='offline').length;
   const opsBody=coreOps.length?coreOps.map(buildOpItem).join(''):`<div style="padding:8px 16px;font-size:11px;color:var(--gray-400)">No operators</div>`;
@@ -1694,6 +1717,197 @@ function renderRunRow(run) {
   </div>`:''}`;
 }
 
+/* ═══ MISSIONS SURFACE ═══ */
+async function renderMissionsSurface() {
+  const panel = document.getElementById('main-panel');
+  if (!panel) return;
+  const mission = S.selectedMission ? S.missionCatalog.find(m => m.id === S.selectedMission) : null;
+  panel.innerHTML = `
+    <div class="topbar">
+      <div class="topbar__left">
+        <div style="font-size:15px;font-weight:700;color:var(--navy-800)">${S.selectedMission && mission ? esc(mission.name||mission.id) : 'Mission Control'}</div>
+        ${S.selectedMission ? `<button class="hbtn" style="margin-left:10px;font-size:11px" onclick="S.selectedMission=null;renderMissionsSurface();renderSidebar()">← All Missions</button>` : ''}
+      </div>
+      <div class="topbar__right">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">${S.missionCatalog.length} installed</span>
+      </div>
+    </div>
+    <div class="surface" id="missions-content"><div style="padding:20px;color:var(--gray-400);font-size:13px">Loading…</div></div>`;
+  if (!S.missionCatalog.length) {
+    const cat = await prismFetch('/api/prism/missions/catalog').catch(() => null);
+    if (cat && Array.isArray(cat.missions)) { S.missionCatalog = cat.missions; renderSidebar(); }
+  }
+  const content = document.getElementById('missions-content');
+  if (!content) return;
+  if (S.selectedMission) {
+    await _renderMissionDetail(S.selectedMission, content);
+  } else {
+    _renderMissionCatalog(content);
+  }
+}
+
+function _renderMissionCatalog(el) {
+  const cat = S.missionCatalog;
+  if (!cat.length) {
+    el.innerHTML = `<div class="runs-empty">No missions installed. Use the Depot to install missions.</div>`;
+    return;
+  }
+  el.innerHTML = cat.map(m => {
+    const active = m.status === 'active';
+    const dotCls = active ? 'dot--online' : 'dot--grey';
+    const tagCls = active ? 'tag--online' : 'tag--offline';
+    const wfBtns = (m.workflows || []).map(w =>
+      `<button class="hbtn" onclick="event.stopPropagation();launchMissionWorkflow('${esc(m.id)}','${esc(w.id||w)}')" style="font-size:11px">▶ ${esc(w.name||w.id||w)}</button>`
+    ).join('');
+    return `<div class="mission-card${S.selectedMission===m.id?' mission-card--active':''}" onclick="selectMission('${esc(m.id)}')">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span class="op-dot ${dotCls}" style="flex-shrink:0"></span>
+        <span style="font-weight:700;font-size:13px;color:var(--navy-800)">${esc(m.name||m.id)}</span>
+        <span class="tag ${tagCls}" style="margin-left:2px">${esc(m.status||'unknown')}</span>
+        ${m.category?`<span class="tag tag--neutral">${esc(m.category)}</span>`:''}
+      </div>
+      ${m.description?`<div style="font-size:12px;color:var(--gray-500);margin-bottom:10px">${esc(m.description)}</div>`:''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${wfBtns}</div>
+    </div>`;
+  }).join('');
+}
+
+async function _renderMissionDetail(missionId, el) {
+  el.innerHTML = `<div style="padding:20px;color:var(--gray-400);font-size:13px">Loading mission detail…</div>`;
+  const [schemaResp, runsResp] = await Promise.all([
+    prismFetch('/api/prism/missions/' + missionId + '/schema').catch(() => null),
+    prismFetch('/api/prism/missions/runs?mission_id=' + missionId).catch(() => null),
+  ]);
+  const sections = schemaResp?.sections || [];
+  const runs = runsResp?.runs || [];
+  S.missionRuns = runs;
+  if (!sections.length && !runs.length) {
+    el.innerHTML = `<div class="runs-empty">No detail available for this mission yet.</div>`;
+    return;
+  }
+  const hasRunList = sections.some(s => s.type === 'run_list');
+  const html = sections.map(s => _renderMissionSection(s, runs)).join('')
+    + (!hasRunList ? _msSectionRunList({title:'Recent Runs', type:'run_list'}, runs) : '');
+  el.innerHTML = html;
+}
+
+function _renderMissionSection(s, runs) {
+  switch (s.type) {
+    case 'health_card':     return _msSectionHealth(s);
+    case 'stat_row':        return _msSectionStatRow(s);
+    case 'table':           return _msSectionTable(s);
+    case 'approval_cards':  return _msSectionApprovals(s);
+    case 'run_list':        return _msSectionRunList(s, runs);
+    case 'action_buttons':  return _msSectionActions(s);
+    case 'brief_card':      return _msSectionBrief(s);
+    default: return '';
+  }
+}
+
+function _msSectionHealth(s) {
+  const status = s.status || s.data?.status || 'unknown';
+  const clr = status==='active'?'var(--green)':status==='error'?'var(--red)':'var(--gray-400)';
+  return `<div class="mission-section"><div style="display:flex;align-items:center;gap:8px">
+    <span class="op-dot ${status==='active'?'dot--online':status==='error'?'dot--error':'dot--grey'}" style="flex-shrink:0"></span>
+    <span style="font-weight:600;font-size:13px;color:var(--navy-800)">${esc(s.title||'Status')}</span>
+    <span style="font-family:var(--mono);font-size:11px;color:${clr}">${esc(status)}</span>
+  </div>${s.description?`<div style="font-size:12px;color:var(--gray-500);margin-top:6px">${esc(s.description)}</div>`:''}</div>`;
+}
+
+function _msSectionStatRow(s) {
+  const stats = s.stats || s.data || [];
+  if (!Array.isArray(stats) || !stats.length) return '';
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${stats.map(st =>
+    `<div class="mission-section" style="flex:1;min-width:90px;text-align:center">
+      <div style="font-size:22px;font-weight:700;color:var(--navy-900)">${esc(String(st.value??'—'))}</div>
+      <div style="font-size:11px;color:var(--gray-400);margin-top:2px">${esc(st.label||'')}</div>
+    </div>`).join('')}</div>`;
+}
+
+function _msSectionTable(s) {
+  const rows = s.rows || s.data || [];
+  const cols = s.columns || (rows[0] ? Object.keys(rows[0]) : []);
+  return `<div class="mission-section"><div style="font-weight:600;font-size:13px;color:var(--navy-800);margin-bottom:8px">${esc(s.title||'Data')}</div>
+    ${rows.length
+      ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr>${cols.map(c=>`<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--gray-200);color:var(--gray-500);font-weight:600">${esc(String(c))}</th>`).join('')}</tr></thead>
+          <tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td style="padding:4px 8px;border-bottom:1px solid var(--gray-100);color:var(--navy-700)">${esc(String(r[c]??''))}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table></div>`
+      : `<div style="color:var(--gray-400);font-size:12px">No data</div>`}
+  </div>`;
+}
+
+function _msSectionApprovals(s) {
+  const items = (s.data||s.items||[]).length ? (s.data||s.items)
+    : (S.liveApprovals||[]).filter(a=>a.mission_id===S.selectedMission);
+  return `<div class="mission-section"><div style="font-weight:600;font-size:13px;color:var(--navy-800);margin-bottom:8px">${esc(s.title||'Approvals')}</div>
+    ${items.length ? items.map(a=>renderACCard(a)).join('') : `<div style="color:var(--gray-400);font-size:12px">No pending approvals for this mission</div>`}
+  </div>`;
+}
+
+function _msSectionRunList(s, runs) {
+  const items = (runs||[]).length ? runs : (s.data||[]);
+  const stMap = {completed:'run-status--done',running:'run-status--run',failed:'run-status--fail'};
+  return `<div class="mission-section"><div style="font-weight:600;font-size:13px;color:var(--navy-800);margin-bottom:8px">${esc(s.title||'Recent Runs')}</div>
+    ${items.length ? items.slice(0,10).map(r=>{
+      const sc=stMap[r.status]||'run-status--pend';
+      return `<div class="run-row" style="padding:6px 0;border-radius:0;border:none;border-bottom:1px solid var(--gray-100);margin-bottom:0">
+        <div class="run-status ${sc}"></div>
+        <div class="run-info">
+          <div class="run-title">${esc(r.workflow_id||r.trigger_type||r.id||'—')}</div>
+          <div class="run-meta"><span>${esc(r.status||'—')}</span>${r.started_at?`<span>${new Date(r.started_at).toLocaleString()}</span>`:''}</div>
+        </div>
+      </div>`;
+    }).join('') : `<div style="color:var(--gray-400);font-size:12px">No runs yet</div>`}
+  </div>`;
+}
+
+function _msSectionActions(s) {
+  const btns = s.buttons || s.data || [];
+  if (!btns.length) return '';
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${btns.map(b=>
+    `<button class="hbtn" onclick="launchMissionWorkflow('${esc(S.selectedMission||'')}','${esc(b.workflow_id||b.id||'')}')">${esc(b.label||b.id||'Run')}</button>`
+  ).join('')}</div>`;
+}
+
+function _msSectionBrief(s) {
+  return `<div class="mission-section"><div style="font-weight:600;font-size:13px;color:var(--navy-800);margin-bottom:6px">${esc(s.title||'Brief')}</div>
+    <div style="font-size:12px;color:var(--gray-600);line-height:1.6">${esc(s.text||s.content||'—')}</div>
+  </div>`;
+}
+
+function selectMission(id) {
+  S.selectedMission = id;
+  if (S.surface !== 'missions') switchSurface('missions');
+  else renderMissionsSurface();
+  renderSidebar();
+}
+
+async function refreshMissionCatalog() {
+  const cat = await prismFetch('/api/prism/missions/catalog').catch(() => null);
+  if (cat && Array.isArray(cat.missions)) {
+    S.missionCatalog = cat.missions;
+    renderSidebar();
+    if (S.surface === 'missions') renderMissionsSurface();
+  }
+}
+
+async function launchMissionWorkflow(missionId, workflowId) {
+  if (!missionId || !workflowId) { alert('No workflow specified'); return; }
+  try {
+    const r = await fetch(PRISM_URL + '/api/prism/missions/' + missionId + '/run/' + workflowId, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: '{}', signal: AbortSignal.timeout(5000),
+    });
+    const d = await r.json();
+    if (d.run_id || d.mission_run_id) {
+      alert('Mission started — Run ID: ' + (d.run_id || d.mission_run_id));
+    } else {
+      alert('Launch failed: ' + (d.error || JSON.stringify(d)));
+    }
+  } catch(e) { alert('Launch error: ' + e); }
+}
+
 /* ═══ OBSERVABILITY — driven by real vault data ═══ */
 function renderObsSurface() {
   const panel=document.getElementById('main-panel');
@@ -1801,6 +2015,9 @@ async function renderApprovalsSurface() {
           Outcomes
         </button>
       </div>
+      ${S.approvalTab==='pending'?`<div class="mission-filter">
+        ${[['all','All'],['revenue_desk','Revenue Desk'],['growth_desk','Growth Desk'],['operations_desk_lite','Operations Desk'],['__high_risk__','High Risk']].map(([k,lbl])=>`<button class="mission-filter-btn${S.approvalMissionFilter===k?' mission-filter-btn--active':''}" onclick="setApprovalMissionFilter('${k}')">${lbl}</button>`).join('')}
+      </div>`:''}
       <div id="ac-content"></div>
     </div>`;
   if (S.approvalTab === 'pending') {
@@ -1813,9 +2030,19 @@ async function renderApprovalsSurface() {
 
 function setApprovalTab(tab) { S.approvalTab = tab; renderApprovalsSurface(); }
 
+function setApprovalMissionFilter(f) { S.approvalMissionFilter = f; renderApprovalsSurface(); }
+
 function renderACPending() {
   const el = document.getElementById('ac-content'); if (!el) return;
-  const la = S.liveApprovals || [];
+  let la = S.liveApprovals || [];
+  const mf = S.approvalMissionFilter || 'all';
+  if (mf !== 'all') {
+    if (mf === '__high_risk__') {
+      la = la.filter(a => (a.risk_level || '').toUpperCase() === 'HIGH');
+    } else {
+      la = la.filter(a => (a.mission_id || '') === mf);
+    }
+  }
   if (!la.length) {
     el.innerHTML = `<div class="approvals-empty"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span>No pending approvals — your operators are waiting for work or running automatically.</span></div>`;
     return;
@@ -2469,6 +2696,10 @@ async function doClearVault() {
 /* === LIVE RUN POLL — real data from Cascadia PRISM API every 3s === */
 S.liveRuns = [];
 S.liveApprovals = [];
+S.missionCatalog = [];
+S.selectedMission = null;
+S.missionRuns = [];
+S.approvalMissionFilter = 'all';
 
 async function pollLiveRuns() {
   const [rd, ad] = await Promise.all([
@@ -2493,6 +2724,7 @@ async function pollLiveRuns() {
   if (changed) {
     updateNavBadges();
     if (S.surface === 'runs')      renderRunsSurface();
+    if (S.surface === 'missions')  renderMissionsSurface();
     if (S.surface === 'approvals') renderApprovalsSurface();
   }
 }
@@ -2693,6 +2925,7 @@ function switchSurface(surface) {
   const panel=document.getElementById('main-panel'); if(panel) panel.style.cssText='';
   if (surface==='ops') { renderMain(); renderSidebar(); }
   else if (surface==='runs') renderRunsSurface();
+  else if (surface==='missions') renderMissionsSurface();
   else if (surface==='obs') renderHealthSurface(); // merged into health
   else if (surface==='approvals') renderApprovalsSurface();
   else if (surface==='scorecard') renderScorecardSurface();
@@ -3739,6 +3972,8 @@ async function loadBackupStatus() {
   setInterval(loadBackupStatus, 300000);
   refreshWatchdogStatus();
   setInterval(refreshWatchdogStatus, 60000);
+  refreshMissionCatalog();
+  setInterval(refreshMissionCatalog, 30000);
 })();
 
 /* ═══ SENSORS SURFACE ═══ */
