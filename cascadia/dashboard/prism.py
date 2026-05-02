@@ -217,6 +217,11 @@ class PrismService:
         self.runtime.register_route('POST', '/api/config/{target_type}/{target_id}/save',           self.cfg_save)
         self.runtime.register_route('POST', '/api/config/{target_type}/{target_id}/reset',          self.cfg_reset)
         self.runtime.register_route('POST', '/api/config/{target_type}/{target_id}/test',           self.cfg_test)
+        # Mission Manager proxy routes — static routes registered before parametric to avoid conflicts
+        self.runtime.register_route('GET',  '/api/prism/missions/catalog',                        self.missions_catalog)
+        self.runtime.register_route('GET',  '/api/prism/missions/runs',                           self.missions_all_runs)
+        self.runtime.register_route('POST', '/api/prism/missions/{mission_id}/run/{workflow_id}', self.mission_run_workflow)
+        self.runtime.register_route('GET',  '/api/prism/missions/{mission_id}/schema',            self.mission_schema)
 
         # Start operator watchdog
         try:
@@ -2945,6 +2950,27 @@ document.getElementById('key').addEventListener('keydown', function(e){
         except Exception:
             pass  # mDNS is optional
         self.runtime.start()
+
+    def missions_catalog(self, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+        data = _http_get(self._ports.get('mission_manager', 6207), '/api/missions/catalog')
+        return (200, data) if data is not None else (503, {'error': 'mission_manager_unavailable', 'missions': []})
+
+    def missions_all_runs(self, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+        mission_id = payload.get('mission_id', '')
+        path = f'/api/missions/runs?mission_id={mission_id}' if mission_id else '/api/missions/runs'
+        data = _http_get(self._ports.get('mission_manager', 6207), path)
+        return (200, data) if data is not None else (503, {'error': 'mission_manager_unavailable', 'runs': []})
+
+    def mission_schema(self, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+        mission_id = payload.get('mission_id', '')
+        data = _http_get(self._ports.get('mission_manager', 6207), f'/api/missions/{mission_id}/prism_schema')
+        return (200, data) if data is not None else (503, {'error': 'mission_manager_unavailable'})
+
+    def mission_run_workflow(self, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
+        mission_id = payload.get('mission_id', '')
+        workflow_id = payload.get('workflow_id', '')
+        data = _http_post(self._ports.get('mission_manager', 6207), f'/api/missions/{mission_id}/run', {'workflow_id': workflow_id})
+        return (200, data) if data is not None else (503, {'error': 'mission_manager_unavailable'})
 
     def _start_approval_timeout_daemon(self) -> None:
         try:
