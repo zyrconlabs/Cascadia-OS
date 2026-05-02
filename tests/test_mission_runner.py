@@ -449,3 +449,132 @@ def test_existing_read_api_tests_still_pass():
     assert body["status"] == "ok"
     assert body["service"] == "mission_manager"
     assert body["port"] == 6207
+
+
+# ── get_run_status ────────────────────────────────────────────────────────────
+
+def test_get_run_status_returns_run_fields(tmp_path):
+    db = _make_db(tmp_path)
+    reg = _make_installed_registry(tmp_path)
+    runner, _ = _make_runner(db, reg)
+    run_id = _insert_test_run(runner)
+    result = runner.get_run_status(run_id)
+    assert result["mission_run_id"] == run_id
+    assert result["mission_id"] == FIXTURE_ID
+    assert result["status"] == "running"
+    assert "started_at" in result
+    assert "completed_at" in result
+
+
+def test_get_run_status_not_found_returns_error(tmp_path):
+    db = _make_db(tmp_path)
+    reg = _make_installed_registry(tmp_path)
+    runner, _ = _make_runner(db, reg)
+    result = runner.get_run_status("nonexistent-id")
+    assert result["error"] == "run_not_found"
+
+
+# ── list_recent_runs ──────────────────────────────────────────────────────────
+
+def test_list_recent_runs_returns_all_runs(tmp_path):
+    db = _make_db(tmp_path)
+    reg = _make_installed_registry(tmp_path)
+    runner, _ = _make_runner(db, reg)
+    _insert_test_run(runner)
+    _insert_test_run(runner)
+    runs = runner.list_recent_runs()
+    assert len(runs) >= 2
+    assert all("id" in r for r in runs)
+
+
+def test_list_recent_runs_filters_by_mission_id(tmp_path):
+    db = _make_db(tmp_path)
+    reg = _make_installed_registry(tmp_path)
+    runner, _ = _make_runner(db, reg)
+    _insert_test_run(runner, mission_id=FIXTURE_ID)
+    _insert_test_run(runner, mission_id="other_mission")
+    runs = runner.list_recent_runs(mission_id=FIXTURE_ID)
+    assert all(r["mission_id"] == FIXTURE_ID for r in runs)
+    assert len(runs) >= 1
+
+
+def test_list_recent_runs_respects_limit(tmp_path):
+    db = _make_db(tmp_path)
+    reg = _make_installed_registry(tmp_path)
+    runner, _ = _make_runner(db, reg)
+    for _ in range(5):
+        _insert_test_run(runner)
+    runs = runner.list_recent_runs(limit=3)
+    assert len(runs) <= 3
+
+
+# ── trigger_from_event ────────────────────────────────────────────────────────
+
+def test_trigger_from_event_starts_matching_mission(tmp_path):
+    db = _make_db(tmp_path)
+    # Build a registry where test_growth_desk consumes "schedule.daily"
+    reg_file = tmp_path / "missions_registry.json"
+    reg_file.write_text(json.dumps({"installed": [FIXTURE_ID]}))
+    reg = MissionRegistry(packages_root=FIXTURE_DIR, registry_file=str(reg_file))
+    runner, mock_adapter = _make_runner(db, reg)
+    # test_growth_desk manifest has events.consumes: ["schedule.daily"]
+    result = runner.trigger_from_event("schedule.daily", {"source": "test"})
+    # Should return a run_id string (mission matched and started)
+    assert result is not None
+    assert isinstance(result, str)
+
+
+def test_trigger_from_event_returns_none_for_unknown_event(tmp_path):
+    db = _make_db(tmp_path)
+    reg = _make_installed_registry(tmp_path)
+    runner, _ = _make_runner(db, reg)
+    result = runner.trigger_from_event("unknown.event.xyz", {})
+    assert result is None
+
+
+# ── Manager: GET /api/missions/runs endpoints ─────────────────────────────────
+
+def test_list_all_runs_endpoint_returns_runs(tmp_path):
+    db = _make_db(tmp_path)
+    reg = _make_installed_registry(tmp_path)
+    runner, _ = _make_runner(db, reg)
+    _insert_test_run(runner)
+    manager._registry = reg
+    manager._runner = runner
+    try:
+        code, body = manager.handle_list_all_runs({})
+        assert code == 200
+        assert "runs" in body
+        assert isinstance(body["runs"], list)
+        assert body["count"] >= 1
+    finally:
+        manager._registry = None
+        manager._runner = None
+
+
+def test_get_run_endpoint_returns_run(tmp_path):
+    db = _make_db(tmp_path)
+    reg = _make_installed_registry(tmp_path)
+    runner, _ = _make_runner(db, reg)
+    run_id = _insert_test_run(runner)
+    manager._runner = runner
+    try:
+        code, body = manager.handle_get_run({"run_id": run_id})
+        assert code == 200
+        assert body["mission_run_id"] == run_id
+        assert body["status"] == "running"
+    finally:
+        manager._runner = None
+
+
+def test_get_run_endpoint_404_for_missing(tmp_path):
+    db = _make_db(tmp_path)
+    reg = _make_installed_registry(tmp_path)
+    runner, _ = _make_runner(db, reg)
+    manager._runner = runner
+    try:
+        code, body = manager.handle_get_run({"run_id": "does-not-exist"})
+        assert code == 404
+        assert body["error"] == "run_not_found"
+    finally:
+        manager._runner = None

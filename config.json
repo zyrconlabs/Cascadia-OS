@@ -171,5 +171,9 @@
     }
   ],
   "sentinel_fail_open": false,
-  "sentinel_fail_open_note": "Production default is false (fail-closed): if SENTINEL is unreachable, side-effect steps are blocked. Set true only for dev/demo environments."
+  "sentinel_fail_open_note": "Production default is false (fail-closed): if SENTINEL is unreachable, side-effect steps are blocked. Set true only for dev/demo environments.",
+  "mission_runner": {
+    "stitch_url": "http://localhost:6201",
+    "bell_url": "http://localhost:6204"
+  }
 }
