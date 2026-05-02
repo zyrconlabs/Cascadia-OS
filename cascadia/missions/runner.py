@@ -42,8 +42,13 @@ class MissionRunError(Exception): pass
 # ── Event publishing ──────────────────────────────────────────────────────────
 
 def publish_mission_event(event_type: str, payload: Dict[str, Any]) -> None:
-    """Publish a mission lifecycle event. Logs at INFO; Session 3C wires to NATS."""
+    """Publish via MobileMissionEventBridge; log at INFO regardless."""
     log.info("MISSION_EVENT: %s %s", event_type, payload)
+    try:
+        from cascadia.missions.mobile_events import get_bridge
+        get_bridge().publish(event_type, payload)
+    except Exception as exc:
+        log.debug("mobile_events bridge unavailable (non-fatal): %s", exc)
 
 
 # ── Tier check ────────────────────────────────────────────────────────────────

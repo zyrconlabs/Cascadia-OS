@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict
 
+from cascadia.missions.mobile_events import MobileMissionEventBridge, get_bridge
 from cascadia.missions.registry import MissionRegistry
 from cascadia.missions.runner import (
     MissionNotFoundError,
@@ -17,6 +18,7 @@ from cascadia.missions.runner import (
     TierNotAllowedError,
     WorkflowNotFoundError,
 )
+from cascadia.missions.scheduler import MissionScheduler
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
 
@@ -25,6 +27,8 @@ NAME = "mission_manager"
 
 _registry: MissionRegistry | None = None
 _runner: MissionRunner | None = None
+_scheduler: MissionScheduler | None = None
+_bridge: MobileMissionEventBridge | None = None
 log = logging.getLogger(__name__)
 
 
@@ -339,6 +343,45 @@ def handle_complete_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any
     return 200, result or {}
 
 
+# ── Scheduler handlers ────────────────────────────────────────────────────────
+
+def handle_scheduler_status(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    if _scheduler is None:
+        return 200, {"running": False, "registered_schedules": 0, "schedules": []}
+    return 200, _scheduler.status()
+
+
+def handle_scheduler_start(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    if _scheduler is None:
+        return 503, {"error": "scheduler_not_available"}
+    _scheduler.start()
+    st = _scheduler.status()
+    return 200, {"status": "started", "schedules": st["registered_schedules"]}
+
+
+def handle_scheduler_stop(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    if _scheduler is None:
+        return 503, {"error": "scheduler_not_available"}
+    _scheduler.stop()
+    return 200, {"status": "stopped"}
+
+
+# ── Mobile event polling handlers ─────────────────────────────────────────────
+
+def handle_pending_events(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    bridge = _bridge or get_bridge()
+    since = payload.get("since")
+    events = bridge.get_pending_events(since_timestamp=since)
+    return 200, {"events": events}
+
+
+def handle_delivered_events(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    bridge = _bridge or get_bridge()
+    event_ids = payload.get("event_ids", [])
+    cleared = bridge.clear_delivered(event_ids)
+    return 200, {"cleared": cleared}
+
+
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _installed_ids() -> set:
@@ -359,7 +402,7 @@ def _installed_ids() -> set:
 class MissionManagerService:
 
     def __init__(self, config_path: str, name: str) -> None:
-        global _registry, _runner
+        global _registry, _runner, _scheduler, _bridge
         config = load_config(config_path)
         component = next(c for c in config["components"] if c["name"] == name)
         packages_root = (config.get("missions") or {}).get("packages_root") or None
@@ -368,15 +411,25 @@ class MissionManagerService:
             registry=_registry,
             adapter=StitchMissionAdapter(),
         )
+        _scheduler = MissionScheduler(registry=_registry, runner=_runner)
+        _bridge = get_bridge()
         self.runtime = ServiceRuntime(
             name=name,
             port=component["port"],
             heartbeat_file=component["heartbeat_file"],
             log_dir=config["log_dir"],
         )
+        _bridge.set_ws_runtime(self.runtime)
+        self.runtime.register_ws_route("/missions/ws")
+        # Static routes registered before parametric to ensure exact-match priority
         self.runtime.register_route("GET",  "/healthz",                                          handle_healthz)
         self.runtime.register_route("GET",  "/api/missions/catalog",                             handle_catalog)
         self.runtime.register_route("GET",  "/api/missions/installed",                           handle_installed)
+        self.runtime.register_route("GET",  "/api/missions/scheduler/status",                    handle_scheduler_status)
+        self.runtime.register_route("POST", "/api/missions/scheduler/start",                     handle_scheduler_start)
+        self.runtime.register_route("POST", "/api/missions/scheduler/stop",                      handle_scheduler_stop)
+        self.runtime.register_route("GET",  "/api/missions/events/pending",                      handle_pending_events)
+        self.runtime.register_route("POST", "/api/missions/events/delivered",                    handle_delivered_events)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}",                        handle_mission_detail)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}/status",                 handle_status)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}/mobile_schema",          handle_mobile_schema)
