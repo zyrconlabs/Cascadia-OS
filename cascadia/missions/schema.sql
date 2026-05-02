@@ -352,6 +352,36 @@ CREATE INDEX IF NOT EXISTS idx_approvals_mission_id     ON approvals(mission_id)
 CREATE INDEX IF NOT EXISTS idx_approvals_mission_run_id ON approvals(mission_run_id);
 
 -- ──────────────────────────────────────────────────────────────
+-- MISSION ITEMS  (revenue pipeline items surfaced from email scan)
+-- ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS mission_items (
+  id                TEXT PRIMARY KEY,
+  mission_id        TEXT NOT NULL,
+  mission_run_id    TEXT,
+  item_type         TEXT NOT NULL,
+  title             TEXT NOT NULL,
+  description       TEXT,
+  source_type       TEXT,
+  source_id         TEXT,
+  customer_name     TEXT,
+  company_name      TEXT,
+  amount            REAL,
+  due_date          TEXT,
+  confidence        REAL,
+  urgency_score     INTEGER DEFAULT 0,
+  value_score       INTEGER DEFAULT 0,
+  status            TEXT DEFAULT 'new',
+  recommended_action TEXT,
+  approval_required INTEGER DEFAULT 1,
+  raw_json          TEXT,
+  created_at        TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_mission_items_mission_id   ON mission_items(mission_id);
+CREATE INDEX IF NOT EXISTS idx_mission_items_status       ON mission_items(status);
+CREATE INDEX IF NOT EXISTS idx_mission_items_item_type    ON mission_items(item_type);
+
+-- ──────────────────────────────────────────────────────────────
 -- DEFAULT ORGANIZATION ROW
 -- ──────────────────────────────────────────────────────────────
 INSERT INTO organizations (id, name, slug, tier)

@@ -45,7 +45,7 @@ class MissionsSchemaTests(unittest.TestCase):
         # All 15 mission tables must exist
         for expected in MISSION_TABLES:
             self.assertIn(expected, tables, f"Missing table: {expected}")
-        self.assertEqual(len(MISSION_TABLES), 15)
+        self.assertEqual(len(MISSION_TABLES), 16)
         # Migration reported it created tables
         self.assertGreater(result['tables_created'], 0)
 
