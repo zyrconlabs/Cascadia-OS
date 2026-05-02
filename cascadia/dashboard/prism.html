@@ -2016,7 +2016,7 @@ async function renderApprovalsSurface() {
         </button>
       </div>
       ${S.approvalTab==='pending'?`<div class="mission-filter">
-        ${[['all','All'],['revenue_desk','Revenue Desk'],['growth_desk','Growth Desk'],['operations_desk_lite','Operations Desk'],['__high_risk__','High Risk']].map(([k,lbl])=>`<button class="mission-filter-btn${S.approvalMissionFilter===k?' mission-filter-btn--active':''}" onclick="setApprovalMissionFilter('${k}')">${lbl}</button>`).join('')}
+        ${[['all','All'],['revenue_desk','Revenue Desk'],['growth_desk','Growth Desk'],['operations_desk','Operations Desk'],['__high_risk__','High Risk']].map(([k,lbl])=>`<button class="mission-filter-btn${S.approvalMissionFilter===k?' mission-filter-btn--active':''}" onclick="setApprovalMissionFilter('${k}')">${lbl}</button>`).join('')}
       </div>`:''}
       <div id="ac-content"></div>
     </div>`;
