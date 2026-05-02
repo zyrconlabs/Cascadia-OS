@@ -24,8 +24,11 @@ _SCHEMA_PATH = Path(__file__).parent / 'schema.sql'
 # ALTER TABLE statements parsed out of schema.sql and handled in Python
 # (IF NOT EXISTS in ALTER TABLE is not portable across SQLite builds)
 _ALTER_COLUMNS = [
-    ('approvals', 'mission_id',     'TEXT'),
-    ('approvals', 'mission_run_id', 'TEXT'),
+    ('approvals',      'mission_id',     'TEXT'),
+    ('approvals',      'mission_run_id', 'TEXT'),
+    ('mission_runs',   'workflow_id',    'TEXT'),
+    ('mission_runs',   'trigger_type',   'TEXT'),
+    ('mission_runs',   'parent_run_id',  'TEXT'),
 ]
 
 # Indexes on approvals columns — created after ALTERs, need the columns to exist first
