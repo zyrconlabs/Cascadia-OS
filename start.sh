@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════
 # Cascadia OS — full stack startup
-# Starts: llama.cpp + Cascadia OS (11 components)
+# Starts: llama.cpp + Cascadia OS (13 components)
 # ═══════════════════════════════════════════════════════════════════════════
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
@@ -93,12 +93,36 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     curl -sf http://127.0.0.1:4011/health > /dev/null && echo "✓ Cascadia OS ready" || echo "✗ Cascadia OS failed — check logs"
 fi
 
-# ── 4. Operators ──────────────────────────────────────────────────────────
+# ── 4. PRISM Dashboard ────────────────────────────────────────────────────
+if curl -sf http://127.0.0.1:6300/health > /dev/null 2>&1; then
+    echo "✓ PRISM already running"
+else
+    echo "▸ Starting PRISM..."
+    PYTHON="${REPO}/.venv/bin/python3"
+    [[ ! -f "$PYTHON" ]] && PYTHON="python3"
+    "$PYTHON" -m cascadia.dashboard.prism --config config.json --name prism >> data/logs/prism.log 2>&1 &
+    sleep 3
+    curl -sf http://127.0.0.1:6300/health > /dev/null && echo "✓ PRISM ready" || echo "✗ PRISM failed — check data/logs/prism.log"
+fi
+
+# ── 5. Mission Manager ────────────────────────────────────────────────────
+if curl -sf http://127.0.0.1:6207/healthz > /dev/null 2>&1; then
+    echo "✓ Mission Manager already running"
+else
+    echo "▸ Starting Mission Manager..."
+    PYTHON="${REPO}/.venv/bin/python3"
+    [[ ! -f "$PYTHON" ]] && PYTHON="python3"
+    "$PYTHON" -m cascadia.missions.manager --config config.json --name mission_manager >> data/logs/mission_manager.log 2>&1 &
+    sleep 3
+    curl -sf http://127.0.0.1:6207/healthz > /dev/null && echo "✓ Mission Manager ready" || echo "✗ Mission Manager failed — check data/logs/mission_manager.log"
+fi
+
+# ── 6. Operators ──────────────────────────────────────────────────────────
 # First-party operators are maintained in cascadia-os-operators (private).
 # Start operators from that repo before running this script.
 # See: https://github.com/zyrconlabs/cascadia-os-operators
 
-# ── 5. Register operators with CREW ──────────────────────────────────────
+# ── 7. Register operators with CREW ──────────────────────────────────────
 # BELL self-registers with CREW automatically after startup.
 # Commercial operators (cascadia-os-operators) self-register when started.
 # Custom operators: POST http://127.0.0.1:5100/register with your operator_id.
@@ -113,7 +137,8 @@ echo ""
 _lg_health=$(curl -sf http://127.0.0.1:6100/api/health 2>/dev/null)
 _lg_tier=$(echo "$_lg_health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tier','?'))" 2>/dev/null || echo "?")
 echo "  License Gate     →  http://127.0.0.1:6100/api/health  (tier: $_lg_tier)"
-echo "  PRISM dashboard  →  http://localhost:6300/"
+echo "  PRISM            →  http://localhost:6300/health"
+echo "  Mission Manager  →  http://localhost:6207/healthz"
 echo ""
 echo "  Run demo:  bash demo.sh"
 echo ""
