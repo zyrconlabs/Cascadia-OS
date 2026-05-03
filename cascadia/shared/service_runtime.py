@@ -147,7 +147,7 @@ class ServiceRuntime:
             def _cors_headers(self) -> None:
                 origin = self.headers.get('Origin', '*')
                 self.send_header('Access-Control-Allow-Origin', origin)
-                self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+                self.send_header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
                 self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Stripe-Signature')
                 self.send_header('Access-Control-Max-Age', '86400')
 
@@ -201,11 +201,15 @@ class ServiceRuntime:
                     return
                 if not self._check_internal_key():
                     return
-                code, payload = runtime.route_request('GET', self.path, {})
-                if isinstance(payload, dict) and '__html__' in payload:
-                    self._send_html(code, payload['__html__'])
-                else:
-                    self._send_json(code, payload)
+                try:
+                    code, payload = runtime.route_request('GET', self.path, {})
+                    if isinstance(payload, dict) and '__html__' in payload:
+                        self._send_html(code, payload['__html__'])
+                    else:
+                        self._send_json(code, payload)
+                except Exception as exc:
+                    runtime.logger.error('GET %s error: %s', self.path, exc, exc_info=True)
+                    self._send_json(500, {'error': str(exc)})
 
             def _handle_ws_upgrade(self) -> None:
                 key = self.headers.get('Sec-WebSocket-Key', '')
