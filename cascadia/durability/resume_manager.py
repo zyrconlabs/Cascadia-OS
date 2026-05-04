@@ -19,7 +19,13 @@ from .idempotency import IdempotencyManager
 from .run_store import RunStore
 from .step_journal import StepJournal
 
+# States that permanently block resume — manual intervention required.
 NON_RESUMABLE_STATES = {'complete', 'failed', 'poisoned', 'abandoned'}
+
+# New Session E states:
+#   recovering  — SUPERVISOR is retrying; treat as resumable
+#   escalated   — waiting for user decision; block auto-resume until resolved
+#   dead_letter — DLQ; block resume, surface manual resolution message
 
 
 class ResumeManager:
@@ -63,6 +69,29 @@ class ResumeManager:
                 )
             # Approval was recorded (shouldn't still be waiting_human) — safe to resume
             return self._safe_resume(run)
+
+        # Escalated: block auto-resume until user decision resolves it
+        if run_state == 'escalated':
+            pending = self.run_store.pending_approvals(run_id)
+            if pending:
+                return self._not_resumable(
+                    run, 'escalated_awaiting_decision',
+                    pending_approval_ids=[p['id'] for p in pending],
+                )
+            # Decision recorded — allow resume
+            return self._safe_resume(run)
+
+        # Recovering: SUPERVISOR decided to retry — allow resume
+        if run_state == 'recovering':
+            return self._safe_resume(run)
+
+        # Dead-letter: manual intervention required — do not auto-resume
+        if run_state == 'dead_letter':
+            return self._not_resumable(
+                run, 'dead_letter',
+                message='This run has been moved to the dead-letter queue. '
+                        'Resolve the underlying failure and manually requeue from PRISM.',
+            )
 
         return self._safe_resume(run)
 
@@ -122,7 +151,7 @@ class ResumeManager:
         Called at FLINT startup. Returns resume contexts for all interrupted runs.
         Does not execute them — returns the list for the caller to act on.
         """
-        resumable_states = {'pending', 'running', 'retrying', 'resuming'}
+        resumable_states = {'pending', 'running', 'retrying', 'resuming', 'recovering'}
         with self.run_store.connection() as conn:
             rows = conn.execute(
                 f"SELECT run_id FROM runs WHERE run_state IN ({','.join('?'*len(resumable_states))})"

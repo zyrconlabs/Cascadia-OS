@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from cascadia.durability.run_store import RunStore
 
@@ -73,3 +73,50 @@ class ApprovalStore:
         """Owns wake transition after approval. Does not own resume execution itself."""
         self.run_store.clear_blocked(run_id)
         self.run_store.update_run(run_id, run_state='retrying')
+
+    def insert_decision_request(
+        self,
+        run_id: str,
+        step_id: str,
+        source: str,
+        title: str,
+        summary: str,
+        risk_level: str = 'MEDIUM',
+        decision_type: str = 'multi_choice',
+        options: Optional[list] = None,
+        timeout_hours: Optional[int] = None,
+        confidence_threshold: Optional[float] = None,
+    ) -> int:
+        """
+        Create a rich multi-choice decision request.
+        Options format: [{"id": str, "label": str, "action": str}, ...]
+        Returns approval_id.
+        """
+        import json as _json
+        options_json = _json.dumps(options or [])
+        # Map timeout_hours override to risk_level sentinel if needed
+        action_key = f'decision:{title[:60]}'
+        latest = self.get_latest(run_id, action_key)
+        if latest and latest['decision'] == 'pending':
+            return int(latest['id'])
+        row: Dict[str, Any] = {
+            'run_id': run_id,
+            'step_index': 0,
+            'action_key': action_key,
+            'decision': 'pending',
+            'actor': None,
+            'reason': summary,
+            'created_at': utc_now(),
+            'decided_at': None,
+        }
+        approval_id = self.run_store.insert_approval(row)
+        # Write extended fields that require direct column access
+        updates: Dict[str, Any] = {
+            'risk_level': risk_level,
+            'decision_options': options_json,
+        }
+        if confidence_threshold is not None:
+            updates['confidence_threshold'] = confidence_threshold
+        self.run_store.update_approval(approval_id, **updates)
+        self.run_store.update_run(run_id, run_state='waiting_human')
+        return approval_id

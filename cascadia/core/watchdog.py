@@ -150,16 +150,21 @@ class OperatorWatchdog:
             self._logger.warning(
                 'OperatorWatchdog: %s has no start_cmd — skipping restart', op_id
             )
-            return
+        else:
+            try:
+                subprocess.Popen(
+                    start_cmd, shell=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                self._logger.info(
+                    'OperatorWatchdog: restart triggered for %s (attempt %d)', op_id, attempt
+                )
+            except Exception as exc:
+                self._logger.error(
+                    'OperatorWatchdog: restart failed for %s: %s', op_id, exc
+                )
         try:
-            subprocess.Popen(
-                start_cmd, shell=True,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-            self._logger.info(
-                'OperatorWatchdog: restart triggered for %s (attempt %d)', op_id, attempt
-            )
-        except Exception as exc:
-            self._logger.error(
-                'OperatorWatchdog: restart failed for %s: %s', op_id, exc
-            )
+            from cascadia.automation.failure_event import FailureEvent, publish_failure_event
+            publish_failure_event(FailureEvent.from_operator_crash(op_id))
+        except Exception:
+            pass

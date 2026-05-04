@@ -28,23 +28,53 @@ DEFAULT_TIMEOUTS: Dict[str, int] = {
 }
 
 
+_CHANNEL_PORTS: Dict[str, int] = {
+    'telegram':  9000,
+    'whatsapp':  9001,
+    'sms':       9002,
+    'slack':     9003,
+}
+
+_PRISM_URL = 'http://localhost:6300'
+
+
 class ApprovalTimeoutDaemon:
     """
     Monitors pending approvals. Escalates then auto-rejects on timeout.
+    Escalation channel is user-configurable via config.escalation.primary_channel.
     Does not own approval creation or delivery.
     """
 
     def __init__(self, db_path: str, handshake_port: int,
                  owner_email: str = '', escalation_email: str = '',
-                 timeouts: Optional[Dict[str, int]] = None) -> None:
+                 timeouts: Optional[Dict[str, int]] = None,
+                 config: Optional[Dict[str, Any]] = None) -> None:
         self._db_path = db_path
         self._handshake_port = handshake_port
         self._owner_email = owner_email
-        self._escalation_email = escalation_email
+        self._config = config or {}
         self._timeouts = timeouts or DEFAULT_TIMEOUTS
         self._escalated: set = set()
         self._running = False
         self._thread: Optional[threading.Thread] = None
+
+        # Resolve escalation channel with backward-compat shim
+        esc_cfg = self._config.get('escalation', {})
+        self._channel = esc_cfg.get('primary_channel', '').lower()
+        if not self._channel:
+            if escalation_email or self._config.get('escalation_email'):
+                logger.warning(
+                    'ApprovalTimeout: escalation_email is deprecated — '
+                    'set escalation.primary_channel in config instead'
+                )
+                self._channel = 'email'
+            else:
+                self._channel = 'email'  # final fallback
+        self._escalation_email = (
+            escalation_email
+            or self._config.get('escalation_email', '')
+            or owner_email
+        )
 
     def start(self) -> None:
         self._running = True
@@ -98,24 +128,66 @@ class ApprovalTimeoutDaemon:
 
     def _escalate(self, approval_id: int, row: Dict[str, Any]) -> None:
         self._escalated.add(approval_id)
-        target = self._escalation_email or self._owner_email
-        if target:
-            risk = row.get('risk_level', 'MEDIUM')
-            wait = self._timeouts.get(risk, 120)
-            self._send_email(
-                to=target,
-                subject=f'Approval pending: {row["action_key"]}',
-                body=(
-                    f'An approval has been waiting for over {wait} minutes.\n\n'
-                    f'Action: {row["action_key"]}\n'
-                    f'Risk: {risk}\n'
-                    f'Run ID: {row["run_id"]}\n\n'
-                    f'Log in to your Zyrcon dashboard to approve or reject.\n'
-                    f'This action will auto-reject if not reviewed within '
-                    f'{wait} more minutes.'
-                ),
+        risk = row.get('risk_level', 'MEDIUM')
+        wait = self._timeouts.get(risk, 120)
+        title = '[Zyrcon] Mission needs your attention'
+        body = (
+            f'An approval has been waiting for over {wait} minutes.\n\n'
+            f'Action: {row["action_key"]}\n'
+            f'Risk: {risk}\n'
+            f'Run ID: {row["run_id"]}\n\n'
+            f'Log in to your Zyrcon dashboard to approve or reject: {_PRISM_URL}\n'
+            f'This action will auto-reject if not reviewed within {wait} more minutes.'
+        )
+        self._deliver(title, body, row)
+        # Emit NATS decision_request subject so supervisor can track escalation
+        try:
+            from cascadia.automation.failure_event import _nats_publish_sync
+            _nats_publish_sync(
+                'zyrcon.beacon.decision_request',
+                json.dumps({
+                    'approval_id': approval_id,
+                    'run_id': row['run_id'],
+                    'action_key': row['action_key'],
+                    'risk_level': risk,
+                    'channel': self._channel,
+                    'escalated_at': datetime.now(timezone.utc).isoformat(),
+                }).encode(),
             )
-        logger.warning('ApprovalTimeout: escalated approval %s', approval_id)
+        except Exception:
+            pass
+        logger.warning('ApprovalTimeout: escalated approval %s via %s', approval_id, self._channel)
+
+    def _deliver(self, title: str, body: str, row: Dict[str, Any]) -> None:
+        """Route escalation to the configured channel."""
+        ch = self._channel
+        if ch == 'email':
+            target = self._escalation_email
+            if target:
+                self._send_email(to=target, subject=title, body=body)
+        elif ch in _CHANNEL_PORTS:
+            port = _CHANNEL_PORTS[ch]
+            self._send_channel(port, ch, title, body, row)
+        else:
+            logger.warning('ApprovalTimeout: unknown channel %r — falling back to email', ch)
+            if self._escalation_email:
+                self._send_email(to=self._escalation_email, subject=title, body=body)
+
+    def _send_channel(self, port: int, channel: str, title: str,
+                      body: str, row: Dict[str, Any]) -> None:
+        try:
+            payload = json.dumps({
+                'title': title, 'body': body,
+                'run_id': row.get('run_id'), 'channel': channel,
+            }).encode()
+            req = urllib.request.Request(
+                f'http://127.0.0.1:{port}/api/send',
+                data=payload, method='POST',
+                headers={'Content-Type': 'application/json'},
+            )
+            urllib.request.urlopen(req, timeout=3)
+        except Exception as e:
+            logger.error('ApprovalTimeout: %s delivery failed: %s', channel, e)
 
     def _auto_reject(self, approval_id: int, row: Dict[str, Any]) -> None:
         try:
