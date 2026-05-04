@@ -2,6 +2,25 @@
 
 ---
 
+## [0.50.0] — 2026-05-04
+
+### Changed
+- Renamed internal liveness signal from `heartbeat` to `pulse` throughout the codebase.
+  Config keys `heartbeat_file`, `heartbeat_interval_seconds`, `heartbeat_stale_after_seconds`
+  renamed to `pulse_file`, `pulse_interval_seconds`, `pulse_stale_after_seconds`.
+- Runtime files renamed from `*.heartbeat` to `*.pulse` in `data/runtime/`.
+- `_heartbeat_loop()` → `_pulse_loop()` in `service_runtime.py` and `flint.py`.
+- FLINT thread renamed from `flint-hb` to `flint-pulse`.
+- Error messages: `'heartbeat stale'` → `'pulse stale'`, `'missing heartbeat'` → `'no pulse'`.
+
+### Backward Compatibility
+- Config migration shim in `cascadia/shared/config.py` accepts old `heartbeat_*` keys
+  with a deprecation warning. Shim scheduled for removal in v0.52.
+- Runtime file migration (`_migrate_heartbeat_files`) runs automatically on watchdog
+  startup — renames any existing `.heartbeat` files to `.pulse`.
+
+---
+
 ## [0.49.0] — 2026-05-02
 
 ### Added

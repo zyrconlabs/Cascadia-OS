@@ -151,7 +151,7 @@ class CrewService:
         component = next(c for c in config['components'] if c['name'] == name)
         self.runtime = ServiceRuntime(
             name=name, port=component['port'],
-            heartbeat_file=component['heartbeat_file'],
+            pulse_file=component['pulse_file'],
             log_dir=config['log_dir'],
         )
         self._config = config

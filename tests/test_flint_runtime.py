@@ -9,10 +9,10 @@ kills it and verifies the supervision response.
 These prove the runtime, not just the logic.
 
 Covers:
-  1. FLINT heartbeat file written on startup
+  1. FLINT pulse file written on startup
   2. FLINT /health returns 200 OK with correct state
   3. FLINT /api/flint/status returns component list
-  4. Watchdog detects stale heartbeat and restarts FLINT
+  4. Watchdog detects stale pulse and restarts FLINT
   5. FLINT graceful shutdown drains and exits cleanly
   6. FLINT starts components in declared tier order
   7. ProcessEntry state transitions: starting -> ready -> offline
@@ -49,9 +49,9 @@ def _make_config(tempdir: str, components: list | None = None,
         'log_dir': f'{tempdir}/logs',
         'database_path': f'{tempdir}/cascadia.db',
         'flint': {
-            'heartbeat_file': f'{tempdir}/flint.heartbeat',
-            'heartbeat_interval_seconds': 1,
-            'heartbeat_stale_after_seconds': 5,
+            'pulse_file': f'{tempdir}/flint.pulse',
+            'pulse_interval_seconds': 1,
+            'pulse_stale_after_seconds': 5,
             'status_port': status_port,
             'health_interval_seconds': 1,
             'drain_timeout_seconds': 3,
@@ -95,7 +95,7 @@ class TestProcessEntryStates(unittest.TestCase):
     def test_initial_state_is_starting(self) -> None:
         entry = ProcessEntry(
             name='test', module='test', port=9999, tier=1,
-            heartbeat_file='/tmp/test.hb',
+            pulse_file='/tmp/test.hb',
         )
         self.assertEqual(entry.process_state, 'starting')
         self.assertFalse(entry.healthy)
@@ -103,7 +103,7 @@ class TestProcessEntryStates(unittest.TestCase):
     def test_process_state_starts_as_starting(self) -> None:
         entry = ProcessEntry(
             name='test', module='test', port=9999, tier=1,
-            heartbeat_file='/tmp/test.hb',
+            pulse_file='/tmp/test.hb',
         )
         # ProcessEntry tracks liveness via process_state field
         # A new entry starts in starting state with no pid
@@ -113,7 +113,7 @@ class TestProcessEntryStates(unittest.TestCase):
     def test_restart_attempts_start_at_zero(self) -> None:
         entry = ProcessEntry(
             name='test', module='test', port=9999, tier=1,
-            heartbeat_file='/tmp/test.hb',
+            pulse_file='/tmp/test.hb',
         )
         self.assertEqual(entry.restart_attempts, 0)
 
@@ -156,7 +156,7 @@ class TestFlintHealthLogic(unittest.TestCase):
         flint = Flint(self.config_path)
         entry = ProcessEntry(
             name='test', module='test.module', port=19200, tier=1,
-            heartbeat_file=f'{self.tempdir.name}/test.hb',
+            pulse_file=f'{self.tempdir.name}/test.hb',
             restart_attempts=10,   # Already at max (config says 3)
             process_state='offline',
         )
@@ -166,21 +166,21 @@ class TestFlintHealthLogic(unittest.TestCase):
         # restart_attempts unchanged — no new attempt
         self.assertEqual(entry.restart_attempts, 10)
 
-    def test_heartbeat_written_to_correct_path(self) -> None:
-        """Heartbeat loop writes to the configured path."""
+    def test_pulse_written_to_correct_path(self) -> None:
+        """Pulse loop writes to the configured path."""
         flint = Flint(self.config_path)
-        hb_path = Path(self.tempdir.name) / 'flint.heartbeat'
-        # Manually trigger one heartbeat write
+        hb_path = Path(self.tempdir.name) / 'flint.pulse'
+        # Manually trigger one pulse write
         hb_path.parent.mkdir(parents=True, exist_ok=True)
         hb_path.write_text(str(time.time()))
         self.assertTrue(hb_path.exists())
         age = time.time() - hb_path.stat().st_mtime
         self.assertLess(age, 2.0)
 
-    def test_stale_heartbeat_detection(self) -> None:
-        """A heartbeat file older than stale_after is correctly detected."""
+    def test_stale_pulse_detection(self) -> None:
+        """A pulse file older than stale_after is correctly detected."""
         flint = Flint(self.config_path)
-        hb_path = Path(self.tempdir.name) / 'flint.heartbeat'
+        hb_path = Path(self.tempdir.name) / 'flint.pulse'
         hb_path.parent.mkdir(parents=True, exist_ok=True)
         hb_path.write_text(str(time.time() - 100))
         # Backdate the file mtime to 100s ago
@@ -188,12 +188,12 @@ class TestFlintHealthLogic(unittest.TestCase):
         os.utime(str(hb_path), (past, past))
 
         age = time.time() - hb_path.stat().st_mtime
-        stale_threshold = flint.config['flint']['heartbeat_stale_after_seconds']
+        stale_threshold = flint.config['flint']['pulse_stale_after_seconds']
         self.assertGreater(age, stale_threshold)
 
-    def test_missing_heartbeat_detected(self) -> None:
-        """A missing heartbeat file is treated as stale."""
-        hb_path = Path(self.tempdir.name) / 'nonexistent.heartbeat'
+    def test_missing_pulse_detected(self) -> None:
+        """A missing pulse file is treated as stale."""
+        hb_path = Path(self.tempdir.name) / 'nonexistent.pulse'
         self.assertFalse(hb_path.exists())
         # This is the condition FLINT checks
         is_stale = not hb_path.exists()
@@ -297,28 +297,28 @@ class TestWatchdogLogic(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
-    def test_watchdog_detects_missing_heartbeat(self) -> None:
+    def test_watchdog_detects_missing_pulse(self) -> None:
         from cascadia.kernel.watchdog import Watchdog
         wd = Watchdog(self.config_path)
-        # No heartbeat file written yet
-        hb = Path(self.tempdir.name) / 'flint.heartbeat'
+        # No pulse file written yet
+        hb = Path(self.tempdir.name) / 'flint.pulse'
         self.assertFalse(hb.exists())
         self.assertTrue(wd.flint_stale())
 
-    def test_watchdog_detects_stale_heartbeat(self) -> None:
+    def test_watchdog_detects_stale_pulse(self) -> None:
         from cascadia.kernel.watchdog import Watchdog
         wd = Watchdog(self.config_path)
-        hb = Path(self.tempdir.name) / 'flint.heartbeat'
+        hb = Path(self.tempdir.name) / 'flint.pulse'
         hb.write_text('old')
         # Backdate mtime to 100s ago — well past stale threshold of 5s
         past = time.time() - 100
         os.utime(str(hb), (past, past))
         self.assertTrue(wd.flint_stale())
 
-    def test_watchdog_accepts_fresh_heartbeat(self) -> None:
+    def test_watchdog_accepts_fresh_pulse(self) -> None:
         from cascadia.kernel.watchdog import Watchdog
         wd = Watchdog(self.config_path)
-        hb = Path(self.tempdir.name) / 'flint.heartbeat'
+        hb = Path(self.tempdir.name) / 'flint.pulse'
         # Write current timestamp
         hb.write_text(str(time.time()))
         self.assertFalse(wd.flint_stale())
@@ -328,8 +328,8 @@ class TestWatchdogLogic(unittest.TestCase):
         from cascadia.kernel.watchdog import Watchdog
         wd = Watchdog(self.config_path)
         flint = Flint(self.config_path)
-        wd_hb = wd.config['flint']['heartbeat_file']
-        fl_hb = flint.config['flint']['heartbeat_file']
+        wd_hb = wd.config['flint']['pulse_file']
+        fl_hb = flint.config['flint']['pulse_file']
         self.assertEqual(wd_hb, fl_hb)
 
 
@@ -340,7 +340,7 @@ class TestWatchdogLogic(unittest.TestCase):
 class TestFlintSubprocess(unittest.TestCase):
     """
     Start FLINT as a real subprocess (no managed components).
-    Verify it starts, serves HTTP, writes heartbeat, and shuts down cleanly.
+    Verify it starts, serves HTTP, writes pulse file, and shuts down cleanly.
     These are the real runtime drills.
     """
 
@@ -385,18 +385,18 @@ class TestFlintSubprocess(unittest.TestCase):
         self.assertTrue(result.get('ok'))
         self.assertEqual(result.get('component'), 'flint')
 
-    def test_flint_writes_heartbeat_file(self) -> None:
-        """FLINT writes heartbeat file within startup window."""
+    def test_flint_writes_pulse_file(self) -> None:
+        """FLINT writes pulse file within startup window."""
         self._start_flint()
-        hb_path = Path(self.tempdir.name) / 'flint.heartbeat'
+        hb_path = Path(self.tempdir.name) / 'flint.pulse'
         deadline = time.time() + 8.0
         while time.time() < deadline:
             if hb_path.exists():
                 break
             time.sleep(0.2)
-        self.assertTrue(hb_path.exists(), 'Heartbeat file not written within 8s')
+        self.assertTrue(hb_path.exists(), 'Pulse file not written within 8s')
         age = time.time() - hb_path.stat().st_mtime
-        self.assertLess(age, 10.0, 'Heartbeat file too old')
+        self.assertLess(age, 10.0, 'Pulse file too old')
 
     def test_flint_status_shows_zero_components(self) -> None:
         """Empty component list — status shows no managed processes."""

@@ -91,8 +91,8 @@ class TestBellToStitchWorkflow(unittest.TestCase):
             'log_dir': str(self.root / 'logs'),
             'database_path': str(self.root / 'cascadia.db'),
             'components': [
-                {'name': 'stitch', 'port': 16201, 'heartbeat_file': str(self.root / 'stitch.heartbeat')},
-                {'name': 'bell', 'port': 16204, 'heartbeat_file': str(self.root / 'bell.heartbeat')},
+                {'name': 'stitch', 'port': 16201, 'pulse_file': str(self.root / 'stitch.pulse')},
+                {'name': 'bell', 'port': 16204, 'pulse_file': str(self.root / 'bell.pulse')},
             ],
         }
         self.config_path = self.root / 'config.json'

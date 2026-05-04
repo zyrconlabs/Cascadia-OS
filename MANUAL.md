@@ -201,7 +201,7 @@ python tests/test_crash_recovery.py
 | Scout can't reach LLM | Check `bridge_url` in `scout.config.json` — should be `http://127.0.0.1:4011` |
 | Recon YAML parse error | Remove inline comments from task.md frontmatter |
 | Recon double-process conflict | `pkill -f recon_worker` then restart single instance |
-| Component restarts repeatedly | Check heartbeat paths and ports in `config.json`, inspect `data/logs/` |
+| Component restarts repeatedly | Check pulse_file paths and ports in `config.json`, inspect `data/logs/` |
 | Run resumes from wrong step | Inspect `steps` and `side_effects` tables in the database |
 | Approval never wakes a run | Inspect `approvals` table and run's `run_state` |
 

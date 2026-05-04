@@ -167,7 +167,7 @@ RUNBOOK: Dict[str, Dict[str, str]] = {
         'symptom': 'PRISM shows a component with process_state=starting and never reaches ready.',
         'check': 'Check data/logs/<component>.log. Check that the port is not already in use.',
         'cause': 'Most common cause: port conflict, missing config field, or import error in the component module.',
-        'fix': 'Check logs. Ensure config.json has correct port and heartbeat_file paths. Run component directly: python -m cascadia.<component> --config config.json --name <name>.',
+        'fix': 'Check logs. Ensure config.json has correct port and pulse_file paths. Run component directly: python -m cascadia.<component> --config config.json --name <name>.',
     },
     'capability_denied': {
         'title': 'Operator capability denied by BEACON',
@@ -198,7 +198,7 @@ class AlmanacService:
         component = next(c for c in self.config['components'] if c['name'] == name)
         self.runtime = ServiceRuntime(
             name=name, port=component['port'],
-            heartbeat_file=component['heartbeat_file'],
+            pulse_file=component['pulse_file'],
             log_dir=self.config['log_dir'],
         )
         self.runtime.register_route('GET',  '/components',           self.list_components)

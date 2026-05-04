@@ -24,7 +24,7 @@ class SentinelService:
     def __init__(self, config_path: str, name: str) -> None:
         config = load_config(config_path)
         comp = next(c for c in config['components'] if c['name'] == name)
-        self.runtime = ServiceRuntime(name=name, port=comp['port'], heartbeat_file=comp['heartbeat_file'], log_dir=config['log_dir'])
+        self.runtime = ServiceRuntime(name=name, port=comp['port'], pulse_file=comp['pulse_file'], log_dir=config['log_dir'])
         self.runtime.register_route('POST', '/check', self.check_action)
         self.runtime.register_route('POST', '/compliance', self.check_compliance)
         self.runtime.register_route('GET', '/risk-levels', self.get_risk_levels)
