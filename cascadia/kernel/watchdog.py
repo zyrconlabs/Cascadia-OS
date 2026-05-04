@@ -96,6 +96,11 @@ class Watchdog:
             try: self.proc.wait(timeout=5)
             except subprocess.TimeoutExpired: self.proc.kill()
         self.start_flint()
+        try:
+            from cascadia.automation.failure_event import FailureEvent, publish_failure_event
+            publish_failure_event(FailureEvent.from_stale_pulse('flint'))
+        except Exception:
+            pass
 
     def _call_resume(self) -> None:
         import urllib.request, json

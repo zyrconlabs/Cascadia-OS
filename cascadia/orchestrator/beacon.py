@@ -59,10 +59,11 @@ class BeaconService:
         crew_comp = next((c for c in self.config['components'] if c['name'] == 'crew'), None)
         self.crew_port: Optional[int] = crew_comp['port'] if crew_comp else None
 
-        self.runtime.register_route('POST', '/route',    self.route)
-        self.runtime.register_route('POST', '/handoff',  self.handoff)
-        self.runtime.register_route('POST', '/forward',  self.forward)
-        self.runtime.register_route('GET',  '/registry', self.registry)
+        self.runtime.register_route('POST', '/route',      self.route)
+        self.runtime.register_route('POST', '/handoff',    self.handoff)
+        self.runtime.register_route('POST', '/forward',    self.forward)
+        self.runtime.register_route('GET',  '/registry',   self.registry)
+        self.runtime.register_route('POST', '/escalation', self.escalation_handler)
 
     # ------------------------------------------------------------------
     # Capability validation
@@ -300,6 +301,110 @@ class BeaconService:
             return sorted(capable, key=lambda n: n.get('specs', {}).get('memory_bandwidth_gbs', 0), reverse=True)
         except Exception:
             return []
+
+    def escalation_handler(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """
+        POST /escalation — receive escalation from supervisor.
+        Reviews mission context, checks connectors and model fallback,
+        creates a rich decision request or retries with fallback config.
+        """
+        run_id       = payload.get('run_id', '')
+        failure_type = payload.get('failure_type', 'unknown')
+        operator     = payload.get('operator', '')
+        reason       = payload.get('reason', '')
+
+        self.runtime.logger.warning(
+            'BEACON escalation: operator=%s run=%s type=%s', operator, run_id, failure_type
+        )
+
+        # LLM timeout with a fallback model configured — auto-retry
+        if failure_type == 'llm_timeout':
+            fallback = self._config.get('llm', {}).get('fallback_model')
+            if fallback:
+                from cascadia.automation.failure_event import _nats_publish_sync
+                import json as _json
+                _nats_publish_sync(
+                    'zyrcon.operator.retry',
+                    _json.dumps({
+                        'run_id': run_id, 'operator': operator,
+                        'fallback_model': fallback,
+                        'failure_type': failure_type,
+                    }).encode(),
+                )
+                return 200, {'action': 'retry_with_fallback', 'fallback_model': fallback}
+
+        # Build decision options based on failure type
+        options = self._decision_options_for(failure_type, operator, payload)
+        db_path = self._config.get('database_path', './data/runtime/cascadia.db')
+        try:
+            from cascadia.durability.run_store import RunStore
+            from cascadia.system.approval_store import ApprovalStore
+            rs = RunStore(db_path)
+            store = ApprovalStore(rs)
+            approval_id = store.insert_decision_request(
+                run_id=run_id,
+                step_id=payload.get('step_id', ''),
+                source='beacon_escalation',
+                title=f'Action needed: {failure_type.replace("_", " ").title()}',
+                summary=reason or f'Operator {operator!r} escalated: {failure_type}',
+                risk_level='HIGH',
+                decision_type='multi_choice',
+                options=options,
+            )
+            return 200, {
+                'action': 'decision_request_created',
+                'approval_id': approval_id,
+                'options': options,
+            }
+        except Exception as exc:
+            self.runtime.logger.error('BEACON escalation handler error: %s', exc)
+            return 500, {'error': str(exc)}
+
+    def _decision_options_for(
+        self, failure_type: str, operator: str, payload: Dict[str, Any]
+    ) -> list:
+        """Return appropriate decision options for the given failure type."""
+        base = [
+            {'id': 'abort_mission', 'label': 'Abort mission', 'action': 'abort'},
+        ]
+        if failure_type == 'missing_connector':
+            connector = payload.get('payload', {}).get('connector', 'the required connector')
+            return [
+                {'id': 'connect', 'label': f'Connect {connector}',
+                 'action': 'open_connector_settings'},
+                {'id': 'upload_manually', 'label': 'Upload data manually',
+                 'action': 'manual_upload'},
+                {'id': 'skip_step', 'label': 'Skip this step', 'action': 'skip'},
+                *base,
+            ]
+        if failure_type == 'insufficient_data':
+            return [
+                {'id': 'ask_customer', 'label': 'Ask customer for missing info',
+                 'action': 'ask_customer'},
+                {'id': 'use_default', 'label': 'Use default values', 'action': 'use_default'},
+                {'id': 'skip_step', 'label': 'Skip this step', 'action': 'skip'},
+                *base,
+            ]
+        if failure_type == 'permission_denied':
+            return [
+                {'id': 'grant_permission', 'label': f'Grant permission to {operator}',
+                 'action': 'open_operator_settings'},
+                {'id': 'skip_step', 'label': 'Skip this step', 'action': 'skip'},
+                *base,
+            ]
+        if failure_type == 'requires_decision':
+            return [
+                {'id': 'proceed', 'label': 'Proceed as planned', 'action': 'approve'},
+                {'id': 'modify', 'label': 'Modify and proceed', 'action': 'edit_and_approve'},
+                {'id': 'skip_step', 'label': 'Skip this step', 'action': 'skip'},
+                *base,
+            ]
+        # Generic fallback
+        return [
+            {'id': 'retry', 'label': 'Retry the step', 'action': 'retry'},
+            {'id': 'skip_step', 'label': 'Skip this step', 'action': 'skip'},
+            *base,
+        ]
 
     def start(self) -> None:
         self.runtime.logger.info(

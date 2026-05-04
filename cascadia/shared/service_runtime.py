@@ -99,6 +99,21 @@ class ServiceRuntime:
             self.pulse_file.write_text(str(time.time()), encoding='utf-8')
             time.sleep(5)
 
+    def _health_broadcast_loop(self) -> None:
+        """Publish operator health to zyrcon.operator.health every 30 seconds."""
+        import datetime as _dt
+        from cascadia.automation.failure_event import _nats_publish_sync
+        while not self._shutdown.is_set():
+            payload = json.dumps({
+                "operator": self.name,
+                "status": "healthy" if self.state == "ready" else (
+                    "degraded" if self.state == "draining" else "unhealthy"
+                ),
+                "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            }).encode()
+            _nats_publish_sync("zyrcon.operator.health", payload)
+            time.sleep(30)
+
     def _ready_after_delay(self) -> None:
         time.sleep(self.ready_delay_seconds)
         if not self._shutdown.is_set():
@@ -138,6 +153,7 @@ class ServiceRuntime:
         signal.signal(signal.SIGTERM, self.on_sigterm)
         signal.signal(signal.SIGINT, self.on_sigterm)
         threading.Thread(target=self._pulse_loop, daemon=True).start()
+        threading.Thread(target=self._health_broadcast_loop, daemon=True).start()
         threading.Thread(target=self._ready_after_delay, daemon=True).start()
         runtime = self
 

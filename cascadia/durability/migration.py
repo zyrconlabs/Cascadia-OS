@@ -131,8 +131,56 @@ def migrate(conn: sqlite3.Connection) -> None:
             except Exception:
                 pass
 
+    # Session E — escalation chain schema (safe idempotent)
+    for col, kind in {
+        'escalation_triggered_at': 'TEXT',
+        'escalation_status':       'TEXT',
+        'recovery_attempt':        'INTEGER DEFAULT 0',
+        'dead_letter_at':          'TEXT',
+        'dead_letter_reason':      'TEXT',
+    }.items():
+        if not _column_exists(conn, 'runs', col):
+            try:
+                conn.execute(f'ALTER TABLE runs ADD COLUMN {col} {kind}')
+            except Exception:
+                pass
+
+    for col, kind in {
+        'escalation_reason':   'TEXT',
+        'escalated_at':        'TEXT',
+        'escalated_to':        'TEXT',
+        'decision_options':    'TEXT',
+        'confidence_threshold':'REAL',
+    }.items():
+        if not _column_exists(conn, 'approvals', col):
+            try:
+                conn.execute(f'ALTER TABLE approvals ADD COLUMN {col} {kind}')
+            except Exception:
+                pass
+
+    _add_dead_letter_table(conn)
     _add_workflow_definitions_table(conn)
     conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
+
+
+def _add_dead_letter_table(conn: sqlite3.Connection) -> None:
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS dead_letters (
+            id               TEXT PRIMARY KEY,
+            run_id           TEXT,
+            step_id          TEXT,
+            operator         TEXT,
+            failure_type     TEXT,
+            context          TEXT,
+            attempts         INTEGER DEFAULT 0,
+            last_error       TEXT,
+            recommended_fix  TEXT,
+            resolved         INTEGER DEFAULT 0,
+            resolution_note  TEXT,
+            resolved_at      TEXT,
+            created_at       TEXT NOT NULL
+        )
+    ''')
 
 
 def _add_workflow_definitions_table(conn: sqlite3.Connection) -> None:

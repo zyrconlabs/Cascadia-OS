@@ -148,6 +148,12 @@ class RunStore:
         except Exception:
             return None
 
+    def write_checkpoint(self, run_id: str, step_name: str) -> None:
+        """Activate last_checkpoint field at each completed step for crash recovery."""
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
+        self.update_run(run_id, last_checkpoint=f'{step_name}@{ts}')
+
     def record_outcome(self, run_id: str, outcome: str, recorded_at: str) -> None:
         """Record win/loss outcome for a completed run. outcome must be 'won' | 'lost' | 'no_decision'."""
         if outcome not in ('won', 'lost', 'no_decision'):
