@@ -480,36 +480,111 @@ class MissionRunner:
                 result[k] = re.sub(r'\{([^}]+)\}', _sub, v)
         return result
 
+    def _call_social_operator(
+        self,
+        brief_text: str,
+        mission_run_id: str,
+        social_port: int = 8011,
+        max_wait_seconds: int = 600,
+        poll_interval: int = 10,
+    ):
+        """Call SOCIAL using its session-based pattern.
+
+        1. POST /start with brief text
+        2. Poll /session/{session_id} until pending_approval or error
+        3. Return (posts, session_id, None) on success or (None, None, error_str) on failure
+        """
+        start_url = f"http://127.0.0.1:{social_port}/start"
+        body = json.dumps({"brief": brief_text}).encode("utf-8")
+        req = urllib.request.Request(
+            start_url, data=body, method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                start_resp = json.loads(r.read().decode("utf-8"))
+        except Exception as exc:
+            return None, None, f"SOCIAL start failed: {exc}"
+
+        session_id = start_resp.get("session_id")
+        if not session_id:
+            return None, None, "SOCIAL did not return session_id"
+
+        poll_url = f"http://127.0.0.1:{social_port}/session/{session_id}"
+        elapsed = 0
+        while elapsed < max_wait_seconds:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            try:
+                with urllib.request.urlopen(poll_url, timeout=10) as r:
+                    session = json.loads(r.read().decode("utf-8"))
+            except Exception:
+                continue
+
+            status = session.get("status", "")
+            if status == "pending_approval":
+                return session.get("posts", []), session_id, None
+            elif status == "error":
+                return None, session_id, f"SOCIAL error: {session.get('error')}"
+            # generating or qc_failed — keep polling
+
+        return None, session_id, f"SOCIAL polling timed out after {max_wait_seconds}s"
+
     def _execute_direct_workflow(
         self, mission_run_id: str, wf_def: dict, initial_payload: dict
     ) -> None:
         """Run workflow steps sequentially in a daemon thread.
 
-        Passes each step's output as context to the next step.
-        Creates a Mission Manager approval item when all steps complete
-        so the owner can review generated content before it is sent.
+        CHIEF step runs generically. SOCIAL step uses _call_social_operator()
+        for its session-based pattern (POST /start → poll /session/{id}).
+        Creates a Mission Manager approval item when all steps complete.
         """
         steps = wf_def.get("steps", [])
         mission_id = wf_def.get("mission_id", "")
         context: Dict[str, Any] = {"trigger": initial_payload}
 
-        for step in steps:
-            step_id       = step.get("id", "")
-            port          = step.get("port")
-            endpoint      = step.get("endpoint", "POST /api/task")
-            input_map     = step.get("input_map", {})
-            output_key    = step.get("output_key", step_id)
-            poll_ep       = step.get("poll_endpoint")
-            poll_field    = step.get("poll_field", "session_id")
-            poll_status_f = step.get("poll_status_field", "status")
-            poll_done_val = step.get("poll_complete_value", "pending_approval")
-            poll_interval = step.get("poll_interval_seconds", 5)
-            poll_timeout  = step.get("poll_timeout_seconds", 120)
+        chief_result: dict = {}
 
+        for step in steps:
+            step_id    = step.get("id", "")
+            operator   = step.get("operator", "")
+            port       = step.get("port")
+            endpoint   = step.get("endpoint", "POST /api/task")
+            input_map  = step.get("input_map", {})
+            output_key = step.get("output_key", step_id)
+
+            # ── SOCIAL step — use session pattern ─────────────────────────────
+            if operator == "social":
+                brief_text = json.dumps(
+                    chief_result.get("result", chief_result), indent=2
+                )
+                posts, session_id, err = self._call_social_operator(
+                    brief_text, mission_run_id, social_port=port or 8011,
+                    max_wait_seconds=600, poll_interval=10,
+                )
+                if err:
+                    self.fail_mission(mission_run_id, err, failed_step=step_id)
+                    return
+                log.info("direct_workflow run=%s step=%s complete", mission_run_id, step_id)
+                self.pause_for_approval(mission_run_id, {
+                    "title": "Daily Campaign Ready for Review",
+                    "summary": f"SOCIAL drafted {len(posts)} post(s). Review before sending.",
+                    "payload": {
+                        "posts": posts,
+                        "session_id": session_id,
+                        "brief": brief_text,
+                    },
+                    "action": "campaign.post",
+                    "approval_type": "campaign_post_approval",
+                    "mission_id": mission_id,
+                    "risk_level": "medium",
+                })
+                return
+
+            # ── Generic step (CHIEF and others) ──────────────────────────────
             payload = self._resolve_step_input(input_map, context) if input_map else {
                 "task": step.get("goal", ""), "context": context,
             }
-
             method, path = endpoint.split(" ", 1)
             url = f"http://127.0.0.1:{port}{path}"
             try:
@@ -518,44 +593,10 @@ class MissionRunner:
                 self.fail_mission(mission_run_id, str(exc), failed_step=step_id)
                 return
 
-            if poll_ep:
-                poll_id = result.get(poll_field, "")
-                poll_path = poll_ep.split(" ", 1)[-1].replace("{run_id}", poll_id)
-                poll_url = f"http://127.0.0.1:{port}{poll_path}"
-                deadline = time.monotonic() + poll_timeout
-                while time.monotonic() < deadline:
-                    time.sleep(poll_interval)
-                    try:
-                        poll_result = _http_get(poll_url, timeout=10)
-                        if poll_result.get(poll_status_f) == poll_done_val:
-                            result = poll_result
-                            break
-                    except Exception:
-                        pass
-                else:
-                    self.fail_mission(
-                        mission_run_id,
-                        f"Step {step_id} polling timed out after {poll_timeout}s",
-                        failed_step=step_id,
-                    )
-                    return
-
             context[output_key] = result
+            if operator == "chief":
+                chief_result = result
             log.info("direct_workflow run=%s step=%s complete", mission_run_id, step_id)
-
-        # All steps done — create approval for owner content review
-        last_output = context.get(steps[-1].get("output_key", ""), {}) if steps else {}
-        self.pause_for_approval(mission_run_id, {
-            "title": "Daily Campaign Ready for Review",
-            "summary": (
-                "Campaign posts have been drafted for Facebook, Instagram, and SMS. "
-                "Review and approve before sending."
-            ),
-            "payload": last_output,
-            "action": "campaign.post",
-            "mission_id": mission_id,
-            "risk_level": "medium",
-        })
 
     # ── Retry ─────────────────────────────────────────────────────────────────
 
