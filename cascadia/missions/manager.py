@@ -536,6 +536,7 @@ class MissionManagerService:
             adapter=StitchMissionAdapter(),
         )
         _scheduler = MissionScheduler(registry=_registry, runner=_runner)
+        _scheduler.start()
         _bridge = get_bridge()
         self.runtime = ServiceRuntime(
             name=name,
