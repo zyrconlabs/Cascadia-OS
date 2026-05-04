@@ -1,8 +1,11 @@
 # Changelog
 
+> Cascadia OS uses Calendar Versioning (CalVer): YYYY.M
+> Current release: 2026.5 — May 2026
+
 ---
 
-## [0.50.0] — 2026-05-04
+## 2026.5 (May 2026)
 
 ### Changed
 - Renamed internal liveness signal from `heartbeat` to `pulse` throughout the codebase.
@@ -15,13 +18,28 @@
 
 ### Backward Compatibility
 - Config migration shim in `cascadia/shared/config.py` accepts old `heartbeat_*` keys
-  with a deprecation warning. Shim scheduled for removal in v0.52.
+  with a deprecation warning. Shim scheduled for removal in 2026.7.
 - Runtime file migration (`_migrate_heartbeat_files`) runs automatically on watchdog
   startup — renames any existing `.heartbeat` files to `.pulse`.
 
+### Out-of-box experience
+- First-run auto-seed: `cascadia/installer/first_run.py` detects fresh
+  install and seeds demo data automatically
+- PRISM approvals empty state now shows "Your AI is running" + Run Demo
+  Workflow button
+- POST `/api/prism/demo/trigger` and GET `/api/prism/demo/first-run-status`
+  routes added
+- First-run welcome banner added to PRISM (dismissable)
+- Growth Desk daily campaign wired into scheduler (MON–FRI 09:00)
+- `start.sh` attempts to start CHIEF and SOCIAL from operators repo with
+  graceful fallback
+- `install.sh` now opens Approvals tab on first install
+- Setup wizard expanded to 8 steps — new Step 3 covers AI model status
+  and demo trigger
+
 ---
 
-## [0.49.0] — 2026-05-02
+## 2026.4 (April 2026)
 
 ### Added
 - Mission system: Revenue Desk, Growth Campaigns, Operations Desk
