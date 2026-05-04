@@ -299,4 +299,4 @@ Certain components — including first-party pre-built business operators, hardw
 
 ---
 
-*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs) · v0.49.0*
+*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs) · 2026.5*

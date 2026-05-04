@@ -25,7 +25,7 @@ def _migrate_pulse_keys(component: dict) -> dict:
             _log.warning(
                 'Config: deprecated key "%s" found — '
                 'please rename to "%s" in config.json. '
-                'Compatibility shim active until v0.52.',
+                'Compatibility shim active until 2026.7.',
                 old_key, new_key,
             )
             component[new_key] = component[old_key]
@@ -39,7 +39,7 @@ def _migrate_flint_pulse_keys(flint_cfg: dict) -> dict:
             _log.warning(
                 'Config: deprecated key "%s" found — '
                 'please rename to "%s" in config.json. '
-                'Compatibility shim active until v0.52.',
+                'Compatibility shim active until 2026.7.',
                 old_key, new_key,
             )
             flint_cfg[new_key] = flint_cfg[old_key]
