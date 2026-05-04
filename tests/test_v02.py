@@ -54,7 +54,7 @@ class TestFlintSchema(unittest.TestCase):
     def test_side_effect_unique_key(self) -> None:
         import sqlite3
         with self.store.connection() as conn:
-            conn.execute("INSERT INTO runs VALUES ('r1','op','t','g','s','{}','{}',0,NULL,'ready','running',NULL,NULL,NULL,'t','t')")
+            conn.execute("INSERT INTO runs (run_id,operator_id,tenant_id,goal,current_step,input_snapshot,state_snapshot,retry_count,process_state,run_state,created_at,updated_at) VALUES ('r1','op','t','g','s','{}','{}',0,'ready','running','t','t')")
             conn.execute("INSERT INTO side_effects (run_id,step_index,effect_type,effect_key,status,target,payload,created_at) VALUES ('r1',0,'email.send','ek1','planned','x','{}','t')")
             with self.assertRaises(sqlite3.IntegrityError):
                 conn.execute("INSERT INTO side_effects (run_id,step_index,effect_type,effect_key,status,target,payload,created_at) VALUES ('r1',0,'email.send','ek1','planned','x','{}','t')")

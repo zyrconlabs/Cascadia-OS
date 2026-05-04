@@ -37,6 +37,37 @@
 - Setup wizard expanded to 8 steps — new Step 3 covers AI model status
   and demo trigger
 
+### Escalation chain
+- `cascadia/automation/failure_event.py` — structured `FailureEvent` dataclass with
+  soft (self-reported) and hard (watchdog crash) constructors; NATS publish helper
+  (`zyrcon.operator.failure`) safe for synchronous callers via daemon thread
+- `cascadia/automation/supervisor.py` — async NATS subscriber; routes failures to
+  retry, escalate, or dead-letter; registers with CREW on startup
+- `cascadia/automation/retry_policy.py` — exponential backoff with jitter;
+  non-retryable frozenset (`missing_connector`, `permission_denied`,
+  `requires_decision`, `unknown`); retry audit written to run store
+- `cascadia/durability/dead_letter.py` — `DeadLetterQueue` with `promote()`,
+  `list_unresolved()`, `resolve()` (does not auto-resume); per-failure-type
+  recommended fix strings
+- `cascadia/durability/resume_manager.py` — new states: `recovering` (safe resume),
+  `escalated` (block if pending approvals), `dead_letter` (terminal)
+- `cascadia/system/approval_store.py` — `insert_decision_request()` for rich
+  multi-choice decisions with `decision_options` JSON column
+- `cascadia/system/approval_timeout.py` — configurable escalation channel
+  (`config.escalation.primary_channel`); supports telegram, whatsapp, sms, slack,
+  email; backward-compat shim for deprecated `escalation_email` key;
+  emits `zyrcon.beacon.decision_request` on escalation
+- `cascadia/orchestrator/beacon.py` — POST `/escalation` handler; auto-retries
+  `llm_timeout` with fallback model; creates multi-choice decision requests for
+  all other failure types
+- `cascadia/shared/service_runtime.py` — health broadcast loop publishes
+  `zyrcon.operator.health` every 30 s
+- Schema: new columns on `runs` (`escalation_triggered_at`, `escalation_status`,
+  `recovery_attempt`, `dead_letter_at`, `dead_letter_reason`) and `approvals`
+  (`escalation_reason`, `escalated_at`, `escalated_to`, `decision_options`,
+  `confidence_threshold`); new `dead_letters` table
+- Kernel and core watchdogs publish `FailureEvent` on operator restart
+
 ---
 
 ## 2026.4 (April 2026)

@@ -192,6 +192,103 @@ python tests/test_crash_recovery.py
 
 ---
 
+## Escalation and Recovery
+
+### How the escalation chain works
+
+When an operator reports a failure (or a watchdog detects a crashed operator), Cascadia OS routes the failure through a four-stage chain:
+
+1. **FailureEvent published** — operator or watchdog publishes to `zyrcon.operator.failure` via NATS.
+2. **Supervisor evaluates** — checks `failure_type` and `attempted` count against the retry policy.
+3. **Retry or escalate** — retryable failures back off and retry; non-retryable failures escalate immediately.
+4. **Dead-letter** — if all retries are exhausted, the run is promoted to the dead-letter queue.
+
+### Retry policy
+
+| Failure type | Retryable | Default max attempts |
+|---|---|---|
+| `llm_timeout` | Yes | 3 |
+| `external_api_failure` | Yes | 3 |
+| `step_timeout` | Yes | 3 |
+| `operator_crash` | Yes | 3 |
+| `heartbeat_stale` | Yes | 3 |
+| `insufficient_data` | Yes | 3 |
+| `missing_connector` | No — escalates immediately | — |
+| `permission_denied` | No — escalates immediately | — |
+| `requires_decision` | No — escalates immediately | — |
+| `unknown` | No — escalates immediately | — |
+
+Retry delays use exponential backoff: 5 s → 10 s → 20 s (±25% jitter), capped at 60 s.
+
+### Escalation channel configuration
+
+Set the delivery channel in `config.json`:
+
+```json
+{
+  "escalation": {
+    "primary_channel": "slack"
+  }
+}
+```
+
+Supported channels and their ports:
+
+| Channel | Port |
+|---|---|
+| `telegram` | 9000 |
+| `whatsapp` | 9001 |
+| `sms` | 9002 |
+| `slack` | 9003 |
+| `email` | HANDSHAKE (6203) |
+
+If `primary_channel` is not set, escalation falls back to `email` via HANDSHAKE.
+
+> **Deprecated**: the top-level `escalation_email` config key is still accepted but will be removed in 2026.7. Migrate to `escalation.primary_channel`.
+
+### Approval timeout thresholds
+
+Pending approvals auto-escalate and then auto-reject based on risk level:
+
+| Risk level | Escalate after | Auto-reject after |
+|---|---|---|
+| `HIGH` | 30 minutes | 60 minutes |
+| `MEDIUM` | 120 minutes | 240 minutes |
+| `LOW` | 480 minutes | 960 minutes |
+
+### Dead-letter queue
+
+Runs that exhaust all retries are moved to `dead_letter` state. Each dead-letter record includes:
+
+- `run_id` and `step_id` where the failure occurred
+- `failure_type` and `last_error`
+- `recommended_fix` — a human-readable suggestion for the failure type
+- `attempts` count
+
+**Viewing dead-letter items**: PRISM → Runs → Dead Letter tab.
+
+**Resolving a dead-letter item**:
+
+```bash
+# Mark resolved via API
+curl -X POST http://localhost:6300/api/prism/dlq/<dlq_id>/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{"resolution_note": "Reconnected Slack integration"}'
+```
+
+Resolving a DLQ record does **not** automatically resume the run. After resolving, requeue the run manually if appropriate.
+
+### Run states in the escalation chain
+
+| State | Meaning |
+|---|---|
+| `recovering` | Retry scheduled; run will resume automatically |
+| `escalated` | Waiting on user decision in PRISM Approvals |
+| `waiting_human` | Blocked on a standard approval |
+| `dead_letter` | Terminal — all retries exhausted, manual intervention required |
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
