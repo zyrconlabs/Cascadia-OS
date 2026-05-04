@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
+import threading
+import time
 import urllib.request
 import uuid
 from datetime import datetime, timezone
@@ -79,6 +82,12 @@ def _http_post(url: str, data: dict, timeout: int = 10) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _http_get(url: str, timeout: int = 10) -> dict:
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 # ── STITCH adapter ────────────────────────────────────────────────────────────
 
 class StitchMissionAdapter:
@@ -103,15 +112,7 @@ class StitchMissionAdapter:
 
     def start_workflow(self, workflow_def: dict, payload: dict) -> str:
         """Register and start a mission workflow via STITCH. Returns stitch run_id."""
-        steps = [
-            {
-                "name": s.get("id", ""),
-                "operator": s.get("operator", ""),
-                "action": s.get("action", ""),
-                "on_failure": "stop",
-            }
-            for s in workflow_def.get("steps", [])
-        ]
+        steps = workflow_def.get("steps", [])  # pass all fields so STITCH has port/endpoint/input_map
         wf_id = workflow_def.get("id", f"mission_{uuid.uuid4().hex[:8]}")
         _http_post(self._base + "/workflow/register", {
             "workflow_id": wf_id,
@@ -252,19 +253,22 @@ class MissionRunner:
                 "status": "waiting_approval",
             }
 
-        # No external actions — dispatch to STITCH
-        try:
-            stitch_run_id = self._adapter.start_workflow(wf_def, payload or {})
-            self._update_run(run_id, {
-                "trigger_data": json.dumps({
-                    "workflow_id": workflow_id,
-                    "trigger_type": trigger_type,
-                    "stitch_run_id": stitch_run_id,
-                    "input": payload or {},
-                }),
-            })
-        except Exception as exc:
-            log.warning("STITCH dispatch failed for run %s: %s", run_id, exc)
+        # No external actions — run steps directly via daemon thread
+        self._update_run(run_id, {
+            "trigger_data": json.dumps({
+                "workflow_id": workflow_id,
+                "trigger_type": trigger_type,
+                "direct_execution": True,
+                "input": payload or {},
+            }),
+        })
+        t = threading.Thread(
+            target=self._execute_direct_workflow,
+            args=(run_id, wf_def, payload or {}),
+            daemon=True,
+            name=f"mission-run-{run_id[:8]}",
+        )
+        t.start()
 
         return {
             "mission_run_id": run_id,
@@ -360,6 +364,15 @@ class MissionRunner:
             except Exception:
                 pass
 
+        if td.get("direct_execution"):
+            publish_mission_event(APPROVAL_RESOLVED, {
+                "mission_run_id": mission_run_id, "decision": decision,
+            })
+            return self.complete_mission(
+                mission_run_id,
+                approval_decision.get("edited_payload"),
+            )
+
         stitch_run_id = td.get("stitch_run_id", "")
         stitch_ok = False
 
@@ -441,6 +454,108 @@ class MissionRunner:
             "output": output or {},
         })
         return run
+
+    # ── Direct workflow executor ──────────────────────────────────────────────
+
+    def _resolve_step_input(self, input_map: dict, context: dict) -> dict:
+        """Resolve input_map template strings from context. Single {ref} returns raw value."""
+        result = {}
+        for k, v in input_map.items():
+            if not isinstance(v, str):
+                result[k] = v
+                continue
+            full = re.fullmatch(r'\{([^}]+)\}', v.strip())
+            if full:
+                parts = full.group(1).split(".")
+                val: Any = context
+                for p in parts:
+                    val = val.get(p) if isinstance(val, dict) else None
+                result[k] = val
+            else:
+                def _sub(m: re.Match) -> str:
+                    val: Any = context
+                    for p in m.group(1).split("."):
+                        val = val.get(p, "") if isinstance(val, dict) else ""
+                    return json.dumps(val) if isinstance(val, (dict, list)) else str(val)
+                result[k] = re.sub(r'\{([^}]+)\}', _sub, v)
+        return result
+
+    def _execute_direct_workflow(
+        self, mission_run_id: str, wf_def: dict, initial_payload: dict
+    ) -> None:
+        """Run workflow steps sequentially in a daemon thread.
+
+        Passes each step's output as context to the next step.
+        Creates a Mission Manager approval item when all steps complete
+        so the owner can review generated content before it is sent.
+        """
+        steps = wf_def.get("steps", [])
+        mission_id = wf_def.get("mission_id", "")
+        context: Dict[str, Any] = {"trigger": initial_payload}
+
+        for step in steps:
+            step_id       = step.get("id", "")
+            port          = step.get("port")
+            endpoint      = step.get("endpoint", "POST /api/task")
+            input_map     = step.get("input_map", {})
+            output_key    = step.get("output_key", step_id)
+            poll_ep       = step.get("poll_endpoint")
+            poll_field    = step.get("poll_field", "session_id")
+            poll_status_f = step.get("poll_status_field", "status")
+            poll_done_val = step.get("poll_complete_value", "pending_approval")
+            poll_interval = step.get("poll_interval_seconds", 5)
+            poll_timeout  = step.get("poll_timeout_seconds", 120)
+
+            payload = self._resolve_step_input(input_map, context) if input_map else {
+                "task": step.get("goal", ""), "context": context,
+            }
+
+            method, path = endpoint.split(" ", 1)
+            url = f"http://127.0.0.1:{port}{path}"
+            try:
+                result = _http_post(url, payload, timeout=30)
+            except Exception as exc:
+                self.fail_mission(mission_run_id, str(exc), failed_step=step_id)
+                return
+
+            if poll_ep:
+                poll_id = result.get(poll_field, "")
+                poll_path = poll_ep.split(" ", 1)[-1].replace("{run_id}", poll_id)
+                poll_url = f"http://127.0.0.1:{port}{poll_path}"
+                deadline = time.monotonic() + poll_timeout
+                while time.monotonic() < deadline:
+                    time.sleep(poll_interval)
+                    try:
+                        poll_result = _http_get(poll_url, timeout=10)
+                        if poll_result.get(poll_status_f) == poll_done_val:
+                            result = poll_result
+                            break
+                    except Exception:
+                        pass
+                else:
+                    self.fail_mission(
+                        mission_run_id,
+                        f"Step {step_id} polling timed out after {poll_timeout}s",
+                        failed_step=step_id,
+                    )
+                    return
+
+            context[output_key] = result
+            log.info("direct_workflow run=%s step=%s complete", mission_run_id, step_id)
+
+        # All steps done — create approval for owner content review
+        last_output = context.get(steps[-1].get("output_key", ""), {}) if steps else {}
+        self.pause_for_approval(mission_run_id, {
+            "title": "Daily Campaign Ready for Review",
+            "summary": (
+                "Campaign posts have been drafted for Facebook, Instagram, and SMS. "
+                "Review and approve before sending."
+            ),
+            "payload": last_output,
+            "action": "campaign.post",
+            "mission_id": mission_id,
+            "risk_level": "medium",
+        })
 
     # ── Retry ─────────────────────────────────────────────────────────────────
 
