@@ -524,9 +524,17 @@ class MissionRunner:
             status = session.get("status", "")
             if status == "pending_approval":
                 return session.get("posts", []), session_id, None
+            elif status == "approved":
+                return session.get("posts", []), session_id, None
+            elif status == "qc_failed":
+                revision = session.get("revision", 0)
+                if revision >= 5:
+                    posts = session.get("posts", [])
+                    if posts:
+                        return posts, session_id, None
             elif status == "error":
                 return None, session_id, f"SOCIAL error: {session.get('error')}"
-            # generating or qc_failed — keep polling
+            # generating or qc_failed below max revisions — keep polling
 
         return None, session_id, f"SOCIAL polling timed out after {max_wait_seconds}s"
 
