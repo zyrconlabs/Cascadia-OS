@@ -323,6 +323,11 @@ button{cursor:pointer;font-family:var(--font)}input,textarea,select{font-family:
 .approval-live-meta{font-size:10px;color:var(--gray-400);font-family:var(--mono);margin:4px 0 10px}
 .approvals-empty{padding:40px;text-align:center;color:var(--gray-400);font-size:13px;display:flex;flex-direction:column;align-items:center;gap:8px}
 .approvals-empty svg{width:32px;height:32px;stroke:var(--gray-300);fill:none;stroke-width:1.5}
+.approvals-empty h3{font-size:15px;font-weight:600;color:var(--gray-700);margin:8px 0 4px}
+.approvals-empty p{font-size:13px;color:var(--gray-400);margin:0 0 16px}
+.demo-trigger-btn{background:var(--red);color:#fff;border:none;border-radius:7px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.demo-trigger-btn:hover{opacity:.88}
+.demo-trigger-btn:disabled{opacity:.5;cursor:not-allowed}
 /* ── Approval Center cards ── */
 .ac-card{background:var(--white);border:1px solid var(--gray-200);border-radius:10px;margin-bottom:12px;overflow:hidden;animation:cardIn .25s var(--ease)}
 .ac-card--high{border-left:3px solid var(--red)}.ac-card--medium{border-left:3px solid var(--yellow)}.ac-card--low{border-left:3px solid var(--green)}
@@ -723,10 +728,17 @@ input[type="file"]{display:none}
 @keyframes approvals-flash{0%,100%{box-shadow:none}40%{box-shadow:0 0 0 3px rgba(248,113,113,.4)}}
 .approvals-flash{animation:approvals-flash .65s ease 2}
 /* ── HEALTH SURFACE — functions moved to script block below ── */
+.first-run-banner{display:flex;align-items:center;justify-content:space-between;background:#1a1a2e;color:#e2e8f0;font-size:13px;padding:10px 20px;gap:12px;z-index:100}
+.first-run-banner button{background:none;border:none;color:#e2e8f0;cursor:pointer;font-size:16px;line-height:1;padding:0 4px;opacity:.7}
+.first-run-banner button:hover{opacity:1}
 </style>
 </head>
 <body>
 <div class="app">
+  <div class="first-run-banner" id="first-run-banner" style="display:none">
+    <span>Welcome to Cascadia OS — your AI is running and demo data has been loaded.</span>
+    <button onclick="document.getElementById('first-run-banner').style.display='none';localStorage.setItem('cascadia_first_run_dismissed','1')" aria-label="Dismiss">✕</button>
+  </div>
   <nav class="nav-rail" id="nav-rail">
     <div class="nav-logo"><span class="nav-logo-text">PRISM</span><div class="nav-logo-bar"></div></div>
     <button class="nav-btn nav-btn--active" onclick="switchSurface('ops')" id="nav-ops"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="nav-tooltip">Ops</span></button>
@@ -2044,7 +2056,7 @@ function renderACPending() {
     }
   }
   if (!la.length) {
-    el.innerHTML = `<div class="approvals-empty"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span>No pending approvals — your operators are waiting for work or running automatically.</span></div>`;
+    el.innerHTML = `<div class="approvals-empty"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><h3>Your AI is running</h3><p>No pending approvals — operators are waiting for work or running automatically.</p><button class="demo-trigger-btn" id="demo-trigger-btn">Run Demo Workflow</button></div>`;
     return;
   }
   el.innerHTML = '<div id="ac-analytics-section"></div>' + la.map(renderACCard).join('');
@@ -3124,6 +3136,31 @@ async function refreshHealth() {
     `).join('');
   } catch(e) { console.error('refreshHealth error:', e); }
 }
+
+/* ═══ FIRST-RUN BANNER ═══ */
+(function checkFirstRun() {
+  if (localStorage.getItem('cascadia_first_run_dismissed')) return;
+  fetch('/api/prism/demo/first-run-status').then(r => r.json()).then(d => {
+    if (d.first_run) {
+      const el = document.getElementById('first-run-banner');
+      if (el) el.style.display = 'flex';
+    }
+  }).catch(() => {});
+})();
+
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('#demo-trigger-btn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  fetch('/api/prism/demo/trigger', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
+    .then(r => r.json())
+    .then(() => {
+      btn.textContent = 'Demo started!';
+      setTimeout(() => { loadApprovals && loadApprovals(); }, 2000);
+    })
+    .catch(() => { btn.textContent = 'Error — check logs'; btn.disabled = false; });
+});
 
 /* ═══ WELCOME MODAL ═══ */
 (function showWelcomeIfFirstVisit() {

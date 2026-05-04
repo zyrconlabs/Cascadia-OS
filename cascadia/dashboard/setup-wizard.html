@@ -332,7 +332,7 @@ input, textarea, select { font-family: var(--font); }
 
 <script>
 const PRISM = 'http://127.0.0.1:6300';
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 const state = {
   step: 1,
@@ -436,7 +436,27 @@ const steps = {
     </div>
     ${footer(false)}`,
 
-  3: () => {
+  3: () => `
+    <div class="wiz-header">
+      <div class="wiz-step-label">Step 3 of ${TOTAL_STEPS}</div>
+      <div class="wiz-title">AI Model &amp; Demo</div>
+      <div class="wiz-body-text">Choose how Cascadia OS talks to AI — locally or via API. Then run a demo to see it work.</div>
+    </div>
+    <div class="wiz-content" id="step3-content">
+      <div id="model-status-row" style="padding:12px;background:var(--gray-50);border-radius:9px;font-size:13px;color:var(--navy-700);margin-bottom:12px">
+        Checking AI model status…
+      </div>
+      <div style="font-size:12px;color:var(--gray-400);margin-bottom:16px">
+        Configure your AI model in Settings → AI after setup. You can change it any time.
+      </div>
+      <button class="btn btn-outline" style="width:100%;height:40px" id="demo-wiz-btn" onclick="runWizardDemo()">
+        Run Demo Workflow
+      </button>
+      <div id="demo-wiz-msg" style="margin-top:10px;font-size:12px;min-height:18px;color:var(--navy-700)"></div>
+    </div>
+    ${footer(false)}`,
+
+  4: () => {
     const types = [
       {id:'contractor',   label:'Contractor / Construction', sub:'Leads, quotes, scheduling'},
       {id:'warehouse',    label:'Warehouse / Industrial',    sub:'Logistics, inventory, ops'},
@@ -447,7 +467,7 @@ const steps = {
     ];
     return `
     <div class="wiz-header">
-      <div class="wiz-step-label">Step 3 of ${TOTAL_STEPS}</div>
+      <div class="wiz-step-label">Step 4 of ${TOTAL_STEPS}</div>
       <div class="wiz-title">Choose Business Type</div>
       <div class="wiz-body-text">We'll suggest the right operators for your industry.</div>
     </div>
@@ -466,9 +486,9 @@ const steps = {
     ${footer(false)}`;
   },
 
-  4: () => `
+  5: () => `
     <div class="wiz-header">
-      <div class="wiz-step-label">Step 4 of ${TOTAL_STEPS}</div>
+      <div class="wiz-step-label">Step 5 of ${TOTAL_STEPS}</div>
       <div class="wiz-title">Connect Email (optional)</div>
       <div class="wiz-body-text">Connect your email so operators can draft and send messages on your behalf.</div>
     </div>
@@ -490,7 +510,7 @@ const steps = {
     </div>
     ${footer(false)}`,
 
-  5: () => {
+  6: () => {
     const suggestions = {
       contractor:   [{id:'scout',label:'Scout',icon:'🔍',desc:'Qualify incoming leads automatically'},{id:'quote',label:'Quote',icon:'📄',desc:'Draft proposals and pricing'},{id:'recon',label:'Recon',icon:'🏢',desc:'Research companies and contacts'}],
       warehouse:    [{id:'scout',label:'Scout',icon:'🔍',desc:'Qualify incoming leads'},{id:'recon',label:'Recon',icon:'🏢',desc:'Research suppliers and vendors'},{id:'invoice',label:'Invoice',icon:'💰',desc:'Draft and send invoices'}],
@@ -502,7 +522,7 @@ const steps = {
     const ops = suggestions[state.businessType] || suggestions.general;
     return `
     <div class="wiz-header">
-      <div class="wiz-step-label">Step 5 of ${TOTAL_STEPS}</div>
+      <div class="wiz-step-label">Step 6 of ${TOTAL_STEPS}</div>
       <div class="wiz-title">Install First Operator</div>
       <div class="wiz-body-text">Based on your business type, we recommend these operators to get started.</div>
     </div>
@@ -525,9 +545,9 @@ const steps = {
     ${footer(false)}`;
   },
 
-  6: () => `
+  7: () => `
     <div class="wiz-header">
-      <div class="wiz-step-label">Step 6 of ${TOTAL_STEPS}</div>
+      <div class="wiz-step-label">Step 7 of ${TOTAL_STEPS}</div>
       <div class="wiz-title">Set Approval Rules</div>
       <div class="wiz-body-text">Control when operators need your sign-off before taking action.</div>
     </div>
@@ -565,9 +585,9 @@ const steps = {
     </div>
     ${footer(false)}`,
 
-  7: () => `
+  8: () => `
     <div class="wiz-header">
-      <div class="wiz-step-label">Step 7 of ${TOTAL_STEPS}</div>
+      <div class="wiz-step-label">Step 8 of ${TOTAL_STEPS}</div>
       <div class="wiz-title">You're Ready</div>
       <div class="wiz-body-text">Here's how Zyrcon works in your business:</div>
     </div>
@@ -686,6 +706,42 @@ async function runDemo() {
   await completeWizard();
   window.location.href = '/?demo=1';
 }
+
+async function runWizardDemo() {
+  const btn = document.getElementById('demo-wiz-btn');
+  const msg = document.getElementById('demo-wiz-msg');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  try {
+    await fetch(PRISM + '/api/prism/demo/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(5000),
+    });
+    if (msg) msg.textContent = 'Demo queued — you'll see an approval card when you open the dashboard.';
+    if (btn) btn.textContent = 'Demo started!';
+  } catch(_) {
+    if (msg) msg.textContent = 'Could not reach PRISM — start Cascadia OS first.';
+    if (btn) { btn.disabled = false; btn.textContent = 'Run Demo Workflow'; }
+  }
+}
+
+// Also fetch model status when step 3 renders
+const _origRender = render;
+render = function() {
+  _origRender();
+  if (state.step === 3) {
+    const row = document.getElementById('model-status-row');
+    if (!row) return;
+    fetch(PRISM + '/api/prism/models').then(r => r.json()).then(d => {
+      const models = d.models || [];
+      const active = models.find(m => m.active);
+      row.textContent = active
+        ? '✓ AI model ready: ' + active.name
+        : 'No AI model configured — you can set one up in Settings after install.';
+    }).catch(() => { row.textContent = 'PRISM not running — start Cascadia OS to configure AI.'; });
+  }
+};
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 render();

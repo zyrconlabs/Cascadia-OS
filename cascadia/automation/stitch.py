@@ -1042,6 +1042,12 @@ class StitchService:
             schedule=weekly_time,
             trigger_fn=self._trigger_weekly_summary,
         )
+        growth_desk_time = self.config.get('scheduler', {}).get('growth_desk_daily_time', 'MON-FRI 09:00')
+        self._scheduler.add_job(
+            name='growth_desk_daily',
+            schedule=growth_desk_time,
+            trigger_fn=lambda: self._trigger_workflow_by_id('growth_desk_campaign', {'goal': 'daily_growth_desk'}),
+        )
 
     def _trigger_workflow_by_id(self, workflow_id: str, payload: Optional[Dict[str, Any]] = None) -> None:
         """Trigger a registered workflow by ID. Used by the scheduler."""

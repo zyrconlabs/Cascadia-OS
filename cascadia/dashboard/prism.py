@@ -238,6 +238,9 @@ class PrismService:
         self.runtime.register_route('GET',   '/api/missions/{mission_id}/items',                    self.mission_items)
         self.runtime.register_route('PATCH', '/api/missions/items/{item_id}',                       self.mission_item_update)
 
+        self.runtime.register_route('POST', '/api/prism/demo/trigger',          self.demo_trigger)
+        self.runtime.register_route('GET',  '/api/prism/demo/first-run-status', self.demo_first_run_status)
+
         # Start operator watchdog
         try:
             from cascadia.core.watchdog import OperatorWatchdog
@@ -2953,6 +2956,25 @@ document.getElementById('key').addEventListener('keydown', function(e){
             return 200, result
         except Exception as exc:
             return 500, {"error": str(exc)}
+
+    def demo_trigger(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/demo/trigger — run seed_demo_data.py in background."""
+        import subprocess, sys
+        seed_script = Path(__file__).parent.parent.parent / 'scripts' / 'seed_demo_data.py'
+        if not seed_script.exists():
+            return 404, {"error": "seed script not found"}
+        db_path = self.config.get('database_path', './data/runtime/cascadia.db')
+        subprocess.Popen([sys.executable, str(seed_script), '--db', db_path])
+        return 200, {"triggered": True, "message": "Demo workflow seeded — check approvals in a moment."}
+
+    def demo_first_run_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/demo/first-run-status — true if sentinel was created within last 5 min."""
+        import time as _t
+        sentinel = Path('data/runtime/.first_run_complete')
+        if not sentinel.exists():
+            return 200, {"first_run": True}
+        age = _t.time() - sentinel.stat().st_mtime
+        return 200, {"first_run": age < 300}
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')

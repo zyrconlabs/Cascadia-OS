@@ -427,14 +427,9 @@ cd "$INSTALL_DIR" && bash start.sh
 
 # ── Open dashboard on first install ──────────────────────────────────────────
 echo ""
-if [[ ! -f "$INSTALL_DIR/.setup_complete" ]]; then
-    info "Opening PRISM dashboard — choose your AI mode in Settings..."
-    [[ "$(uname)" == "Darwin" ]] && open "http://localhost:6300/#settings" 2>/dev/null || true
-    touch "$INSTALL_DIR/.setup_complete"
-else
-    info "Opening PRISM dashboard..."
-    [[ "$(uname)" == "Darwin" ]] && open "http://localhost:6300" 2>/dev/null || true
-fi
+info "Opening PRISM dashboard..."
+[[ "$(uname)" == "Darwin" ]] && open "http://localhost:6300" 2>/dev/null || true
+touch "$INSTALL_DIR/.setup_complete"
 
 [[ "$(uname)" == "Darwin" ]] && open -g "swiftbar://refreshAllPlugins" 2>/dev/null || true
 
@@ -454,7 +449,7 @@ echo "  ╔═══════════════════════
 echo "  ║  Cascadia OS is running.                     ║"
 echo "  ║                                              ║"
 echo "  ║  → PRISM dashboard opened in your browser    ║"
-echo "  ║  → Go to Settings to choose your AI mode     ║"
+echo "  ║  → Demo data loaded — check the Approvals tab ║"
 echo "  ║  → SwiftBar shows live system status         ║"
 echo "  ║  → Starts automatically at every boot        ║"
 echo "  ╚══════════════════════════════════════════════╝"

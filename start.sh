@@ -120,9 +120,26 @@ else
 fi
 
 # ── 6. Operators ──────────────────────────────────────────────────────────
-# First-party operators are maintained in cascadia-os-operators (private).
-# Start operators from that repo before running this script.
-# See: https://github.com/zyrconlabs/cascadia-os-operators
+_OPS_REPO="${OPERATORS_REPO_PATH:-$HOME/cascadia-os-operators}"
+if [ -d "$_OPS_REPO" ]; then
+    if [ -f "$_OPS_REPO/chief/chief.py" ]; then
+        echo "▸ Starting CHIEF operator..."
+        "$PYTHON" "$_OPS_REPO/chief/chief.py" --config config.json >> data/logs/chief.log 2>&1 &
+        sleep 2
+        echo "✓ CHIEF started"
+    fi
+    if [ -f "$_OPS_REPO/social/social.py" ]; then
+        echo "▸ Starting SOCIAL operator..."
+        "$PYTHON" "$_OPS_REPO/social/social.py" --config config.json >> data/logs/social.log 2>&1 &
+        sleep 2
+        echo "✓ SOCIAL started"
+    fi
+else
+    echo ""
+    echo "  \033[33m⚠  Operators repo not found at $_OPS_REPO\033[0m"
+    echo "  \033[33m   Set OPERATORS_REPO_PATH or clone cascadia-os-operators there.\033[0m"
+    echo ""
+fi
 
 # ── 7. Register operators with CREW ──────────────────────────────────────
 # BELL self-registers with CREW automatically after startup.

@@ -128,6 +128,11 @@ class Watchdog:
         print('  \033[31m╚══════════════════════════════════════╝\033[0m')
         print('')
         _migrate_heartbeat_files(self.config.get('data_dir', './data'), self.logger)
+        try:
+            from cascadia.installer.first_run import run_first_time_setup
+            run_first_time_setup(self.config)
+        except Exception as exc:
+            self.logger.warning('First-run setup skipped: %s', exc)
         if not self._check_database_integrity():
             self.logger.critical('Database corrupted. Restore from data/backups/')
             sys.exit(1)
