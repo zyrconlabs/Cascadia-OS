@@ -1361,10 +1361,12 @@ document.getElementById('key').addEventListener('keydown', function(e){
             with store.connection() as conn:
                 rows = conn.execute(
                     'SELECT a.id, a.run_id, a.step_index, a.action_key, '
-                    'a.created_at, a.risk_level, '
-                    'r.goal, r.operator_id, r.state_snapshot, r.input_snapshot '
+                    'a.created_at, a.risk_level, a.mission_id, a.reason, '
+                    'COALESCE(r.goal, \'\') AS goal, '
+                    'COALESCE(r.operator_id, \'\') AS operator_id, '
+                    'r.state_snapshot, r.input_snapshot '
                     'FROM approvals a '
-                    'JOIN runs r ON a.run_id = r.run_id '
+                    'LEFT JOIN runs r ON a.run_id = r.run_id '
                     "WHERE a.decision = 'pending' "
                     'ORDER BY a.created_at ASC'
                 ).fetchall()
