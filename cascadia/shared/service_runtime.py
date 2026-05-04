@@ -57,10 +57,10 @@ class ReusableHTTPServer(ThreadingHTTPServer):
 class ServiceRuntime:
     """Owns the minimal local HTTP wrapper for supervised services. Does not own business logic."""
 
-    def __init__(self, *, name: str, port: int, heartbeat_file: str, log_dir: str, ready_delay_seconds: float = 0.5) -> None:
+    def __init__(self, *, name: str, port: int, pulse_file: str, log_dir: str, ready_delay_seconds: float = 0.5) -> None:
         self.name = name
         self.port = port
-        self.heartbeat_file = Path(heartbeat_file)
+        self.pulse_file = Path(pulse_file)
         self.log_dir = log_dir
         self.ready_delay_seconds = ready_delay_seconds
         self.logger = configure_logging(log_dir, name)
@@ -93,10 +93,10 @@ class ServiceRuntime:
             for s in dead:
                 self._ws_clients.remove(s)
 
-    def _heartbeat_loop(self) -> None:
+    def _pulse_loop(self) -> None:
         while not self._shutdown.is_set():
-            self.heartbeat_file.parent.mkdir(parents=True, exist_ok=True)
-            self.heartbeat_file.write_text(str(time.time()), encoding='utf-8')
+            self.pulse_file.parent.mkdir(parents=True, exist_ok=True)
+            self.pulse_file.write_text(str(time.time()), encoding='utf-8')
             time.sleep(5)
 
     def _ready_after_delay(self) -> None:
@@ -137,7 +137,7 @@ class ServiceRuntime:
         """Owns the service HTTP loop. Does not own kernel supervision."""
         signal.signal(signal.SIGTERM, self.on_sigterm)
         signal.signal(signal.SIGINT, self.on_sigterm)
-        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        threading.Thread(target=self._pulse_loop, daemon=True).start()
         threading.Thread(target=self._ready_after_delay, daemon=True).start()
         runtime = self
 

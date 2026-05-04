@@ -62,7 +62,7 @@ pip install paho-mqtt
   "module": "cascadia.iot.bridge",
   "port": 6206,
   "tier": 2,
-  "heartbeat_file": "./data/runtime/conduit.heartbeat"
+  "pulse_file": "./data/runtime/conduit.pulse"
 }
 ```
 

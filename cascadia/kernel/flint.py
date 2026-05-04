@@ -49,7 +49,7 @@ class ProcessEntry:
     module: str
     port: int
     tier: int
-    heartbeat_file: str
+    pulse_file: str
     depends_on: List[str] = field(default_factory=list)
     pid: int | None = None
     process_state: str = 'starting'
@@ -75,7 +75,7 @@ class Flint:
         self.components = {
             item['name']: ProcessEntry(
                 name=item['name'], module=item['module'], port=item['port'],
-                tier=item['tier'], heartbeat_file=item['heartbeat_file'],
+                tier=item['tier'], pulse_file=item['pulse_file'],
                 depends_on=item.get('depends_on', []),
             )
             for item in self.config['components']
@@ -144,12 +144,12 @@ class Flint:
             self._wait_ready(group)
             self.logger.info('FLINT tier %s ready: %s', tier, [c.name for c in group])
 
-    def _heartbeat_loop(self) -> None:
-        hb = Path(self.config['flint']['heartbeat_file'])
+    def _pulse_loop(self) -> None:
+        hb = Path(self.config['flint']['pulse_file'])
         while not self.shutdown_event.is_set():
             hb.parent.mkdir(parents=True, exist_ok=True)
             hb.write_text(str(time.time()))
-            time.sleep(self.config['flint']['heartbeat_interval_seconds'])
+            time.sleep(self.config['flint']['pulse_interval_seconds'])
 
     def _check_llm_health(self) -> Dict[str, Any]:
         """
@@ -215,29 +215,29 @@ class Flint:
         self._start_component(component)
 
     def monitor_loop(self) -> None:
-        stale = self.config['flint']['heartbeat_stale_after_seconds']
-        # Grace period: allow components to write first heartbeat before monitoring
+        stale = self.config['flint']['pulse_stale_after_seconds']
+        # Grace period: allow components to write first pulse before monitoring
         grace = stale  # same as stale threshold — typically 15s
         self.logger.info('FLINT monitor waiting %ss for components to stabilise', grace)
         self.shutdown_event.wait(timeout=grace)
         while not self.shutdown_event.is_set():
             for component in self.components.values():
                 ok = self._check_health(component)
-                hb = Path(component.heartbeat_file)
+                hb = Path(component.pulse_file)
                 if hb.exists():
                     age = time.time() - hb.stat().st_mtime
                     if age > stale:
                         ok = False
-                        component.last_error = f'heartbeat stale ({age:.1f}s)'
+                        component.last_error = f'pulse stale ({age:.1f}s)'
                 else:
-                    # No heartbeat file yet — only flag as error if process is also dead
+                    # No pulse file yet — only flag as error if process is also dead
                     proc = self.processes.get(component.name)
                     if proc is not None and proc.poll() is None:
-                        # Process alive, heartbeat not yet written — give it time
+                        # Process alive, pulse not yet written — give it time
                         ok = True
                     else:
                         ok = False
-                        component.last_error = 'missing heartbeat'
+                        component.last_error = 'no pulse'
                 if not ok and not self.shutdown_event.is_set():
                     self._maybe_restart(component)
                 elif ok:
@@ -372,7 +372,7 @@ class Flint:
     def run(self) -> None:
         signal.signal(signal.SIGTERM, self.handle_signal)
         signal.signal(signal.SIGINT, self.handle_signal)
-        threading.Thread(target=self._heartbeat_loop, daemon=True, name='flint-hb').start()
+        threading.Thread(target=self._pulse_loop, daemon=True, name='flint-pulse').start()
         threading.Thread(target=self._serve_status, daemon=True, name='flint-status').start()
         threading.Thread(target=self._llm_health_loop, daemon=True, name='flint-llm-health').start()
         self.start_tiers()

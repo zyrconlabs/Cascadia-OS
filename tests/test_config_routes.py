@@ -20,8 +20,8 @@ def _make_prism(tmp_path, flag: bool):
         "operators_dir": "",
         "llm": {"provider": None, "model": None, "base_url": "", "configured": False,
                  "active_model_id": "", "models_dir": "", "llama_bin": ""},
-        "flint": {"heartbeat_file": str(tmp_path / "f.heartbeat"),
-                  "heartbeat_interval_seconds": 5, "heartbeat_stale_after_seconds": 15,
+        "flint": {"pulse_file": str(tmp_path / "f.pulse"),
+                  "pulse_interval_seconds": 5, "pulse_stale_after_seconds": 15,
                   "status_port": 14011, "health_interval_seconds": 5,
                   "drain_timeout_seconds": 10, "max_restart_attempts": 5,
                   "restart_backoff_seconds": [5, 30, 120]},
@@ -29,7 +29,7 @@ def _make_prism(tmp_path, flag: bool):
         "components": [
             {"name": "prism", "module": "cascadia.dashboard.prism",
              "port": 16300, "tier": 3,
-             "heartbeat_file": str(tmp_path / "prism.heartbeat"),
+             "pulse_file": str(tmp_path / "prism.pulse"),
              "depends_on": []}
         ],
         "models": [],

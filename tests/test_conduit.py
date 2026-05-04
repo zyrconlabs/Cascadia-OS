@@ -42,8 +42,8 @@ def test_conduit_empty_adapters_when_iot_disabled():
     config = {
         'log_dir': '/tmp/cascadia_test_logs',
         'components': [
-            {'name': 'conduit', 'port': 6206, 'heartbeat_file': '/tmp/conduit.hb'},
-            {'name': 'vanguard', 'port': 6202, 'heartbeat_file': '/tmp/vanguard.hb'},
+            {'name': 'conduit', 'port': 6206, 'pulse_file': '/tmp/conduit.hb'},
+            {'name': 'vanguard', 'port': 6202, 'pulse_file': '/tmp/vanguard.hb'},
         ],
         'iot': {'enabled': False},
     }

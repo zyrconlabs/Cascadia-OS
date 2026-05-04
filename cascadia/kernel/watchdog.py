@@ -1,17 +1,34 @@
 """
 watchdog.py - Cascadia OS v{VERSION}
 External FLINT liveness monitor. Lives outside the supervision tree.
-Monitors FLINT heartbeat only. Has no knowledge of operators or workflows.
+Monitors FLINT pulse only. Has no knowledge of operators or workflows.
 If this file grows complex, that is a design error.
 """
 # MATURITY: PRODUCTION — External liveness monitor. Simple by design.
 from __future__ import annotations
-import argparse, os, secrets as _secrets, subprocess, sys, time
+import argparse, glob as _glob, os, secrets as _secrets, subprocess, sys, time
 from pathlib import Path
 from cascadia import VERSION
 from cascadia.shared.config import load_config
 from cascadia.shared.logger import configure_logging
 from cascadia.kernel.operator_manager import OperatorManager
+
+def _migrate_heartbeat_files(data_dir: str, logger: object) -> None:
+    """
+    Rename any .heartbeat files from pre-v0.50 to .pulse files. Runs once on startup.
+    Safe to run repeatedly — skips if already done.
+    """
+    pattern = os.path.join(data_dir, 'runtime', '*.heartbeat')
+    for old_path in _glob.glob(pattern):
+        new_path = old_path.replace('.heartbeat', '.pulse')
+        if not os.path.exists(new_path):
+            os.rename(old_path, new_path)
+            logger.info(
+                'Migrated %s → %s',
+                os.path.basename(old_path),
+                os.path.basename(new_path),
+            )
+
 
 class Watchdog:
     """Owns FLINT liveness monitoring. Does not own component-level supervision."""
@@ -69,11 +86,11 @@ class Watchdog:
         self.proc = subprocess.Popen([sys.executable, '-m', 'cascadia.kernel.flint', '--config', self.config_path], text=True)
 
     def flint_stale(self) -> bool:
-        hb = Path(self.config['flint']['heartbeat_file'])
-        return (not hb.exists()) or (time.time() - hb.stat().st_mtime > self.config['flint']['heartbeat_stale_after_seconds'])
+        hb = Path(self.config['flint']['pulse_file'])
+        return (not hb.exists()) or (time.time() - hb.stat().st_mtime > self.config['flint']['pulse_stale_after_seconds'])
 
     def restart_flint(self) -> None:
-        self.logger.warning('FLINT heartbeat stale - restarting')
+        self.logger.warning('FLINT pulse stale - restarting')
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
             try: self.proc.wait(timeout=5)
@@ -110,6 +127,7 @@ class Watchdog:
         print('  \033[31m║\033[0m     AI Work Platform v' + VERSION + '       \033[31m║\033[0m')
         print('  \033[31m╚══════════════════════════════════════╝\033[0m')
         print('')
+        _migrate_heartbeat_files(self.config.get('data_dir', './data'), self.logger)
         if not self._check_database_integrity():
             self.logger.critical('Database corrupted. Restore from data/backups/')
             sys.exit(1)
@@ -118,7 +136,7 @@ class Watchdog:
         _threading.Thread(target=self._call_resume, daemon=True).start()
         self.operator_manager.run()
         # Startup grace: give FLINT time to boot before first stale check
-        startup_grace = self.config['flint'].get('heartbeat_stale_after_seconds', 15) * 3
+        startup_grace = self.config['flint'].get('pulse_stale_after_seconds', 15) * 3
         self.logger.info('Watchdog giving FLINT %ss startup grace', startup_grace)
         time.sleep(startup_grace)
         while True:

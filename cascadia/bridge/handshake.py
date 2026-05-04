@@ -121,7 +121,7 @@ class HandshakeService:
         component = next(c for c in self.config['components'] if c['name'] == name)
         self.runtime = ServiceRuntime(
             name=name, port=component['port'],
-            heartbeat_file=component['heartbeat_file'],
+            pulse_file=component['pulse_file'],
             log_dir=self.config['log_dir'],
         )
         self._lock = threading.Lock()
