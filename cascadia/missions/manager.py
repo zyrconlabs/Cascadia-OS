@@ -74,15 +74,16 @@ def handle_catalog(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
 def handle_installed(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
     if _registry is None:
         return 200, {"missions": []}
-    installed_ids = {m["id"] for m in _registry.list_installed() if isinstance(m, dict) and "id" in m}
-    catalog = _registry.list_catalog()
-    result = []
-    for mission in catalog:
-        if mission["id"] in installed_ids:
-            mission["installed"] = True
-            mission["status"] = "installed"
-            result.append(mission)
-    return 200, {"missions": result}
+    raw = _registry.list_installed()
+    missions = []
+    for entry in raw:
+        if isinstance(entry, dict):
+            missions.append(_mission_summary({**entry, "installed": True}))
+        elif isinstance(entry, str):
+            m = _registry.get_mission(entry)
+            if m:
+                missions.append(_mission_summary({**m, "installed": True}))
+    return 200, {"missions": missions}
 
 
 def handle_mission_detail(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
@@ -536,12 +537,11 @@ class MissionManagerService:
             adapter=StitchMissionAdapter(),
         )
         _scheduler = MissionScheduler(registry=_registry, runner=_runner)
-        _scheduler.start()
         _bridge = get_bridge()
         self.runtime = ServiceRuntime(
             name=name,
             port=component["port"],
-            pulse_file=component["pulse_file"],
+            heartbeat_file=component["heartbeat_file"],
             log_dir=config["log_dir"],
         )
         _bridge.set_ws_runtime(self.runtime)

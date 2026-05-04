@@ -3,10 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import sqlite3
-import threading
-import time
 import urllib.request
 import uuid
 from datetime import datetime, timezone
@@ -82,12 +79,6 @@ def _http_post(url: str, data: dict, timeout: int = 10) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def _http_get(url: str, timeout: int = 10) -> dict:
-    req = urllib.request.Request(url, method="GET")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
 # ── STITCH adapter ────────────────────────────────────────────────────────────
 
 class StitchMissionAdapter:
@@ -112,7 +103,15 @@ class StitchMissionAdapter:
 
     def start_workflow(self, workflow_def: dict, payload: dict) -> str:
         """Register and start a mission workflow via STITCH. Returns stitch run_id."""
-        steps = workflow_def.get("steps", [])  # pass all fields so STITCH has port/endpoint/input_map
+        steps = [
+            {
+                "name": s.get("id", ""),
+                "operator": s.get("operator", ""),
+                "action": s.get("action", ""),
+                "on_failure": "stop",
+            }
+            for s in workflow_def.get("steps", [])
+        ]
         wf_id = workflow_def.get("id", f"mission_{uuid.uuid4().hex[:8]}")
         _http_post(self._base + "/workflow/register", {
             "workflow_id": wf_id,
@@ -253,22 +252,19 @@ class MissionRunner:
                 "status": "waiting_approval",
             }
 
-        # No external actions — run steps directly via daemon thread
-        self._update_run(run_id, {
-            "trigger_data": json.dumps({
-                "workflow_id": workflow_id,
-                "trigger_type": trigger_type,
-                "direct_execution": True,
-                "input": payload or {},
-            }),
-        })
-        t = threading.Thread(
-            target=self._execute_direct_workflow,
-            args=(run_id, wf_def, payload or {}),
-            daemon=True,
-            name=f"mission-run-{run_id[:8]}",
-        )
-        t.start()
+        # No external actions — dispatch to STITCH
+        try:
+            stitch_run_id = self._adapter.start_workflow(wf_def, payload or {})
+            self._update_run(run_id, {
+                "trigger_data": json.dumps({
+                    "workflow_id": workflow_id,
+                    "trigger_type": trigger_type,
+                    "stitch_run_id": stitch_run_id,
+                    "input": payload or {},
+                }),
+            })
+        except Exception as exc:
+            log.warning("STITCH dispatch failed for run %s: %s", run_id, exc)
 
         return {
             "mission_run_id": run_id,
@@ -364,15 +360,6 @@ class MissionRunner:
             except Exception:
                 pass
 
-        if td.get("direct_execution"):
-            publish_mission_event(APPROVAL_RESOLVED, {
-                "mission_run_id": mission_run_id, "decision": decision,
-            })
-            return self.complete_mission(
-                mission_run_id,
-                approval_decision.get("edited_payload"),
-            )
-
         stitch_run_id = td.get("stitch_run_id", "")
         stitch_ok = False
 
@@ -454,157 +441,6 @@ class MissionRunner:
             "output": output or {},
         })
         return run
-
-    # ── Direct workflow executor ──────────────────────────────────────────────
-
-    def _resolve_step_input(self, input_map: dict, context: dict) -> dict:
-        """Resolve input_map template strings from context. Single {ref} returns raw value."""
-        result = {}
-        for k, v in input_map.items():
-            if not isinstance(v, str):
-                result[k] = v
-                continue
-            full = re.fullmatch(r'\{([^}]+)\}', v.strip())
-            if full:
-                parts = full.group(1).split(".")
-                val: Any = context
-                for p in parts:
-                    val = val.get(p) if isinstance(val, dict) else None
-                result[k] = val
-            else:
-                def _sub(m: re.Match) -> str:
-                    val: Any = context
-                    for p in m.group(1).split("."):
-                        val = val.get(p, "") if isinstance(val, dict) else ""
-                    return json.dumps(val) if isinstance(val, (dict, list)) else str(val)
-                result[k] = re.sub(r'\{([^}]+)\}', _sub, v)
-        return result
-
-    def _call_social_operator(
-        self,
-        brief_text: str,
-        mission_run_id: str,
-        social_port: int = 8011,
-        max_wait_seconds: int = 600,
-        poll_interval: int = 10,
-    ):
-        """Call SOCIAL using its session-based pattern.
-
-        1. POST /start with brief text
-        2. Poll /session/{session_id} until pending_approval or error
-        3. Return (posts, session_id, None) on success or (None, None, error_str) on failure
-        """
-        start_url = f"http://127.0.0.1:{social_port}/start"
-        body = json.dumps({"brief": brief_text}).encode("utf-8")
-        req = urllib.request.Request(
-            start_url, data=body, method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=15) as r:
-                start_resp = json.loads(r.read().decode("utf-8"))
-        except Exception as exc:
-            return None, None, f"SOCIAL start failed: {exc}"
-
-        session_id = start_resp.get("session_id")
-        if not session_id:
-            return None, None, "SOCIAL did not return session_id"
-
-        poll_url = f"http://127.0.0.1:{social_port}/session/{session_id}"
-        elapsed = 0
-        while elapsed < max_wait_seconds:
-            time.sleep(poll_interval)
-            elapsed += poll_interval
-            try:
-                with urllib.request.urlopen(poll_url, timeout=10) as r:
-                    session = json.loads(r.read().decode("utf-8"))
-            except Exception:
-                continue
-
-            status = session.get("status", "")
-            if status == "pending_approval":
-                return session.get("posts", []), session_id, None
-            elif status == "approved":
-                return session.get("posts", []), session_id, None
-            elif status == "qc_failed":
-                revision = session.get("revision", 0)
-                if revision >= 5:
-                    posts = session.get("posts", [])
-                    if posts:
-                        return posts, session_id, None
-            elif status == "error":
-                return None, session_id, f"SOCIAL error: {session.get('error')}"
-            # generating or qc_failed below max revisions — keep polling
-
-        return None, session_id, f"SOCIAL polling timed out after {max_wait_seconds}s"
-
-    def _execute_direct_workflow(
-        self, mission_run_id: str, wf_def: dict, initial_payload: dict
-    ) -> None:
-        """Run workflow steps sequentially in a daemon thread.
-
-        CHIEF step runs generically. SOCIAL step uses _call_social_operator()
-        for its session-based pattern (POST /start → poll /session/{id}).
-        Creates a Mission Manager approval item when all steps complete.
-        """
-        steps = wf_def.get("steps", [])
-        mission_id = wf_def.get("mission_id", "")
-        context: Dict[str, Any] = {"trigger": initial_payload}
-
-        chief_result: dict = {}
-
-        for step in steps:
-            step_id    = step.get("id", "")
-            operator   = step.get("operator", "")
-            port       = step.get("port")
-            endpoint   = step.get("endpoint", "POST /api/task")
-            input_map  = step.get("input_map", {})
-            output_key = step.get("output_key", step_id)
-
-            # ── SOCIAL step — use session pattern ─────────────────────────────
-            if operator == "social":
-                brief_text = json.dumps(
-                    chief_result.get("result", chief_result), indent=2
-                )
-                posts, session_id, err = self._call_social_operator(
-                    brief_text, mission_run_id, social_port=port or 8011,
-                    max_wait_seconds=600, poll_interval=10,
-                )
-                if err:
-                    self.fail_mission(mission_run_id, err, failed_step=step_id)
-                    return
-                log.info("direct_workflow run=%s step=%s complete", mission_run_id, step_id)
-                self.pause_for_approval(mission_run_id, {
-                    "title": "Daily Campaign Ready for Review",
-                    "summary": f"SOCIAL drafted {len(posts)} post(s). Review before sending.",
-                    "payload": {
-                        "posts": posts,
-                        "session_id": session_id,
-                        "brief": brief_text,
-                    },
-                    "action": "campaign.post",
-                    "approval_type": "campaign_post_approval",
-                    "mission_id": mission_id,
-                    "risk_level": "medium",
-                })
-                return
-
-            # ── Generic step (CHIEF and others) ──────────────────────────────
-            payload = self._resolve_step_input(input_map, context) if input_map else {
-                "task": step.get("goal", ""), "context": context,
-            }
-            method, path = endpoint.split(" ", 1)
-            url = f"http://127.0.0.1:{port}{path}"
-            try:
-                result = _http_post(url, payload, timeout=30)
-            except Exception as exc:
-                self.fail_mission(mission_run_id, str(exc), failed_step=step_id)
-                return
-
-            context[output_key] = result
-            if operator == "chief":
-                chief_result = result
-            log.info("direct_workflow run=%s step=%s complete", mission_run_id, step_id)
 
     # ── Retry ─────────────────────────────────────────────────────────────────
 
