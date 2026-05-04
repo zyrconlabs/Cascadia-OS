@@ -39,6 +39,8 @@ class Watchdog:
         self._validate_config()
         self._generate_internal_key()
         self.proc = None
+        self._prism_proc = None
+        self._prism_check_ticks = 0
         ops_path = self.config.get("operators_dir", "")
         operators_dir = Path(ops_path).expanduser() if ops_path else None
         self.operator_manager = OperatorManager(self.logger, operators_dir=operators_dir, config=self.config)
@@ -88,6 +90,37 @@ class Watchdog:
     def flint_stale(self) -> bool:
         hb = Path(self.config['flint']['pulse_file'])
         return (not hb.exists()) or (time.time() - hb.stat().st_mtime > self.config['flint']['pulse_stale_after_seconds'])
+
+    def _start_prism(self) -> None:
+        self.logger.info('Watchdog starting PRISM dashboard')
+        self._prism_proc = subprocess.Popen(
+            [sys.executable, '-m', 'cascadia.dashboard.prism',
+             '--config', self.config_path, '--name', 'prism'],
+            text=True
+        )
+
+    def _prism_healthy(self) -> bool:
+        import urllib.request
+        try:
+            urllib.request.urlopen('http://127.0.0.1:6300/health', timeout=3)
+            return True
+        except Exception:
+            return False
+
+    def _check_prism(self) -> None:
+        if self._prism_healthy():
+            return
+        if self._prism_proc and self._prism_proc.poll() is not None:
+            self.logger.warning('PRISM exited (code %s) - restarting', self._prism_proc.returncode)
+        else:
+            self.logger.warning('PRISM not responding - restarting')
+        if self._prism_proc:
+            try:
+                self._prism_proc.terminate()
+                self._prism_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._prism_proc.kill()
+        self._start_prism()
 
     def restart_flint(self) -> None:
         self.logger.warning('FLINT pulse stale - restarting')
@@ -156,6 +189,10 @@ class Watchdog:
                 self.start_flint(); continue
             if self.flint_stale():
                 self.restart_flint()
+            self._prism_check_ticks += 1
+            if self._prism_check_ticks >= 6:  # every ~30s
+                self._prism_check_ticks = 0
+                self._check_prism()
 
 def main() -> None:
     p = argparse.ArgumentParser(); p.add_argument('--config', required=True)

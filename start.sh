@@ -102,7 +102,29 @@ else
     [[ ! -f "$PYTHON" ]] && PYTHON="python3"
     "$PYTHON" -m cascadia.dashboard.prism --config config.json --name prism >> data/logs/prism.log 2>&1 &
     sleep 3
-    curl -sf http://127.0.0.1:6300/health > /dev/null && echo "✓ PRISM ready" || echo "✗ PRISM failed — check data/logs/prism.log"
+    PRISM_OK=false
+    for _i in $(seq 1 10); do
+        if curl -sf http://127.0.0.1:6300/health > /dev/null 2>&1; then
+            PRISM_OK=true
+            break
+        fi
+        sleep 1
+    done
+    if [[ "$PRISM_OK" == "true" ]]; then
+        echo "✓ PRISM ready on port 6300"
+    else
+        echo "✗ PRISM did not respond — killing and restarting..."
+        lsof -ti :6300 | xargs kill -9 2>/dev/null || true
+        sleep 2
+        "$PYTHON" -m cascadia.dashboard.prism --config config.json --name prism >> data/logs/prism.log 2>&1 &
+        sleep 5
+        if curl -sf http://127.0.0.1:6300/health > /dev/null 2>&1; then
+            echo "✓ PRISM ready on port 6300 (second attempt)"
+        else
+            echo "✗ PRISM failed to start after two attempts — check data/logs/prism.log"
+            exit 1
+        fi
+    fi
 fi
 
 # ── 5. Mission Manager ────────────────────────────────────────────────────
