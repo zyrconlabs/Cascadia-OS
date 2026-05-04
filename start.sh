@@ -109,9 +109,11 @@ fi
 if curl -sf http://127.0.0.1:6207/healthz > /dev/null 2>&1; then
     echo "✓ Mission Manager already running"
 else
-    echo "▸ Starting Mission Manager..."
+    echo "Running missions migration..."
     PYTHON="${REPO}/.venv/bin/python3"
     [[ ! -f "$PYTHON" ]] && PYTHON="python3"
+    "$PYTHON" -m cascadia.missions.migrate >> data/logs/mission_manager.log 2>&1
+    echo "▸ Starting Mission Manager..."
     "$PYTHON" -m cascadia.missions.manager --config config.json --name mission_manager >> data/logs/mission_manager.log 2>&1 &
     sleep 3
     curl -sf http://127.0.0.1:6207/healthz > /dev/null && echo "✓ Mission Manager ready" || echo "✗ Mission Manager failed — check data/logs/mission_manager.log"
