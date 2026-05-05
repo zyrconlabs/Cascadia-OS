@@ -1,7 +1,17 @@
 """
 cascadia/connectors/mqtt/server.py
-MQTT Connector — port 8305 (env: MQTT_CONNECTOR_PORT)
-Connects Cascadia to any MQTT broker. Command topics require approval.
+
+Open-core reference implementation — Apache 2.0
+See: https://github.com/zyrconlabs/cascadia-os
+
+MQTT Connector — port 8911 (env: MQTT_CONNECTOR_PORT)
+Connects Cascadia to any MQTT broker. Demonstrates:
+command-topic detection, approval gate on writes,
+in-memory message history, simulated broker mode.
+
+Copy and adapt this file to build your own IoT connectors.
+Commercial operators built on this pattern are available
+via the Zyrcon DEPOT: https://zyrcon.ai
 """
 import json
 import os
@@ -9,7 +19,7 @@ import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-PORT = int(os.environ.get("MQTT_CONNECTOR_PORT", 8305))
+PORT = int(os.environ.get("MQTT_CONNECTOR_PORT", 8911))
 
 _COMMAND_WORDS = {"command", "control", "set", "actuate", "override"}
 
@@ -21,6 +31,29 @@ def _now() -> str:
 def _is_command_topic(topic: str) -> bool:
     """Return True if any path segment is a known command word."""
     return bool(_COMMAND_WORDS.intersection(topic.lower().split("/")))
+
+
+# ── Cascadia platform stubs ───────────────────────────────
+# These are no-op stubs matching the Cascadia operator
+# wiring contract. Replace with real implementations when
+# running inside a full Cascadia OS deployment.
+
+def vault_get(key: str, default=None):
+    """Retrieve a credential from the Cascadia Vault."""
+    return os.environ.get(key, default)
+
+def sentinel_check(action: str, payload: dict) -> bool:
+    """
+    Approval gate check. Returns True if action is
+    pre-approved, False if it requires human approval.
+    In production this calls the Cascadia Sentinel service.
+    """
+    return False  # default: all actions require approval
+
+def crew_register(operator_id: str, port: int) -> None:
+    """Register this operator with the Cascadia CREW."""
+    pass  # no-op in standalone mode
+# ─────────────────────────────────────────────────────────
 
 
 class MqttStore:
@@ -134,6 +167,17 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/api/simulate":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length) or b"{}")
+            action = body.get("action", "")
+            try:
+                result = _dispatch(action, body)
+                result["simulated"] = True
+                self._send(200, result)
+            except Exception as exc:
+                self._send(400, {"error": str(exc)})
+            return
         if self.path != "/api/run":
             self._send(404, {"error": "not found"})
             return
@@ -181,6 +225,7 @@ def _dispatch(action: str, body: dict) -> dict:
 def main():
     server = HTTPServer(("0.0.0.0", PORT), _Handler)
     print(f"MQTT Connector listening on port {PORT}")
+    crew_register("mqtt_connector", PORT)
     server.serve_forever()
 
 

@@ -1,6 +1,6 @@
 """
 tests/test_modbus_connector.py
-Tests for Modbus Connector (port 8306).
+Tests for Modbus Connector (port 8912).
 """
 import json
 import threading
@@ -59,7 +59,7 @@ def test_health_returns_ok(server):
         result = json.loads(resp.read())
     assert result["status"] == "healthy"
     assert result["component"] == "modbus"
-    assert result["port"] == 8306
+    assert result["port"] == 8912
 
 
 def test_simulated_mode_no_device(mb):
