@@ -58,6 +58,7 @@ class ProcessEntry:
     restart_attempts: int = 0
     next_restart_at: float = 0.0
     last_error: str = ''
+    draining_since: float | None = None
 
 
 class Flint:
@@ -223,6 +224,21 @@ class Flint:
         while not self.shutdown_event.is_set():
             for component in self.components.values():
                 ok = self._check_health(component)
+                # Stuck-draining: process alive (healthy=True) but never leaving drain state.
+                # _maybe_restart() skips healthy components, so detect and force a restart.
+                interval = self.config['flint']['health_interval_seconds']
+                if component.process_state == 'draining':
+                    if component.draining_since is None:
+                        component.draining_since = time.time()
+                    elif time.time() - component.draining_since > interval * 3:
+                        self.logger.warning(
+                            'FLINT %s stuck draining for %.0fs — forcing restart',
+                            component.name, interval * 3,
+                        )
+                        component.draining_since = None
+                        ok = False
+                else:
+                    component.draining_since = None
                 hb = Path(component.pulse_file)
                 if hb.exists():
                     age = time.time() - hb.stat().st_mtime

@@ -61,6 +61,32 @@ for _PORT in 5100 5101 5102 5103 \
     [ -n "$_PID" ] && kill -TERM $_PID 2>/dev/null || true
 done
 sleep 2
+echo "▸ Verifying all component ports are clear..."
+COMPONENT_PORTS="4011 5100 5101 5102 5103 6200 6201 6202 6203 6204 6205 6206 6207 6300 6301 6100"
+MAX_WAIT=15
+ELAPSED=0
+ALL_CLEAR=false
+while [ $ELAPSED -lt $MAX_WAIT ]; do
+    STILL_BOUND=""
+    for PORT in $COMPONENT_PORTS; do
+        if lsof -ti:$PORT > /dev/null 2>&1; then
+            STILL_BOUND="$STILL_BOUND $PORT"
+            lsof -ti:$PORT | xargs kill -9 2>/dev/null || true
+        fi
+    done
+    if [ -z "$STILL_BOUND" ]; then
+        ALL_CLEAR=true
+        break
+    fi
+    sleep 1
+    ELAPSED=$((ELAPSED + 1))
+done
+if [ "$ALL_CLEAR" = true ]; then
+    echo "✓ All component ports clear"
+else
+    echo "⚠ Ports still bound after ${MAX_WAIT}s:$STILL_BOUND"
+    echo "  Force-killed — safe to restart"
+fi
 echo "✓ Cascadia OS components stopped"
 
 # ── 3. License Gate ───────────────────────────────────────────────────────

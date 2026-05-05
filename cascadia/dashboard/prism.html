@@ -1263,8 +1263,9 @@ async function handleCommand(id, cmd) {
     const hwCard = hw.available ? `<div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:8px;padding:9px 11px"><div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--navy-800)">${hw.cpu_percent!=null?hw.cpu_percent.toFixed(0)+'% CPU':'—'}</div><div style="font-size:9.5px;color:var(--gray-500);margin-top:2px">RAM ${hw.ram_used_gb!=null?(hw.ram_used_gb.toFixed(1)+'/'+hw.ram_total_gb.toFixed(0)+'G'):'—'}</div></div>` : '';
     const cards = Object.entries(comps).map(([name,state],i) => {
       const ok = state === 'ready';
-      const dc = ok ? 'sc-dot--g' : state === 'starting' ? 'sc-dot--y' : 'sc-dot--r';
-      return `<div class="status-card" style="animation-delay:${i*.04}s"><div class="sc-dot ${dc}"></div><div class="sc-info"><div class="sc-name">${name.toUpperCase()}</div><div class="sc-task">${state}</div></div><div class="sc-pct">${ok?'●':state==='starting'?'◑':'◯'}</div></div>`;
+      const dc = state === 'ready' ? 'sc-dot--g' : (state === 'starting' || state === 'draining') ? 'sc-dot--y' : 'sc-dot--r';
+      const stateLabel = {'ready':'ready','starting':'starting...','draining':'shutting down','offline':'offline'}[state] || state;
+      return `<div class="status-card" style="animation-delay:${i*.04}s"><div class="sc-dot ${dc}"></div><div class="sc-info"><div class="sc-name">${name.toUpperCase()}</div><div class="sc-task">${stateLabel}</div></div><div class="sc-pct">${ok?'●':state==='starting'||state==='draining'?'◑':'◯'}</div></div>`;
     }).join('');
     S.messages[id].push({time:t,type:'agent',html:`
       <div class="msg-text" style="margin-bottom:10px">Cascadia OS v0.48 — System Overview</div>

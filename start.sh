@@ -119,7 +119,24 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     [[ ! -f "$PYTHON" ]] && PYTHON="python3"
     "$PYTHON" -m cascadia.kernel.watchdog --config config.json >> data/logs/flint.log 2>&1 &
     sleep 10
-    curl -sf http://127.0.0.1:4011/health > /dev/null && echo "✓ Cascadia OS ready" || echo "✗ Cascadia OS failed — check logs"
+    FLINT_READY=false
+    FLINT_STATE="unknown"
+    for _i in $(seq 1 20); do
+        FLINT_STATE=$(curl -s http://127.0.0.1:4011/health 2>/dev/null | python3 -c \
+          "import json,sys; d=json.load(sys.stdin); print(d.get('state','unknown'))" 2>/dev/null)
+        if [ "$FLINT_STATE" = "ready" ]; then
+            FLINT_READY=true
+            break
+        fi
+        sleep 1
+    done
+    if [ "$FLINT_READY" = true ]; then
+        echo "✓ Cascadia OS ready (state=ready)"
+    else
+        echo "⚠ Cascadia OS did not reach ready state"
+        echo "  Last state: $FLINT_STATE"
+        echo "  Check data/logs/ for errors"
+    fi
 fi
 
 # ── 4. PRISM Dashboard ────────────────────────────────────────────────────
