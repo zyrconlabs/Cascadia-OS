@@ -3,6 +3,7 @@
   "database_path": "./data/runtime/cascadia.db",
   "operators_registry_path": "~/Zyrcon/operators/cascadia-os-operators/registry.json",
   "operators_dir": "~/Zyrcon/operators/cascadia-os-operators",
+  "operators_path": "/Users/andy/Zyrcon/operators/cascadia-os-operators",
   "llm": {
     "provider": "llamacpp",
     "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
