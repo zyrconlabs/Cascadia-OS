@@ -37,6 +37,20 @@
 - Setup wizard expanded to 8 steps — new Step 3 covers AI model status
   and demo trigger
 
+### 24/7 autonomy
+- `start.sh` — NATS starts before Cascadia OS (section 2.5); CHIEF and SOCIAL use
+  correct `server.py` paths with absolute operator repo dir and `/health` checks
+- `start.sh` — Health Monitor added as section 8 (starts at boot alongside stack)
+- `cascadia/monitoring/health_alert.py` — HealthMonitor daemon; polls CHIEF (8006),
+  SOCIAL (8011), PRISM (6300), EMAIL (8010) every 5 min; emits `FailureEvent` and
+  sends email after 2 consecutive failures (10+ min down); HTTP health at port 6209
+- `cascadia/backup/daily_backup.py` — CLI-runnable backup entrypoint wrapping
+  `BackupManager`; keeps last 7 backups, purges older ones
+- `cascadia/automation/stitch.py` — `_schedule_daily_backup` updated to call
+  `cascadia.backup.daily_backup.backup_database()`; fires daily at 02:00
+- `Library/LaunchAgents/com.zyrconlabs.cascadia.plist` — updated to point to
+  `start.sh` (was `run.sh`); `KeepAlive: false`; PATH/PYTHONPATH env vars added
+
 ### Escalation chain
 - `cascadia/automation/failure_event.py` — structured `FailureEvent` dataclass with
   soft (self-reported) and hard (watchdog crash) constructors; NATS publish helper

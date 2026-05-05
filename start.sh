@@ -68,6 +68,26 @@ else
     curl -sf http://127.0.0.1:6100/api/health > /dev/null && echo "✓ License Gate ready" || echo "✗ License Gate failed — check data/logs/license_gate.log"
 fi
 
+# ── 2.5 NATS message bus ──────────────────────────────────────────────────
+if command -v nats-server &> /dev/null; then
+    if ! curl -sf http://localhost:8222/healthz > /dev/null 2>&1; then
+        echo "▸ Starting NATS..."
+        nats-server -p 4222 -m 8222 \
+          >> data/logs/nats.log 2>&1 &
+        sleep 1
+        if curl -sf http://localhost:8222/healthz > /dev/null 2>&1; then
+            echo "✓ NATS ready on port 4222"
+        else
+            echo "⚠ NATS failed to start — check data/logs/nats.log"
+        fi
+    else
+        echo "✓ NATS already running on port 4222"
+    fi
+else
+    echo "⚠ NATS not installed — real-time events disabled"
+    echo "  Install with: brew install nats-server"
+fi
+
 # ── 3. Cascadia OS ────────────────────────────────────────────────────────
 CASCADIA_RUNNING=false
 if curl -sf http://127.0.0.1:4011/health > /dev/null 2>&1; then
@@ -142,25 +162,42 @@ else
 fi
 
 # ── 6. Operators ──────────────────────────────────────────────────────────
-_OPS_REPO="${OPERATORS_REPO_PATH:-$HOME/cascadia-os-operators}"
-if [ -d "$_OPS_REPO" ]; then
-    if [ -f "$_OPS_REPO/chief/chief.py" ]; then
-        echo "▸ Starting CHIEF operator..."
-        "$PYTHON" "$_OPS_REPO/chief/chief.py" --config config.json >> data/logs/chief.log 2>&1 &
-        sleep 2
-        echo "✓ CHIEF started"
-    fi
-    if [ -f "$_OPS_REPO/social/social.py" ]; then
-        echo "▸ Starting SOCIAL operator..."
-        "$PYTHON" "$_OPS_REPO/social/social.py" --config config.json >> data/logs/social.log 2>&1 &
-        sleep 2
-        echo "✓ SOCIAL started"
+# ── CHIEF operator ──────────────────────────────────
+CHIEF_DIR="/Users/andy/Zyrcon/operators/cascadia-os-operators/chief"
+if [ -f "$CHIEF_DIR/server.py" ]; then
+    echo "▸ Starting CHIEF..."
+    cd "$CHIEF_DIR"
+    python3 server.py \
+      >> /Users/andy/Zyrcon/cascadia-os/data/logs/chief.log 2>&1 &
+    CHIEF_PID=$!
+    cd /Users/andy/Zyrcon/cascadia-os
+    sleep 2
+    if curl -sf http://localhost:8006/health > /dev/null 2>&1; then
+        echo "✓ CHIEF ready (PID $CHIEF_PID)"
+    else
+        echo "⚠ CHIEF started but health check failed — check chief.log"
     fi
 else
-    echo ""
-    echo "  \033[33m⚠  Operators repo not found at $_OPS_REPO\033[0m"
-    echo "  \033[33m   Set OPERATORS_REPO_PATH or clone cascadia-os-operators there.\033[0m"
-    echo ""
+    echo "⚠ CHIEF not found at $CHIEF_DIR — skipping"
+fi
+
+# ── SOCIAL operator ─────────────────────────────────
+SOCIAL_DIR="/Users/andy/Zyrcon/operators/cascadia-os-operators/social"
+if [ -f "$SOCIAL_DIR/server.py" ]; then
+    echo "▸ Starting SOCIAL..."
+    cd "$SOCIAL_DIR"
+    python3 server.py \
+      >> /Users/andy/Zyrcon/cascadia-os/data/logs/social.log 2>&1 &
+    SOCIAL_PID=$!
+    cd /Users/andy/Zyrcon/cascadia-os
+    sleep 2
+    if curl -sf http://localhost:8011/health > /dev/null 2>&1; then
+        echo "✓ SOCIAL ready (PID $SOCIAL_PID)"
+    else
+        echo "⚠ SOCIAL started but health check failed — check social.log"
+    fi
+else
+    echo "⚠ SOCIAL not found at $SOCIAL_DIR — skipping"
 fi
 
 # ── 7. Register operators with CREW ──────────────────────────────────────
@@ -168,6 +205,13 @@ fi
 # Commercial operators (cascadia-os-operators) self-register when started.
 # Custom operators: POST http://127.0.0.1:5100/register with your operator_id.
 
+
+# ── 8. Health Monitor ────────────────────────────────────────────────────
+echo "▸ Starting Health Monitor..."
+python3 -m cascadia.monitoring.health_alert \
+  >> data/logs/health_monitor.log 2>&1 &
+sleep 1
+echo "✓ Health Monitor running (checks every 5 minutes)"
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"

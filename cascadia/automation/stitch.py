@@ -1180,21 +1180,19 @@ class StitchService:
 
     def _schedule_daily_backup(self):
         import threading, time
+        db = self.config.get('database_path', './data/runtime/cascadia.db')
+        bdir = self.config.get('backup_dir', './data/backups')
+        retention = self.config.get('backup_retention_days', 7)
         def _backup_loop():
             while True:
                 now = __import__('datetime').datetime.now()
-                seconds_until_3am = ((3 - now.hour) % 24) * 3600 - now.minute * 60 - now.second
-                if seconds_until_3am <= 0:
-                    seconds_until_3am += 86400
-                time.sleep(seconds_until_3am)
+                seconds_until_2am = ((2 - now.hour) % 24) * 3600 - now.minute * 60 - now.second
+                if seconds_until_2am <= 0:
+                    seconds_until_2am += 86400
+                time.sleep(seconds_until_2am)
                 try:
-                    from cascadia.durability.backup import BackupManager
-                    db = self.config.get('database_path', './data/runtime/cascadia.db')
-                    bdir = self.config.get('backup_dir', './data/backups')
-                    retention = self.config.get('backup_retention_days', 30)
-                    mgr = BackupManager(db, bdir, retention)
-                    mgr.create_backup()
-                    mgr.purge_old()
+                    from cascadia.backup.daily_backup import backup_database
+                    backup_database(db_path=db, backup_dir=bdir, retention_days=retention)
                 except Exception as e:
                     logger.error('Backup failed: %s', e)
         threading.Thread(target=_backup_loop, daemon=True, name='backup').start()
