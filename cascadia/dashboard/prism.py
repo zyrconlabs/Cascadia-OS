@@ -2666,30 +2666,45 @@ document.getElementById('key').addEventListener('keydown', function(e){
         return 404, {'error': 'setup-wizard.html not found'}
 
     def wizard_save_progress(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/wizard/save-progress — {step} — saves wizard_current_step."""
-        step = payload.get('step')
-        if step is None:
-            return 400, {'error': 'step required'}
+        """POST /api/wizard/save-progress — {step?, alert_email?} — saves wizard progress.
+        step is optional so alert_email can be persisted mid-wizard without a step change.
+        """
+        step        = payload.get('step')
+        alert_email = str(payload.get('alert_email', '') or '').strip()
+
+        updates: Dict[str, Any] = {}
+        if step is not None:
+            updates['wizard_complete']     = False
+            updates['wizard_current_step'] = int(step)
+        if alert_email:
+            updates['alert_email'] = alert_email
+
+        if not updates:
+            return 400, {'error': 'step or alert_email required'}
+
         try:
-            self._write_wizard_state({
-                'wizard_complete':     False,
-                'wizard_current_step': int(step),
-            })
-            return 200, {'saved': True, 'step': step}
+            self._write_wizard_state(updates)
+            return 200, {'saved': True, 'step': step, 'alert_email_saved': bool(alert_email)}
         except Exception as exc:
             return 500, {'error': str(exc)}
 
     def wizard_complete(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/wizard/complete — {business_type, approval_rules} — marks wizard done."""
+        """POST /api/wizard/complete — {business_type, approval_rules, alert_email?} — marks wizard done."""
         business_type  = payload.get('business_type', '')
         approval_rules = payload.get('approval_rules', {})
+        alert_email    = str(payload.get('alert_email', '') or '').strip()
         try:
-            self._write_wizard_state({
-                'wizard_complete':      True,
-                'wizard_completed_at':  _now(),
-                'wizard_business_type': business_type,
+            updates: Dict[str, Any] = {
+                'wizard_complete':       True,
+                'wizard_completed_at':   _now(),
+                'wizard_business_type':  business_type,
                 'wizard_approval_rules': approval_rules,
-            })
+            }
+            if business_type:
+                updates['business_type'] = business_type
+            if alert_email:
+                updates['alert_email'] = alert_email
+            self._write_wizard_state(updates)
             return 200, {'complete': True, 'business_type': business_type}
         except Exception as exc:
             return 500, {'error': str(exc)}

@@ -49,6 +49,15 @@
 - Port verification block at end of `stop.sh` confirms all 9 ports are clear
 - Alert email field added to Setup Wizard Step 5; saved via `/api/wizard/save-progress`
   and included in `completeWizard()` payload (`alert_email` key)
+- `alert_email` wired from setup wizard → `config.json` via `_write_wizard_state()`;
+  written immediately on Step 5 field blur and again on wizard complete
+- `wizard_save_progress` now accepts `alert_email` without requiring `step`
+- `health_alert.py` reads `alert_email` fresh on every send with 3-level fallback:
+  `config.alert_email` → `escalation.channels.email.address` → `email.alert_email`
+- `config.example.json` documents `alert_email`, `business_type`, and `escalation` block
+- PRISM (port 6300) and Mission Manager (port 6207) PID files added to `start.sh`
+- llama.cpp (port 8080) PID file added; `stop.sh` uses `stop_service "llama" 8080`
+- All 9 services now use PID-file-first teardown in `stop.sh`
 
 ### 24/7 autonomy
 - `start.sh` — NATS starts before Cascadia OS (section 2.5); CHIEF and SOCIAL use

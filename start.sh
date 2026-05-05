@@ -54,6 +54,8 @@ else
         --ctx-size 4096 --n-gpu-layers 99 \
         --alias qwen2.5-3b-instruct-q4_k_m.gguf \
         > data/logs/llamacpp.log 2>&1 &
+    LLAMA_PID=$!
+    echo $LLAMA_PID > data/runtime/pids/llama.pid
     sleep 6
     curl -sf http://127.0.0.1:8080/health > /dev/null && echo "✓ llama.cpp ready" || echo "✗ llama.cpp failed — check data/logs/llamacpp.log"
 fi
@@ -152,6 +154,8 @@ else
             exit 1
         fi
     fi
+    _PRISM_PID=$(lsof -ti:6300 2>/dev/null | head -1)
+    [ -n "$_PRISM_PID" ] && echo "$_PRISM_PID" > data/runtime/pids/prism.pid
 fi
 
 # ── 5. Mission Manager ────────────────────────────────────────────────────
@@ -166,6 +170,8 @@ else
     "$PYTHON" -m cascadia.missions.manager --config config.json --name mission_manager >> data/logs/mission_manager.log 2>&1 &
     sleep 3
     curl -sf http://127.0.0.1:6207/healthz > /dev/null && echo "✓ Mission Manager ready" || echo "✗ Mission Manager failed — check data/logs/mission_manager.log"
+    _MM_PID=$(lsof -ti:6207 2>/dev/null | head -1)
+    [ -n "$_MM_PID" ] && echo "$_MM_PID" > data/runtime/pids/mission_manager.pid
 fi
 
 # ── 6. Operators ──────────────────────────────────────────────────────────

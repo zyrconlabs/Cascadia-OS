@@ -57,14 +57,34 @@ def _check_operator(name: str, port: int, path: str) -> bool:
 
 
 def _send_email_alert(name: str, down_since: str) -> None:
-    """Send alert via the email operator (port 8010) if reachable."""
+    """Send alert via the email operator (port 8010).
+    Reads config fresh on each call so wizard-written alert_email is picked up
+    without restarting the health monitor.
+    """
     try:
         from cascadia.shared.config import load_config
         config = load_config()
+
+        escalation       = config.get('escalation', {})
+        primary_channel  = escalation.get('primary_channel', 'email')
+
+        # Resolve destination — priority order:
+        #   1. top-level alert_email  (written by setup wizard)
+        #   2. escalation.channels.email.address  (Session E escalation config)
+        #   3. email.alert_email  (legacy nested key)
+        #   4. from_email fallback (only when channel is email)
         from_email = config.get('email', {}).get('from_email', '')
-        to_email   = config.get('email', {}).get('alert_email', from_email)
+        to_email = (
+            config.get('alert_email', '')
+            or escalation.get('channels', {}).get('email', {}).get('address', '')
+            or config.get('email', {}).get('alert_email', '')
+            or (from_email if primary_channel == 'email' else '')
+        )
+
         if not to_email:
+            log.warning('[HealthAlert] alert_email not configured — skipping email alert for %s', name)
             return
+
         payload = json.dumps({
             'to':      to_email,
             'subject': f'[Zyrcon Alert] {name} is down',
@@ -80,7 +100,7 @@ def _send_email_alert(name: str, down_since: str) -> None:
             headers={'Content-Type': 'application/json'},
         )
         urllib.request.urlopen(req, timeout=5)
-        log.info('[HealthAlert] Alert email sent for %s', name)
+        log.info('[HealthAlert] Alert email sent for %s to %s', name, to_email)
     except Exception as exc:
         log.warning('[HealthAlert] Could not send alert email for %s: %s', name, exc)
 

@@ -67,14 +67,7 @@ echo "✓ Cascadia OS components stopped"
 stop_service "license_gate" 6100
 
 # ── 2. llama.cpp ──────────────────────────────────────────────────────────
-echo "▸ Stopping llama.cpp..."
-LLAMA_PID=$(lsof -ti:8080 2>/dev/null)
-if [ -n "$LLAMA_PID" ]; then
-    kill -9 $LLAMA_PID 2>/dev/null || true
-    echo "✓ llama.cpp stopped"
-else
-    echo "  llama.cpp was not running"
-fi
+stop_service "llama" 8080
 
 # ── 1. NATS ───────────────────────────────────────────────────────────────
 echo "▸ Stopping NATS..."
