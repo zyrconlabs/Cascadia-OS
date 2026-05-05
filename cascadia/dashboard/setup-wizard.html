@@ -319,6 +319,34 @@ input, textarea, select { font-family: var(--font); }
 
 /* Finish buttons */
 .finish-btns { display: flex; flex-direction: column; gap: 10px; }
+
+/* Step 3 — AI model setup */
+.hw-card{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:14px;margin-bottom:12px}
+.hw-label{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.hw-row{display:flex;justify-content:space-between;font-size:12px;color:var(--navy-700);padding:3px 0}
+.hw-row strong{color:var(--navy-800)}
+.model-rec-card{border:1.5px solid var(--accent);background:var(--accent-soft);border-radius:10px;padding:14px;margin-bottom:12px}
+.model-rec-label{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.model-rec-name{font-size:15px;font-weight:700;color:var(--navy-900);margin-bottom:2px}
+.model-rec-desc{font-size:12px;color:var(--navy-700);margin-bottom:8px}
+.model-rec-size{font-size:13px;font-weight:700;color:var(--navy-800);margin-bottom:12px}
+.model-ready-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--green);padding:8px 0}
+.dl-progress-wrap{margin-top:10px}
+.dl-progress-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--gray-400);margin-bottom:4px}
+.dl-progress-track{height:6px;background:var(--gray-200);border-radius:3px;overflow:hidden}
+.dl-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#a78bfa);border-radius:3px;transition:width .4s var(--ease)}
+.model-tier-grid{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.model-tier-card{flex:1;min-width:100px;border:1.5px solid var(--gray-200);border-radius:10px;padding:10px;cursor:pointer;transition:all .15s;background:var(--white)}
+.model-tier-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+.model-tier-card.tier-selected{border-color:var(--accent);background:var(--accent-soft)}
+.tier-name{font-size:12px;font-weight:700;color:var(--navy-800);margin-bottom:2px}
+.tier-size{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px}
+.tier-desc{font-size:11px;color:var(--gray-400);line-height:1.4}
+.tier-badge{display:inline-block;font-size:9px;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:1px 5px;font-family:var(--mono);text-transform:uppercase;margin-top:4px}
+.adv-toggle-btn{background:none;border:none;font-size:12px;color:var(--accent);padding:0;cursor:pointer;font-family:var(--font);margin-bottom:6px}
+.skip-link-btn{display:block;width:100%;background:none;border:none;font-size:12px;color:var(--gray-400);cursor:pointer;text-decoration:underline;text-align:center;font-family:var(--font);margin-top:10px}
+.skip-link-btn:hover{color:var(--navy-700)}
+.disk-warn{font-size:11px;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;margin-top:6px}
 </style>
 </head>
 <body>
@@ -440,22 +468,30 @@ const steps = {
   3: () => `
     <div class="wiz-header">
       <div class="wiz-step-label">Step 3 of ${TOTAL_STEPS}</div>
-      <div class="wiz-title">AI Model &amp; Demo</div>
-      <div class="wiz-body-text">Choose how Cascadia OS talks to AI — locally or via API. Then run a demo to see it work.</div>
+      <div class="wiz-title">AI Model Setup</div>
+      <div class="wiz-body-text">Cascadia OS runs AI locally. Detecting your hardware to recommend the right model.</div>
     </div>
     <div class="wiz-content" id="step3-content">
-      <div id="model-status-row" style="padding:12px;background:var(--gray-50);border-radius:9px;font-size:13px;color:var(--navy-700);margin-bottom:12px">
-        Checking AI model status…
+      <div id="hw-loading" class="hw-card" style="text-align:center;font-size:12px;color:var(--gray-400);padding:16px">Detecting your hardware…</div>
+      <div id="hw-card" style="display:none"></div>
+      <div id="model-rec-section" style="display:none"></div>
+      <div id="adv-wrap" style="display:none">
+        <button class="adv-toggle-btn" id="adv-toggle-btn" onclick="toggleStep3Adv()">▸ Advanced: choose a different model</button>
+        <div id="adv-panel" style="display:none"></div>
       </div>
-      <div style="font-size:12px;color:var(--gray-400);margin-bottom:16px">
-        Configure your AI model in Settings → AI after setup. You can change it any time.
+      <div id="dl-section" style="display:none"></div>
+      <div id="step3-skip-wrap" style="display:none">
+        <button class="skip-link-btn" onclick="step3Skip()">Skip for now — configure AI model in Settings later</button>
       </div>
-      <button class="btn btn-outline" style="width:100%;height:40px" id="demo-wiz-btn" onclick="runWizardDemo()">
-        Run Demo Workflow
-      </button>
-      <div id="demo-wiz-msg" style="margin-top:10px;font-size:12px;min-height:18px;color:var(--navy-700)"></div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--gray-150)">
+        <button class="btn btn-outline" style="width:100%;height:40px" id="demo-wiz-btn" onclick="runWizardDemo()">Run Demo Workflow</button>
+        <div id="demo-wiz-msg" style="margin-top:10px;font-size:12px;min-height:18px;color:var(--navy-700)"></div>
+      </div>
     </div>
-    ${footer(false)}`,
+    <div class="wiz-footer">
+      <button class="btn btn-ghost" onclick="back()">Back</button>
+      <button class="btn btn-primary" id="step3-next-btn" onclick="next()" disabled>Next</button>
+    </div>`,
 
   4: () => {
     const types = [
@@ -756,20 +792,247 @@ async function runWizardDemo() {
   }
 }
 
-// Also fetch model status when step 3 renders
+// ─── STEP 3: AI MODEL SETUP ─────────────────────────────────────────────────
+
+const MODEL_CATALOG = {
+  '3b':  { name:'Qwen 2.5 3B',  file:'qwen2.5-3b-instruct-q4_k_m.gguf',  size_gb:2.0, size_label:'2.0 GB', description:'Fast and efficient. Good for most tasks.' },
+  '7b':  { name:'Qwen 2.5 7B',  file:'qwen2.5-7b-instruct-q4_k_m.gguf',  size_gb:4.7, size_label:'4.7 GB', description:'Best quality for business workflows.' },
+  '14b': { name:'Qwen 2.5 14B', file:'qwen2.5-14b-instruct-q4_k_m.gguf', size_gb:9.0, size_label:'9.0 GB', description:'Maximum quality. Requires 16 GB+ RAM.' },
+};
+const GPU_LABELS = { apple_silicon:'Apple Silicon', nvidia:'NVIDIA GPU', intel_mac:'Intel Mac', cpu_only:'CPU only', unknown:'Unknown' };
+
+let _hwData = null;
+let _selectedTier = '7b';
+let _step3Poll = null;
+let _freeDiskGb = null;
+
+function recommendTier(hw) {
+  if (hw.gpu_type === 'apple_silicon') return hw.ram_gb >= 8 ? '7b' : '3b';
+  if (hw.gpu_type === 'nvidia') return (hw.vram_gb || 0) >= 8 ? '7b' : '3b';
+  return hw.rec_model || '3b';
+}
+
+function step3Init() {
+  _hwData = null;
+  if (_step3Poll) { clearInterval(_step3Poll); _step3Poll = null; }
+
+  Promise.all([
+    fetch(PRISM + '/api/prism/hardware').then(r => r.json()),
+    fetch(PRISM + '/api/prism/setup-progress').then(r => r.json()),
+  ]).then(([hw, prog]) => {
+    _hwData = hw;
+    _freeDiskGb = hw.free_disk_gb != null ? hw.free_disk_gb : null;
+    _selectedTier = hw.recommended || hw.rec_model || recommendTier(hw);
+
+    const gpuLabel = GPU_LABELS[hw.gpu_type] || hw.gpu_type || 'Unknown';
+    const diskRow = _freeDiskGb != null
+      ? `<div class="hw-row"><span>Disk</span><strong>${_freeDiskGb} GB available</strong></div>` : '';
+    document.getElementById('hw-loading').style.display = 'none';
+    const hwCard = document.getElementById('hw-card');
+    hwCard.innerHTML = `<div class="hw-card">
+      <div class="hw-label">Your Hardware</div>
+      <div class="hw-row"><span>RAM</span><strong>${hw.ram_gb} GB</strong></div>
+      <div class="hw-row"><span>GPU</span><strong>${esc(hw.chip || gpuLabel)} — ${gpuLabel}</strong></div>
+      ${diskRow}
+    </div>`;
+    hwCard.style.display = 'block';
+
+    const recSec = document.getElementById('model-rec-section');
+    if (prog.model_downloaded && prog.model_file) {
+      recSec.innerHTML = `<div class="model-rec-card" style="border-color:var(--green);background:var(--green-soft)">
+        <div class="model-ready-row"><span style="font-size:18px">✓</span>
+        <span>AI model already installed: ${esc(prog.model_file)}</span></div></div>`;
+      _step3EnableNext();
+    } else {
+      const rec = MODEL_CATALOG[_selectedTier] || MODEL_CATALOG['7b'];
+      recSec.innerHTML = `<div class="model-rec-card">
+        <div class="model-rec-label">Recommended for your hardware</div>
+        <div class="model-rec-name">${esc(rec.name)}</div>
+        <div class="model-rec-desc">${esc(rec.description)}</div>
+        <div class="model-rec-size">Download size: <strong>${esc(rec.size_label)}</strong></div>
+        <button class="btn btn-primary" id="btn-download-recommended" data-tier="${_selectedTier}"
+                style="width:100%;height:40px" onclick="startModelDownload('${_selectedTier}')">
+          Download ${esc(rec.name)} — ${esc(rec.size_label)}
+        </button>
+      </div>`;
+      step3BuildAdvPanel();
+      document.getElementById('adv-wrap').style.display = 'block';
+      step3BuildDlStatus();
+      document.getElementById('step3-skip-wrap').style.display = 'block';
+    }
+    recSec.style.display = 'block';
+  }).catch(() => {
+    document.getElementById('hw-loading').innerHTML =
+      '<span style="color:var(--red)">Could not reach PRISM — is Cascadia OS running?</span>';
+    _step3EnableNext();
+  });
+}
+
+function step3BuildAdvPanel() {
+  const panel = document.getElementById('adv-panel');
+  if (!panel) return;
+  const cards = ['3b','7b','14b'].map(t => {
+    const m = MODEL_CATALOG[t];
+    const isRec = t === _selectedTier;
+    const bigFile = _freeDiskGb != null && m.size_gb > _freeDiskGb * 0.8;
+    return `<div class="model-tier-card${isRec?' tier-selected':''}" id="tier-card-${t}" onclick="step3SelectTier('${t}')">
+      <div class="tier-name">${esc(m.name)}</div>
+      <div class="tier-size">${esc(m.size_label)}</div>
+      <div class="tier-desc">${esc(m.description)}</div>
+      ${isRec ? '<div class="tier-badge">Recommended</div>' : ''}
+      ${bigFile ? '<div style="font-size:10px;color:#b45309;margin-top:4px">⚠ Large for your disk</div>' : ''}
+    </div>`;
+  }).join('');
+  const diskLine = _freeDiskGb != null
+    ? `<div style="font-family:var(--mono);font-size:11px;color:var(--gray-400);margin-bottom:4px">Available disk: ${_freeDiskGb} GB</div>` : '';
+  const rec = MODEL_CATALOG[_hwData ? (_hwData.recommended || _hwData.rec_model || '7b') : '7b'];
+  const diskWarn = rec && _freeDiskGb != null && rec.size_gb > _freeDiskGb * 0.8
+    ? `<div class="disk-warn">⚠ Low disk — consider ${esc(MODEL_CATALOG['3b'].name)} (${esc(MODEL_CATALOG['3b'].size_label)})</div>` : '';
+  panel.innerHTML = `<div style="padding-top:8px">
+    <div class="model-tier-grid">${cards}</div>
+    ${diskLine}${diskWarn}
+    <button class="btn btn-primary" id="btn-download-selected" style="width:100%;height:40px;margin-top:8px"
+            onclick="startModelDownload(_selectedTier)">
+      Download ${esc(MODEL_CATALOG[_selectedTier].name)} — ${esc(MODEL_CATALOG[_selectedTier].size_label)}
+    </button>
+    <button class="adv-toggle-btn" style="margin-top:6px" onclick="step3ResetToRec()">← Back to Recommended</button>
+  </div>`;
+}
+
+function step3BuildDlStatus() {
+  const dlSec = document.getElementById('dl-section');
+  if (!dlSec) return;
+  dlSec.innerHTML = `
+    <div id="dl-progress-section" style="display:none">
+      <div class="dl-progress-wrap">
+        <div class="dl-progress-labels">
+          <span id="dl-status-text">Downloading…</span>
+          <span id="dl-pct-text"></span>
+        </div>
+        <div class="dl-progress-track"><div class="dl-progress-fill" id="dl-progress-fill"></div></div>
+        <div id="dl-speed-text" style="font-family:var(--mono);font-size:11px;color:var(--gray-400);margin-top:4px"></div>
+      </div>
+    </div>`;
+  dlSec.style.display = 'block';
+}
+
+function step3SelectTier(tier) {
+  _selectedTier = tier;
+  ['3b','7b','14b'].forEach(t => {
+    const c = document.getElementById('tier-card-' + t);
+    if (c) c.classList.toggle('tier-selected', t === tier);
+  });
+  const btn = document.getElementById('btn-download-selected');
+  if (btn) {
+    const m = MODEL_CATALOG[tier];
+    btn.textContent = `Download ${m.name} — ${m.size_label}`;
+  }
+}
+
+function toggleStep3Adv() {
+  const panel = document.getElementById('adv-panel');
+  const btn   = document.getElementById('adv-toggle-btn');
+  if (!panel || !btn) return;
+  const open = panel.style.display === 'none';
+  panel.style.display = open ? 'block' : 'none';
+  btn.textContent = (open ? '▾' : '▸') + ' Advanced: choose a different model';
+}
+
+function step3ResetToRec() {
+  if (!_hwData) return;
+  _selectedTier = _hwData.recommended || _hwData.rec_model || recommendTier(_hwData);
+  step3SelectTier(_selectedTier);
+  const panel = document.getElementById('adv-panel');
+  const btn   = document.getElementById('adv-toggle-btn');
+  if (panel) panel.style.display = 'none';
+  if (btn)   btn.textContent = '▸ Advanced: choose a different model';
+}
+
+function startModelDownload(tier) {
+  tier = (typeof tier === 'string') ? tier : _selectedTier;
+  const m = MODEL_CATALOG[tier];
+  ['btn-download-recommended','btn-download-selected'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) { b.disabled = true; b.textContent = 'Starting download…'; }
+  });
+  const progSec = document.getElementById('dl-progress-section');
+  if (progSec) progSec.style.display = 'block';
+  // Trigger via POST /api/prism/settings — existing route (prism.py line 145)
+  // accepts: provider, model_size ("3b"/"7b"/"14b"), model (filename)
+  fetch(PRISM + '/api/prism/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: 'llamacpp', model_size: tier, model: m.file }),
+    signal: AbortSignal.timeout(10000),
+  }).then(r => r.json()).then(d => {
+    if (d.error) { _step3ShowError(d.error); return; }
+    _step3Poll = setInterval(pollStep3Download, 2000);
+  }).catch(() => _step3ShowError('Could not reach PRISM — start Cascadia OS first.'));
+}
+
+function pollStep3Download() {
+  fetch(PRISM + '/api/prism/setup-progress')
+    .then(r => r.json())
+    .then(d => {
+      if (d.model_downloaded || d.ready) {
+        clearInterval(_step3Poll); _step3Poll = null;
+        _step3ShowReady(d.model_file || (MODEL_CATALOG[_selectedTier] && MODEL_CATALOG[_selectedTier].name) || 'Model');
+      } else {
+        // setup-progress has no percent field — animate fill to 90% max
+        const fill = document.getElementById('dl-progress-fill');
+        if (fill) {
+          const cur = parseFloat(fill.style.width) || 0;
+          if (cur < 90) fill.style.width = (cur + 2) + '%';
+        }
+        const statusEl = document.getElementById('dl-status-text');
+        if (statusEl) statusEl.textContent = 'Downloading…';
+      }
+    }).catch(() => {});
+}
+
+function _step3ShowReady(label) {
+  const dlSec = document.getElementById('dl-section');
+  if (dlSec) dlSec.innerHTML =
+    `<div class="model-ready-row"><span style="font-size:18px">✓</span><span>AI model ready: ${esc(label)}</span></div>`;
+  const sw = document.getElementById('step3-skip-wrap');
+  if (sw) sw.style.display = 'none';
+  _step3EnableNext();
+}
+
+function _step3ShowError(msg) {
+  const statusEl = document.getElementById('dl-status-text');
+  if (statusEl) statusEl.textContent = msg;
+  ['btn-download-recommended','btn-download-selected'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) { b.disabled = false; b.textContent = 'Retry Download'; }
+  });
+}
+
+function _step3EnableNext() {
+  const btn = document.getElementById('step3-next-btn');
+  if (btn) btn.disabled = false;
+}
+
+async function step3Skip() {
+  if (_step3Poll) { clearInterval(_step3Poll); _step3Poll = null; }
+  try {
+    await fetch(PRISM + '/api/wizard/save-progress', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ wizard_model_skipped: true }),
+    });
+  } catch(_) {}
+  _step3EnableNext();
+  const sw = document.getElementById('step3-skip-wrap');
+  if (sw) sw.style.display = 'none';
+}
+
+// Patch render to init step 3 on entry
 const _origRender = render;
 render = function() {
   _origRender();
   if (state.step === 3) {
-    const row = document.getElementById('model-status-row');
-    if (!row) return;
-    fetch(PRISM + '/api/prism/models').then(r => r.json()).then(d => {
-      const models = d.models || [];
-      const active = models.find(m => m.active);
-      row.textContent = active
-        ? '✓ AI model ready: ' + active.name
-        : 'No AI model configured — you can set one up in Settings after install.';
-    }).catch(() => { row.textContent = 'PRISM not running — start Cascadia OS to configure AI.'; });
+    if (_step3Poll) { clearInterval(_step3Poll); _step3Poll = null; }
+    step3Init();
   }
 };
 
