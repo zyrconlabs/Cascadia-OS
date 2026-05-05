@@ -217,6 +217,7 @@ class PrismService:
         self.runtime.register_route('GET',  '/setup',                                    self.serve_wizard)
         self.runtime.register_route('POST', '/api/wizard/save-progress',                 self.wizard_save_progress)
         self.runtime.register_route('POST', '/api/wizard/complete',                      self.wizard_complete)
+        self.runtime.register_route('GET',  '/api/prism/settings/{op_id}',               self.settings_for_op)
         # Guided Configuration routes (Phase 3–5)
         self.runtime.register_route('GET',  '/config-wizard',                            self.serve_config_wizard)
         self.runtime.register_route('POST', '/api/config/chat',                          self.config_chat)
@@ -336,10 +337,18 @@ class PrismService:
             recommend = 'api'
             rec_model = '3b'
 
+        free_disk_gb = 0.0
+        try:
+            free_disk_gb = round(shutil.disk_usage('.').free / 1_073_741_824, 1)
+        except Exception:
+            pass
+
         return 200, {
             'arch': arch, 'ram_gb': ram_gb, 'gpu_type': gpu_type,
             'chip': chip, 'platform': _pl.system(),
             'recommend': recommend, 'rec_model': rec_model,
+            'recommended': rec_model,
+            'free_disk_gb': free_disk_gb,
             'llama_bin': llama_bin, 'llama_installed': bool(llama_bin),
             'ollama_models': ollama_models,
             'generated_at': _now(),
@@ -2675,11 +2684,10 @@ document.getElementById('key').addEventListener('keydown', function(e){
         return 404, {'error': 'setup-wizard.html not found'}
 
     def wizard_save_progress(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/wizard/save-progress — {step?, alert_email?} — saves wizard progress.
-        step is optional so alert_email can be persisted mid-wizard without a step change.
-        """
-        step        = payload.get('step')
-        alert_email = str(payload.get('alert_email', '') or '').strip()
+        """POST /api/wizard/save-progress — {step?, alert_email?, wizard_model_skipped?}"""
+        step          = payload.get('step')
+        alert_email   = str(payload.get('alert_email', '') or '').strip()
+        model_skipped = payload.get('wizard_model_skipped')
 
         updates: Dict[str, Any] = {}
         if step is not None:
@@ -2687,9 +2695,11 @@ document.getElementById('key').addEventListener('keydown', function(e){
             updates['wizard_current_step'] = int(step)
         if alert_email:
             updates['alert_email'] = alert_email
+        if model_skipped is not None:
+            updates['wizard_model_skipped'] = bool(model_skipped)
 
         if not updates:
-            return 400, {'error': 'step or alert_email required'}
+            return 400, {'error': 'step, alert_email, or wizard_model_skipped required'}
 
         try:
             self._write_wizard_state(updates)
@@ -2717,6 +2727,21 @@ document.getElementById('key').addEventListener('keydown', function(e){
             return 200, {'complete': True, 'business_type': business_type}
         except Exception as exc:
             return 500, {'error': str(exc)}
+
+    def settings_for_op(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/settings/{op_id} — return saved answers for config-wizard pre-fill."""
+        op_id = payload.get('op_id', '')
+        answers: Dict[str, Any] = {}
+        try:
+            from cascadia.settings.engine import SettingsEngine
+            db_path = self.config.get('database_path', 'data/runtime/cascadia.db')
+            settings_db = db_path.replace('cascadia.db', 'settings.db')
+            vault_db    = db_path.replace('.db', '_vault.db')
+            raw = SettingsEngine(settings_db=settings_db, vault_db=vault_db).get_all('operator', op_id)
+            answers = raw if isinstance(raw, dict) else {}
+        except Exception:
+            pass
+        return 200, {'op_id': op_id, 'answers': answers}
 
     # ------------------------------------------------------------------
     # Guided Configuration routes (Phase 3–5)
