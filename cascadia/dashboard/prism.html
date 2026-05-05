@@ -1497,7 +1497,7 @@ function renderSidebar() {
   const q=S.filter.toLowerCase();
   const operators=q?S.operators.filter(c=>c.name.toLowerCase().includes(q)||c.role.toLowerCase().includes(q)):S.operators;
   const beacon=operators.find(c=>c.isBeacon);
-  const CONNECTOR_IDS=new Set(['telegram','whatsapp','big-connector','google-accounts','email']);
+  const CONNECTOR_IDS=new Set(['telegram','whatsapp','connect','google-accounts','google-contacts','email']);
   const isConnector=c=>CONNECTOR_IDS.has(c.id)||['connector','channel'].includes(c.category);
   const nonBeacon=operators.filter(c=>!c.isBeacon);
   const coreOps=nonBeacon.filter(c=>!isConnector(c));
@@ -3794,7 +3794,7 @@ function categorySummary(categories) {
 }
 function renderOperatorGroups(ops) {
   if (!ops.length) return `<div style="font-size:12px;color:var(--gray-400);padding:16px 0">No autostart operators configured — add operators to registry.json</div>`;
-  const CONNECTOR_IDS = new Set(['telegram','whatsapp','big-connector','google-accounts']);
+  const CONNECTOR_IDS = new Set(['telegram','whatsapp','connect','google-accounts','google-contacts']);
   const isConnector = o => CONNECTOR_IDS.has(o.id) || ['connector','channel'].includes(o.category);
   const isOnline = o => o.status !== 'offline';
   const groups = [

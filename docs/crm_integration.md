@@ -87,7 +87,7 @@ Open PRISM (http://localhost:6300) and look for the CRM operator in the sidebar.
 
 ## Troubleshooting
 
-**CRM operator shows offline:** Check that port 8012 is not in use by another application. Restart with `bash start.sh`.
+**Zyrcon Connect shows offline:** Check that port 9011 is not in use by another application. Restart with `bash start.sh`.
 
 **Activities not appearing in HubSpot:** Verify your private app has the correct scopes. Regenerate the API key if needed.
 
