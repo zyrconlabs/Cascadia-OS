@@ -541,7 +541,7 @@ class MissionManagerService:
         self.runtime = ServiceRuntime(
             name=name,
             port=component["port"],
-            heartbeat_file=component["heartbeat_file"],
+            pulse_file=component.get("pulse_file", component.get("heartbeat_file")),
             log_dir=config["log_dir"],
         )
         _bridge.set_ws_runtime(self.runtime)
