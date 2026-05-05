@@ -954,6 +954,7 @@ const S = {
   runsFilterStatus:'', runsFilterWorker:'',
   auditLog:[], apiKeys:[],
   overview: null,
+  reconStatus: null,
 };
 
 /* ═══ VAULT (IndexedDB — v3 schema) ═══ */
@@ -1341,7 +1342,12 @@ async function sendMsg(id, text) {
   renderMain(); scrollChat();
   const history=S.messages[id].filter(m=>!m.isStreaming&&!m.html&&(m.type==='user'||m.type==='agent')).slice(-10).map(m=>({role:m.type==='user'?'user':'assistant',content:m.text}));
   if (id!=='beacon') createRun(id, text.slice(0,60));
-  await GatewayContract.streamChat(history, S.model,
+  const _chatHistory = id === 'recon' ? (()=>{
+    const rs = S.reconStatus || {};
+    const sys = `You are RECON, Cascadia OS's outbound lead research operator. You find and verify contractor businesses in Houston TX using multi-layer web verification. Status: ${rs.recon_running ? 'running' : 'stopped'}. Leads found today: ${rs.leads_found_today ?? 0} (${rs.high_confidence_today ?? 0} high confidence). Last run: ${rs.last_run ? new Date(rs.last_run).toLocaleString() : 'never'}. Be concise and data-focused.`;
+    return [{role:'system', content:sys}, ...history];
+  })() : history;
+  await GatewayContract.streamChat(_chatHistory, S.model,
     (token,full)=>{ const last=S.messages[id]?.[S.messages[id].length-1]; if(last?.isStreaming){last.text=full;renderMain();scrollChat();} },
     async(full)=>{ const last=S.messages[id]?.[S.messages[id].length-1]; if(last?.isStreaming){last.text=full;delete last.isStreaming;} await Vault.saveMessages(id,S.messages[id]); renderMain(); scrollChat(); }
   );
@@ -1602,6 +1608,16 @@ function renderMain() {
     mHTML+=`<div class="chat-msg"><div class="msg-av ${avC}">${i2}</div><div class="msg-body"><div class="msg-header"><span class="msg-name">${esc(nm)}</span><span class="msg-time">${esc(m.time)}</span></div>${ct}</div></div>`;
   });
 
+  const _reconBtns = c.id==='recon' ? `
+    <button class="hbtn" onclick="doStartRecon()">Start</button>
+    <button class="hbtn" onclick="doStopRecon()">Stop</button>
+    <a class="hbtn hbtn--popout" href="http://localhost:8002" target="_blank" style="text-decoration:none">Leads ↗</a>` : '';
+  const _reconBar = c.id==='recon' ? (()=>{
+    const rs=S.reconStatus||{};
+    const lr=rs.last_run?new Date(rs.last_run).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}):'—';
+    const pill=rs.recon_running?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:4px;vertical-align:middle"></span>`:`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>`;
+    return `<div style="display:flex;align-items:center;gap:14px;padding:6px 20px;font-size:12px;color:var(--gray-500);font-family:var(--mono);border-top:1px solid var(--gray-100);flex-shrink:0">${pill}<span>Leads today: <b style="color:var(--navy-800)">${rs.leads_found_today??0}</b></span><span>High: <b style="color:var(--green)">${rs.high_confidence_today??0}</b></span><span>Last run: <b style="color:var(--navy-800)">${lr}</b></span></div>`;
+  })() : '';
   panel.innerHTML=`
     <div class="topbar">
       <div class="topbar__left">
@@ -1609,6 +1625,7 @@ function renderMain() {
         <div><div class="topbar__name">${esc(c.name)}</div><div class="topbar__role">${SL[c.status]||'Offline'} · ${esc(c.role)}</div></div>
       </div>
       <div class="topbar__right">
+        ${_reconBtns}
         ${c.isWorker?`<button class="hbtn${wpOpen?' hbtn--active':''}" onclick="toggleWorkerPanel('${c.id}')"><svg viewBox="0 0 24 24"><path d="M1 6l4.5 4.5M1 18l4.5-4.5M8.5 12H23M17 6l4 4.5-4 5" stroke-linecap="round" stroke-linejoin="round"/></svg>Status</button>`:''}
         ${c.hasPanel&&c.port&&c.status==='active'?`<a class="hbtn hbtn--popout" href="http://localhost:${c.port}${c.uiPath||'/'}" target="_blank" style="text-decoration:none">Panel :${c.port} ↗</a>`:''}
         ${c.isWorker?`<button class="hbtn" onclick="switchToRuns('${c.id}')">Missions →</button>`:''}
@@ -1620,6 +1637,7 @@ function renderMain() {
       <div class="chat-log" id="chat-log">${mHTML}</div>
       ${actHTML}
       <div class="start-area"><button class="start-btn" onclick="toggleCmd('${c.id}')"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>${c.isWorker?'Commands':'Start'}</button><div class="cmd-menu ${mOpen}">${cBtns}</div></div>
+      ${_reconBar}
       <div class="chat-input-area"><div class="chat-input-wrap">
         <textarea id="chat-input" rows="1" placeholder="${c.isWorker?'Message '+esc(c.name)+'… or /status':'Message '+esc(c.name)+'…'}" onkeydown="handleKey(event)" oninput="autoGrow(this)"></textarea>
         <div class="chat-toolbar">
@@ -2772,6 +2790,28 @@ async function refreshOpCards() {
     const onlineBadge = online
       ? '<span class="op-badge op-badge--online">online</span>'
       : '<span class="op-badge op-badge--offline">offline</span>';
+    if (op.id === 'recon') {
+      const rs = S.reconStatus || {};
+      const lr = rs.last_run ? new Date(rs.last_run).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) : '—';
+      const pill = rs.recon_running
+        ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:3px;vertical-align:middle"></span>`
+        : `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gray-300);margin-right:3px;vertical-align:middle"></span>`;
+      return `<div class="op-card" data-op-id="recon" style="cursor:default">
+        <div class="op-icon ${catCls}">${icon}</div>
+        <div class="op-body">
+          <div class="op-name">${pill}RECON</div>
+          <div style="font-size:11px;color:var(--gray-500);margin:2px 0 3px;font-family:var(--mono)">${rs.leads_found_today??'—'} leads · ${rs.high_confidence_today??'—'} high · ${lr}</div>
+          <div class="op-badges">${statBadge}${onlineBadge}</div>
+          <div style="display:flex;gap:5px;margin-top:7px">
+            <button class="hbtn" onclick="event.stopPropagation();doStartRecon()" style="font-size:11px;padding:3px 9px">Start</button>
+            <button class="hbtn" onclick="event.stopPropagation();doStopRecon()" style="font-size:11px;padding:3px 9px">Stop</button>
+            <a class="hbtn hbtn--popout" href="http://localhost:8002" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;padding:3px 9px;text-decoration:none">Dashboard ↗</a>
+            <button class="hbtn" onclick="event.stopPropagation();selectOperator('recon')" style="font-size:11px;padding:3px 9px">Chat</button>
+          </div>
+        </div>
+        <div class="op-dot ${dotCls}"></div>
+      </div>`;
+    }
     const href = online && op.ui_url ? op.ui_url : '#';
     const target = online && op.ui_url ? ' target="_blank"' : '';
     return `<a class="op-card" data-op-id="${op.id}" href="${href}"${target}>
@@ -2986,6 +3026,41 @@ async function doStopWorker(id) {
   setTimeout(()=>loadWorkerPanel(id),1200);
   addThought({id:Date.now(),type:'stop',text:'Stop signal sent via PRISM.',time:timeNow()},id);
   await Vault.appendAuditEvent({id:'audit_'+Date.now(),ts:Date.now(),icon:'🔒',action:`Worker stopped: ${id}`,actor:'operator',time:timeNow()});
+}
+
+async function refreshReconStatus() {
+  try {
+    const r = await fetch(PRISM_URL + '/api/recon/status', {signal: AbortSignal.timeout(3000)});
+    if (r.ok) {
+      S.reconStatus = await r.json();
+      if (S.selected === 'recon' && S.surface === 'ops') renderMain();
+    }
+  } catch(_) {}
+}
+
+async function doStartRecon() {
+  try {
+    const r = await fetch(PRISM_URL + '/api/operators/recon/start', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:'{}',
+      signal: AbortSignal.timeout(5000),
+    });
+    const d = await r.json();
+    if (!d.ok && d.error) { alert('Could not start RECON: ' + d.error); return; }
+    setTimeout(refreshReconStatus, 2000);
+    setTimeout(refreshOpCards, 2000);
+  } catch(e) { alert('RECON start error: ' + e); }
+}
+
+async function doStopRecon() {
+  if (!confirm('Stop RECON?')) return;
+  try {
+    await fetch(PRISM_URL + '/api/operators/recon/stop', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:'{}',
+      signal: AbortSignal.timeout(5000),
+    });
+    setTimeout(refreshReconStatus, 3000);
+    setTimeout(refreshOpCards, 3000);
+  } catch(_) {}
 }
 function toggleRunDetail(id) { S.selectedRun=S.selectedRun===id?null:id; renderRunsSurface(); }
 function replayRun(id) { const r=Object.values(S.runs).flat().find(x=>x.id===id); if(r)selectOperator(r.workerId); }
@@ -4000,6 +4075,8 @@ async function loadBackupStatus() {
   startLivePoll();
   loadModelsFromPRISM();
   refreshOperators();
+  refreshReconStatus();
+  setInterval(refreshReconStatus, 30000);
   setInterval(refreshOpCards, 10000);
   maybeOpenHealth();
   setInterval(()=>{ if(S.surface==='health') refreshHealth(); }, 30000);
