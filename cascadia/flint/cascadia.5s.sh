@@ -59,13 +59,12 @@ check() {
   curl -sf --max-time 1 "http://127.0.0.1:$1$2" > /dev/null 2>&1 && echo "1" || echo "0"
 }
 
-COMPONENTS=(4011 5100 5101 5102 5103 6200 6201 6202 6203 6204 6205 6300 6207 8006 8011)
+COMPONENTS=(4011 5100 5101 5102 5103 6200 6201 6202 6203 6204 6205 6300 6207)
 online=0
 total=${#COMPONENTS[@]}
 for port in "${COMPONENTS[@]}"; do
   case $port in
     6207) path="/healthz" ;;
-    8006|8011) path="/api/health" ;;
     *) path="/health" ;;
   esac
   [[ "$(check $port $path)" == "1" ]] && online=$((online+1))
