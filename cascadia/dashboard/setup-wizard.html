@@ -816,10 +816,9 @@ function step3Init() {
   _hwData = null;
   if (_step3Poll) { clearInterval(_step3Poll); _step3Poll = null; }
 
-  Promise.all([
-    fetch(PRISM + '/api/prism/hardware').then(r => r.json()),
-    fetch(PRISM + '/api/prism/setup-progress').then(r => r.json()),
-  ]).then(([hw, prog]) => {
+  fetch(PRISM + '/api/prism/setup/hardware')
+    .then(r => r.json())
+    .then(hw => {
     _hwData = hw;
     _freeDiskGb = hw.free_disk_gb != null ? hw.free_disk_gb : null;
     _selectedTier = hw.recommended || hw.rec_model || recommendTier(hw);
@@ -838,10 +837,10 @@ function step3Init() {
     hwCard.style.display = 'block';
 
     const recSec = document.getElementById('model-rec-section');
-    if (prog.model_downloaded && prog.model_file) {
+    if (hw.current_model) {
       recSec.innerHTML = `<div class="model-rec-card" style="border-color:var(--green);background:var(--green-soft)">
         <div class="model-ready-row"><span style="font-size:18px">✓</span>
-        <span>AI model already installed: ${esc(prog.model_file)}</span></div></div>`;
+        <span>AI model already installed: ${esc(hw.current_model)}</span></div></div>`;
       _step3EnableNext();
     } else {
       const rec = MODEL_CATALOG[_selectedTier] || MODEL_CATALOG['7b'];
@@ -957,35 +956,42 @@ function startModelDownload(tier) {
   });
   const progSec = document.getElementById('dl-progress-section');
   if (progSec) progSec.style.display = 'block';
-  // Trigger via POST /api/prism/settings — existing route (prism.py line 145)
-  // accepts: provider, model_size ("3b"/"7b"/"14b"), model (filename)
-  fetch(PRISM + '/api/prism/settings', {
+  fetch(PRISM + '/api/prism/setup/download-model', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider: 'llamacpp', model_size: tier, model: m.file }),
+    body: JSON.stringify({ model_tier: tier }),
     signal: AbortSignal.timeout(10000),
   }).then(r => r.json()).then(d => {
+    if (d.status === 'already_exists') { _step3ShowReady(d.model || MODEL_CATALOG[tier]?.name || 'Model'); return; }
     if (d.error) { _step3ShowError(d.error); return; }
     _step3Poll = setInterval(pollStep3Download, 2000);
   }).catch(() => _step3ShowError('Could not reach PRISM — start Cascadia OS first.'));
 }
 
 function pollStep3Download() {
-  fetch(PRISM + '/api/prism/setup-progress')
+  fetch(PRISM + '/api/prism/setup/download-status')
     .then(r => r.json())
     .then(d => {
-      if (d.model_downloaded || d.ready) {
+      if (d.status === 'complete') {
         clearInterval(_step3Poll); _step3Poll = null;
-        _step3ShowReady(d.model_file || (MODEL_CATALOG[_selectedTier] && MODEL_CATALOG[_selectedTier].name) || 'Model');
-      } else {
-        // setup-progress has no percent field — animate fill to 90% max
-        const fill = document.getElementById('dl-progress-fill');
-        if (fill) {
-          const cur = parseFloat(fill.style.width) || 0;
-          if (cur < 90) fill.style.width = (cur + 2) + '%';
+        _step3ShowReady(MODEL_CATALOG[_selectedTier]?.name || 'Model');
+      } else if (d.status === 'error') {
+        clearInterval(_step3Poll); _step3Poll = null;
+        _step3ShowError('Download failed. Check your connection and try again.');
+      } else if (d.status === 'downloading') {
+        const pct = Math.min(99, Math.max(0, d.percent || 0));
+        const fill    = document.getElementById('dl-progress-fill');
+        const pctEl   = document.getElementById('dl-pct-text');
+        const speedEl = document.getElementById('dl-speed-text');
+        const statEl  = document.getElementById('dl-status-text');
+        if (fill)   fill.style.width = pct + '%';
+        if (pctEl)  pctEl.textContent = pct + '%';
+        if (speedEl) {
+          const speed  = d.speed_mbps || 0;
+          const etaMin = (d.eta_seconds || 0) > 0 ? Math.ceil(d.eta_seconds / 60) : '?';
+          speedEl.textContent = speed > 0 ? `${speed.toFixed(1)} MB/s · ${etaMin} min remaining` : 'Calculating…';
         }
-        const statusEl = document.getElementById('dl-status-text');
-        if (statusEl) statusEl.textContent = 'Downloading…';
+        if (statEl) statEl.textContent = 'Downloading…';
       }
     }).catch(() => {});
 }
