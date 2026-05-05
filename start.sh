@@ -186,7 +186,7 @@ if [ -f "$CHIEF_DIR/server.py" ]; then
     mkdir -p data/runtime/pids && echo $CHIEF_PID > data/runtime/pids/chief.pid
     cd /Users/andy/Zyrcon/cascadia-os
     sleep 2
-    if curl -sf http://localhost:8006/health > /dev/null 2>&1; then
+    if curl -sf http://localhost:8006/api/health > /dev/null 2>&1; then
         echo "✓ CHIEF ready (PID $CHIEF_PID)"
     else
         echo "⚠ CHIEF started but health check failed — check chief.log"
@@ -206,7 +206,7 @@ if [ -f "$SOCIAL_DIR/server.py" ]; then
     mkdir -p data/runtime/pids && echo $SOCIAL_PID > data/runtime/pids/social.pid
     cd /Users/andy/Zyrcon/cascadia-os
     sleep 2
-    if curl -sf http://localhost:8011/health > /dev/null 2>&1; then
+    if curl -sf http://localhost:8011/api/health > /dev/null 2>&1; then
         echo "✓ SOCIAL ready (PID $SOCIAL_PID)"
     else
         echo "⚠ SOCIAL started but health check failed — check social.log"
