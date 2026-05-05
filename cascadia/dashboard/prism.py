@@ -245,6 +245,10 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/recon/leads/download',         self.recon_leads_download)
         self.runtime.register_route('POST', '/api/recon/leads/{lead_id}/action', self.recon_lead_action)
         self.runtime.register_route('GET',  '/api/recon/status',                 self.recon_status)
+        # RECON operator lifecycle — PRISM-managed start/stop
+        self.runtime.register_route('POST', '/api/operators/recon/start',        self.recon_operator_start)
+        self.runtime.register_route('POST', '/api/operators/recon/stop',         self.recon_operator_stop)
+        self.runtime.register_route('GET',  '/api/operators/recon/status',       self.recon_operator_status_ext)
 
         # Start operator watchdog
         try:
@@ -3322,6 +3326,52 @@ document.getElementById('key').addEventListener('keydown', function(e){
             'current_task':          (health or {}).get('current_task', 'Houston Contractor Lead Generation'),
             'recon_port':            recon_port,
         }
+
+    # ------------------------------------------------------------------
+    # RECON operator lifecycle — start / stop / status
+    # ------------------------------------------------------------------
+
+    def recon_operator_start(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/operators/recon/start — launch RECON dashboard.py subprocess."""
+        import subprocess
+        proc = getattr(self, '_recon_proc', None)
+        if proc is not None and proc.poll() is None:
+            return 200, {'ok': True, 'status': 'already_running', 'pid': proc.pid}
+        ops_path = Path(
+            self.config.get('operators_path') or
+            self.config.get('operators_dir', '')
+        ).expanduser()
+        dashboard_py = ops_path / 'recon' / 'dashboard.py'
+        if not dashboard_py.exists():
+            return 404, {'ok': False, 'error': 'recon_not_found', 'path': str(dashboard_py)}
+        self._recon_proc = subprocess.Popen(
+            ['python3', str(dashboard_py)],
+            cwd=str(dashboard_py.parent),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return 200, {'ok': True, 'status': 'started', 'pid': self._recon_proc.pid}
+
+    def recon_operator_stop(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/operators/recon/stop — SIGTERM RECON, SIGKILL after 5 s."""
+        import threading
+        _http_post(self._ports.get('recon', 8002), '/stop', {}, timeout=2.0)
+        proc = getattr(self, '_recon_proc', None)
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            def _delayed_kill(p=proc):
+                import time as _t
+                _t.sleep(5)
+                try:
+                    p.kill()
+                except Exception:
+                    pass
+            threading.Thread(target=_delayed_kill, daemon=True).start()
+        return 200, {'ok': True, 'status': 'stop_signal_sent'}
+
+    def recon_operator_status_ext(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/operators/recon/status — proxy to recon_status."""
+        return self.recon_status(payload)
 
     def _start_approval_timeout_daemon(self) -> None:
         try:
