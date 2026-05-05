@@ -17,8 +17,8 @@ _PULSE_MIGRATIONS = {
 
 def _migrate_pulse_keys(component: dict) -> dict:
     """
-    Backward compatibility: accept old heartbeat_* keys from pre-v0.50 config.json.
-    Silently maps old keys to new pulse_* keys. Removed in v0.52.
+    Backward compatibility: accept old heartbeat_* keys from pre-2026.5 config.json.
+    Silently maps old keys to new pulse_* keys. Removed in 2026.7.
     """
     for old_key, new_key in _PULSE_MIGRATIONS.items():
         if old_key in component and new_key not in component:
