@@ -183,7 +183,7 @@ if [ -f "$CHIEF_DIR/server.py" ]; then
     python3 server.py \
       >> /Users/andy/Zyrcon/cascadia-os/data/logs/chief.log 2>&1 &
     CHIEF_PID=$!
-    echo $CHIEF_PID > data/runtime/pids/chief.pid
+    mkdir -p data/runtime/pids && echo $CHIEF_PID > data/runtime/pids/chief.pid
     cd /Users/andy/Zyrcon/cascadia-os
     sleep 2
     if curl -sf http://localhost:8006/health > /dev/null 2>&1; then
@@ -203,7 +203,7 @@ if [ -f "$SOCIAL_DIR/server.py" ]; then
     python3 server.py \
       >> /Users/andy/Zyrcon/cascadia-os/data/logs/social.log 2>&1 &
     SOCIAL_PID=$!
-    echo $SOCIAL_PID > data/runtime/pids/social.pid
+    mkdir -p data/runtime/pids && echo $SOCIAL_PID > data/runtime/pids/social.pid
     cd /Users/andy/Zyrcon/cascadia-os
     sleep 2
     if curl -sf http://localhost:8011/health > /dev/null 2>&1; then
