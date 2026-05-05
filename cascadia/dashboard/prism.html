@@ -4788,7 +4788,7 @@ function _gspRemoveTag(key, idx) {
     </div>
     <div class="welcome-actions">
       <button class="welcome-skip" onclick="dismissWelcome()">Skip</button>
-      <button class="welcome-start" onclick="dismissWelcome()">Get Started</button>
+      <button class="welcome-start" onclick="dismissWelcome();fetch('/api/prism/demo/trigger',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(()=>{setTimeout(()=>{loadApprovals&&loadApprovals()},4000)}).catch(()=>{});">Get Started</button>
     </div>
   </div>
 </div>
