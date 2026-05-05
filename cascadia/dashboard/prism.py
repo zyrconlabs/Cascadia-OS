@@ -218,6 +218,10 @@ class PrismService:
         self.runtime.register_route('POST', '/api/wizard/save-progress',                 self.wizard_save_progress)
         self.runtime.register_route('POST', '/api/wizard/complete',                      self.wizard_complete)
         self.runtime.register_route('GET',  '/api/prism/settings/{op_id}',               self.settings_for_op)
+        # Setup wizard — model download routes (Task 1)
+        self.runtime.register_route('GET',  '/api/prism/setup/hardware',        self.setup_hardware)
+        self.runtime.register_route('POST', '/api/prism/setup/download-model',  self.setup_download_model)
+        self.runtime.register_route('GET',  '/api/prism/setup/download-status', self.setup_download_status)
         # Guided Configuration routes (Phase 3–5)
         self.runtime.register_route('GET',  '/config-wizard',                            self.serve_config_wizard)
         self.runtime.register_route('POST', '/api/config/chat',                          self.config_chat)
@@ -2742,6 +2746,73 @@ document.getElementById('key').addEventListener('keydown', function(e){
         except Exception:
             pass
         return 200, {'op_id': op_id, 'answers': answers}
+
+    # ------------------------------------------------------------------
+    # Setup wizard — model download routes
+    # ------------------------------------------------------------------
+
+    _MODEL_CATALOG: Dict[str, Any] = {
+        '3b':  {'name': 'Qwen 2.5 3B',  'file': 'qwen2.5-3b-instruct-q4_k_m.gguf',  'size_gb': 2.0, 'size_label': '2.0 GB', 'description': 'Fast and efficient. Good for most tasks.',   'huggingface_repo': 'Qwen/Qwen2.5-3B-Instruct-GGUF'},
+        '7b':  {'name': 'Qwen 2.5 7B',  'file': 'qwen2.5-7b-instruct-q4_k_m.gguf',  'size_gb': 4.7, 'size_label': '4.7 GB', 'description': 'Best quality for business workflows.',         'huggingface_repo': 'Qwen/Qwen2.5-7B-Instruct-GGUF'},
+        '14b': {'name': 'Qwen 2.5 14B', 'file': 'qwen2.5-14b-instruct-q4_k_m.gguf', 'size_gb': 9.0, 'size_label': '9.0 GB', 'description': 'Maximum quality. Requires 16 GB+ RAM.',        'huggingface_repo': 'Qwen/Qwen2.5-14B-Instruct-GGUF'},
+    }
+
+    def _setup_models_dir(self) -> Path:
+        import os as _os
+        llm = self.config.get('llm', {})
+        raw = llm.get('models_dir', './models')
+        base = Path(self.config.get('__config_path__', 'config.json')).parent
+        return base / raw if raw.startswith('.') else Path(_os.path.expanduser(raw))
+
+    def setup_hardware(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/setup/hardware — hw info + MODEL_CATALOG + disk + current_model."""
+        _, hw = self.hardware_info(payload)
+        models_dir = self._setup_models_dir()
+        current_model = None
+        try:
+            for p in sorted(models_dir.glob('*.gguf')):
+                current_model = p.name
+                break
+        except Exception:
+            pass
+        hw['models'] = self._MODEL_CATALOG
+        hw['current_model'] = current_model
+        return 200, hw
+
+    def setup_download_model(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/setup/download-model — spawn download_model.py in background."""
+        import sys, subprocess as _sp
+        model_tier = str(payload.get('model_tier', '7b'))
+        if model_tier not in self._MODEL_CATALOG:
+            return 400, {'error': f'Unknown model_tier: {model_tier}'}
+        model = self._MODEL_CATALOG[model_tier]
+        dest = self._setup_models_dir() / model['file']
+        if dest.exists():
+            return 200, {'status': 'already_exists', 'model': model['name']}
+        script = Path(__file__).parent.parent.parent / 'scripts' / 'download_model.py'
+        _sp.Popen(
+            [sys.executable, str(script), '--tier', model_tier],
+            stdout=_sp.DEVNULL,
+            stderr=_sp.DEVNULL,
+        )
+        return 200, {'status': 'started', 'model': model['name'], 'size_label': model['size_label']}
+
+    def setup_download_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/setup/download-status — read progress file or detect completion."""
+        models_dir    = self._setup_models_dir()
+        base_dir      = Path(self.config.get('__config_path__', 'config.json')).parent
+        progress_file = base_dir / 'data' / 'runtime' / 'model_download_progress.json'
+        try:
+            if any(models_dir.glob('*.gguf')):
+                return 200, {'status': 'complete'}
+        except Exception:
+            pass
+        if progress_file.exists():
+            try:
+                return 200, json.loads(progress_file.read_text())
+            except Exception:
+                pass
+        return 200, {'status': 'idle'}
 
     # ------------------------------------------------------------------
     # Guided Configuration routes (Phase 3–5)
