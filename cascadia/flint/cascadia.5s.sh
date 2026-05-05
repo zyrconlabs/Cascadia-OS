@@ -27,38 +27,13 @@ mkdir -p "$LOG_DIR"
 case "${1:-}" in
   start-all)
     cd "$REPO_DIR"
-    # Kill any existing instance cleanly
-    pkill -f "cascadia.kernel" 2>/dev/null || true
-    lsof -ti :8080 | xargs kill -9 2>/dev/null || true
-    sleep 1
-    # Start llama.cpp if configured
-    CONFIG="$REPO_DIR/config.json"
-    if [[ -f "$CONFIG" ]]; then
-      LLAMA_BIN=$($PYTHON -c "import json,os; c=json.load(open('$CONFIG')); print(c.get('llm',{}).get('llama_bin',''))" 2>/dev/null)
-      MODELS_DIR=$($PYTHON -c "import json,os; c=json.load(open('$CONFIG')); d=c.get('llm',{}).get('models_dir','./models'); print(os.path.abspath(os.path.join('$REPO_DIR',d)) if d.startswith('.') else os.path.expanduser(d))" 2>/dev/null)
-      MODEL_FILE=$($PYTHON -c "import json; c=json.load(open('$CONFIG')); print(c.get('llm',{}).get('model',''))" 2>/dev/null)
-      if [[ -n "$LLAMA_BIN" && -f "$LLAMA_BIN" && -n "$MODEL_FILE" ]]; then
-        MODEL_PATH="$MODELS_DIR/$MODEL_FILE"
-        if [[ -f "$MODEL_PATH" ]]; then
-          nohup "$LLAMA_BIN" \
-            --model "$MODEL_PATH" \
-            --host 127.0.0.1 --port 8080 \
-            --ctx-size 4096 --n-gpu-layers 99 \
-            --alias "$MODEL_FILE" \
-            > "$LOG_DIR/llamacpp.log" 2>&1 &
-        fi
-      fi
-    fi
-    # Start Cascadia OS
-    nohup "$PYTHON" -m cascadia.kernel.watchdog \
-      --config "$REPO_DIR/config.json" \
-      > "$LOG_DIR/flint.log" 2>&1 &
+    bash start.sh > "$LOG_DIR/startup.log" 2>&1 &
     sleep 2
     exit 0
     ;;
   stop-all)
-    pkill -f "cascadia.kernel" 2>/dev/null || true
-    lsof -ti :8080 | xargs kill -9 2>/dev/null || true
+    cd "$REPO_DIR"
+    bash stop.sh > "$LOG_DIR/shutdown.log" 2>&1 &
     exit 0
     ;;
   open-prism)
@@ -84,11 +59,16 @@ check() {
   curl -sf --max-time 1 "http://127.0.0.1:$1$2" > /dev/null 2>&1 && echo "1" || echo "0"
 }
 
-COMPONENTS=(4011 5100 5101 5102 5103 6200 6201 6202 6203 6204 6205 6300)
+COMPONENTS=(4011 5100 5101 5102 5103 6200 6201 6202 6203 6204 6205 6300 6207 8006 8011)
 online=0
 total=${#COMPONENTS[@]}
 for port in "${COMPONENTS[@]}"; do
-  [[ "$(check $port /health)" == "1" ]] && online=$((online+1))
+  case $port in
+    6207) path="/healthz" ;;
+    8006|8011) path="/api/health" ;;
+    *) path="/health" ;;
+  esac
+  [[ "$(check $port $path)" == "1" ]] && online=$((online+1))
 done
 
 flint_up=$(check $FLINT_PORT /health)
@@ -125,6 +105,32 @@ if [[ "$llama_up" == "1" ]]; then
   echo "⬤ llama.cpp running :8080 | color=#00C853 font=Menlo size=12"
 else
   echo "○ Not running | color=#888888 font=Menlo size=12"
+fi
+
+# ── MISSIONS ──────────────────────────────────────────────────────────────────
+echo "---"
+echo "MISSIONS | color=#888888 font=Menlo-Bold size=11"
+
+chief_up=$(curl -sf --max-time 1 http://127.0.0.1:8006/api/health > /dev/null 2>&1 && echo "1" || echo "0")
+social_up=$(curl -sf --max-time 1 http://127.0.0.1:8011/api/health > /dev/null 2>&1 && echo "1" || echo "0")
+mission_up=$(curl -sf --max-time 1 http://127.0.0.1:6207/healthz > /dev/null 2>&1 && echo "1" || echo "0")
+
+if [[ "$chief_up" == "1" ]]; then
+  echo "⬤ CHIEF :8006 | color=#00C853 font=Menlo size=12"
+else
+  echo "○ CHIEF offline | color=#FF3B30 font=Menlo size=12"
+fi
+
+if [[ "$social_up" == "1" ]]; then
+  echo "⬤ SOCIAL :8011 | color=#00C853 font=Menlo size=12"
+else
+  echo "○ SOCIAL offline | color=#FF3B30 font=Menlo size=12"
+fi
+
+if [[ "$mission_up" == "1" ]]; then
+  echo "⬤ Mission Manager :6207 | color=#00C853 font=Menlo size=12"
+else
+  echo "○ Mission Manager offline | color=#FF3B30 font=Menlo size=12"
 fi
 
 # ── Actions ───────────────────────────────────────────────────────────────────
