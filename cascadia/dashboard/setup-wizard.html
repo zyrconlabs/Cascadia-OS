@@ -341,6 +341,7 @@ const state = {
   businessType: '',
   approvalRules: { email: true, api: true, crm: true },
   installedOps: [],
+  alertEmail: '',
 };
 
 // Persist progress on page unload (mid-wizard exit)
@@ -505,6 +506,23 @@ const steps = {
       </button>
       <div style="margin-top:14px;padding:12px;background:var(--gray-50);border-radius:9px;font-size:12px;color:var(--gray-400)">
         Operators will never send email without your explicit approval.
+      </div>
+      <div style="margin-top:14px">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--navy-700);margin-bottom:6px">
+          Alert email address <span style="font-weight:400;color:var(--gray-400)">(optional)</span>
+        </label>
+        <input
+          id="alert-email-input"
+          type="email"
+          class="license-input"
+          style="width:100%"
+          placeholder="you@example.com"
+          value="${esc(state.alertEmail||'')}"
+          oninput="state.alertEmail=this.value.trim(); saveAlertEmail(this.value.trim())"
+        >
+        <div style="margin-top:5px;font-size:11px;color:var(--gray-400)">
+          Zyrcon will email you if any operator goes offline for more than 10 minutes.
+        </div>
       </div>
       <div id="email-msg" style="margin-top:10px;font-size:12px;min-height:18px;color:var(--navy-700)"></div>
     </div>
@@ -672,6 +690,17 @@ function showEmailComingSoon(provider) {
   document.getElementById('email-msg').textContent = provider + ' integration coming soon — you can connect it later in Settings.';
 }
 
+async function saveAlertEmail(email) {
+  if (!email) return;
+  try {
+    await fetch(PRISM + '/api/wizard/save-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alert_email: email }),
+    });
+  } catch(_) {}
+}
+
 function installOp(id, btn) {
   if (!state.installedOps.includes(id)) state.installedOps.push(id);
   btn.classList.add('added');
@@ -687,6 +716,7 @@ async function completeWizard() {
       body: JSON.stringify({
         business_type: state.businessType,
         approval_rules: state.approvalRules,
+        alert_email: state.alertEmail,
       }),
       signal: AbortSignal.timeout(5000),
     });

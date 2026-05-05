@@ -26,6 +26,8 @@ MODELS_DIR=$(python3 -c "import json,os; c=json.load(open('config.json')); d=c.g
 MODEL_FILE=$(python3 -c "import json; c=json.load(open('config.json')); print(c.get('llm',{}).get('model','qwen2.5-3b-instruct-q4_k_m.gguf'))" 2>/dev/null || echo "qwen2.5-3b-instruct-q4_k_m.gguf")
 LLAMA_MODEL="$MODELS_DIR/$MODEL_FILE"
 
+mkdir -p data/runtime/pids
+
 echo "Starting Cascadia OS full stack..."
 
 # Rotate startup.log if over 5MB
@@ -72,8 +74,13 @@ fi
 if command -v nats-server &> /dev/null; then
     if ! curl -sf http://localhost:8222/healthz > /dev/null 2>&1; then
         echo "▸ Starting NATS..."
-        nats-server -p 4222 -m 8222 \
-          >> data/logs/nats.log 2>&1 &
+        if [ -f "config/nats.conf" ]; then
+            nats-server -c config/nats.conf &
+        else
+            nats-server -p 4222 -m 8222 >> data/logs/nats.log 2>&1 &
+        fi
+        NATS_PID=$!
+        echo $NATS_PID > data/runtime/pids/nats.pid
         sleep 1
         if curl -sf http://localhost:8222/healthz > /dev/null 2>&1; then
             echo "✓ NATS ready on port 4222"
@@ -170,6 +177,7 @@ if [ -f "$CHIEF_DIR/server.py" ]; then
     python3 server.py \
       >> /Users/andy/Zyrcon/cascadia-os/data/logs/chief.log 2>&1 &
     CHIEF_PID=$!
+    echo $CHIEF_PID > data/runtime/pids/chief.pid
     cd /Users/andy/Zyrcon/cascadia-os
     sleep 2
     if curl -sf http://localhost:8006/health > /dev/null 2>&1; then
@@ -189,6 +197,7 @@ if [ -f "$SOCIAL_DIR/server.py" ]; then
     python3 server.py \
       >> /Users/andy/Zyrcon/cascadia-os/data/logs/social.log 2>&1 &
     SOCIAL_PID=$!
+    echo $SOCIAL_PID > data/runtime/pids/social.pid
     cd /Users/andy/Zyrcon/cascadia-os
     sleep 2
     if curl -sf http://localhost:8011/health > /dev/null 2>&1; then
@@ -206,12 +215,25 @@ fi
 # Custom operators: POST http://127.0.0.1:5100/register with your operator_id.
 
 
-# ── 8. Health Monitor ────────────────────────────────────────────────────
+# ── 8. Health Monitor (with auto-restart) ───────────────────────────────
 echo "▸ Starting Health Monitor..."
-python3 -m cascadia.monitoring.health_alert \
-  >> data/logs/health_monitor.log 2>&1 &
+(
+    while true; do
+        python3 -m cascadia.monitoring.health_alert \
+          >> data/logs/health_monitor.log 2>&1
+        echo "[Health Monitor] Restarting after exit..." \
+          >> data/logs/health_monitor.log
+        sleep 5
+    done
+) &
+HEALTH_PID=$!
+echo $HEALTH_PID > data/runtime/pids/health_monitor.pid
 sleep 1
-echo "✓ Health Monitor running (checks every 5 minutes)"
+if curl -sf http://localhost:6209/health > /dev/null 2>&1; then
+    echo "✓ Health Monitor ready (port 6209)"
+else
+    echo "⚠ Health Monitor starting — check health_monitor.log"
+fi
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
