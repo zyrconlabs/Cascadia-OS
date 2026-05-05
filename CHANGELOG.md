@@ -37,6 +37,19 @@
 - Setup wizard expanded to 8 steps — new Step 3 covers AI model status
   and demo trigger
 
+### Stop/start reliability
+- `stop.sh` fully rewritten — kills Health Monitor, SOCIAL, CHIEF, Mission Manager,
+  PRISM, Cascadia OS (all FLINT ports), License Gate, llama.cpp, NATS in reverse order;
+  `stop_service()` helper uses PID file (primary) + port kill (fallback)
+- `start.sh` — writes PID files to `data/runtime/pids/` for NATS, CHIEF, SOCIAL,
+  Health Monitor; Health Monitor wrapped in auto-restart subshell (restarts within 5s)
+- `start.sh` — NATS uses `config/nats.conf` (JetStream persistence) when present
+- `config/nats.conf` — NATS JetStream configured: 256MB memory, 1GB file store,
+  persistent event log at `data/nats/`
+- Port verification block at end of `stop.sh` confirms all 9 ports are clear
+- Alert email field added to Setup Wizard Step 5; saved via `/api/wizard/save-progress`
+  and included in `completeWizard()` payload (`alert_email` key)
+
 ### 24/7 autonomy
 - `start.sh` — NATS starts before Cascadia OS (section 2.5); CHIEF and SOCIAL use
   correct `server.py` paths with absolute operator repo dir and `/health` checks
