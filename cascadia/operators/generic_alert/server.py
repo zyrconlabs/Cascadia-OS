@@ -168,6 +168,27 @@ class AlertStore:
             return cur.rowcount > 0
 
 
+class SimulatedAlertStore(AlertStore):
+    """Drop-in AlertStore replacement for simulate mode.
+    All writes are no-ops. Reads return empty results."""
+
+    def _init_db(self): pass
+
+    def save_alert(self, alert: dict) -> None: pass
+
+    def fetch_alert(self, alert_id: str): return None
+
+    def fetch_alerts(self, status=None, limit=50): return []
+
+    def update_alert_status(self, *args, **kwargs): pass
+
+    def save_rule(self, rule: dict) -> None: pass
+
+    def fetch_rules(self, device_id=None): return []
+
+    def delete_rule(self, rule_id: str) -> bool: return True
+
+
 class GenericAlert:
     def __init__(self, store: AlertStore = None):
         self.store = store or AlertStore()
@@ -259,6 +280,7 @@ class GenericAlert:
 # ── HTTP layer ────────────────────────────────────────────────────────────────
 
 _ga = GenericAlert()
+_ga_sim = GenericAlert(store=SimulatedAlertStore())
 
 HEALTH = {"status": "healthy", "component": "generic_alert", "port": PORT}
 
@@ -287,7 +309,7 @@ class _Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             action = body.get("action", "")
             try:
-                result = _dispatch(action, body)
+                result = _dispatch_sim(action, body)
                 result["simulated"] = True
                 self._send(200, result)
             except Exception as exc:
@@ -342,6 +364,45 @@ def _dispatch(action: str, body: dict) -> dict:
         return {"rules": _ga.list_rules(device_id=body.get("device_id"))}
     if action == "delete_rule":
         return _ga.delete_rule(body["rule_id"])
+    raise ValueError(f"Unknown action: {action}")
+
+
+def _dispatch_sim(action: str, body: dict) -> dict:
+    if action == "create_alert":
+        return _ga_sim.create_alert(
+            device_id=body["device_id"],
+            metric=body["metric"],
+            current_value=body["current_value"],
+            threshold=body["threshold"],
+            severity=body["severity"],
+            device_name=body.get("device_name", ""),
+            operator_str=body.get("operator_str", "gt"),
+            action=body.get("action", "approval_required"),
+        )
+    if action == "list_alerts":
+        return {"alerts": _ga_sim.list_alerts(
+            status=body.get("status"), limit=body.get("limit", 50)
+        )}
+    if action == "get_alert":
+        return _ga_sim.get_alert(body["alert_id"]) or {"error": "not found"}
+    if action == "resolve_alert":
+        return _ga_sim.resolve_alert(
+            alert_id=body["alert_id"],
+            resolution_notes=body.get("resolution_notes", ""),
+        )
+    if action == "configure_rule":
+        return _ga_sim.configure_rule(
+            device_id=body["device_id"],
+            metric=body["metric"],
+            operator_str=body.get("operator_str", "gt"),
+            threshold=body["threshold"],
+            severity=body.get("severity", "warning"),
+            action=body.get("action", "approval_required"),
+        )
+    if action == "list_rules":
+        return {"rules": _ga_sim.list_rules(device_id=body.get("device_id"))}
+    if action == "delete_rule":
+        return _ga_sim.delete_rule(body["rule_id"])
     raise ValueError(f"Unknown action: {action}")
 
 
