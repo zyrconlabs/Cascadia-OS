@@ -32,11 +32,11 @@ class TestMissionRegistry(unittest.TestCase):
 
     # ── Installed list ────────────────────────────────────────────────────────
 
-    def test_registry_installed_returns_empty_initially(self):
+    def test_registry_installed_returns_list(self):
         installed = self.reg.list_installed()
         self.assertIsInstance(installed, list)
-        # The default missions_registry.json ships with an empty installed array
-        self.assertEqual(installed, [])
+        # growth_desk is installed by default; list must contain at least that entry
+        self.assertIn("growth_desk", installed)
 
     # ── get_mission / get_manifest ────────────────────────────────────────────
 

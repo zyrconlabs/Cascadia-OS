@@ -81,7 +81,7 @@ class TestOperatorRegistry(unittest.TestCase):
             self.assertIn(op["status"], valid, f"{op['id']} has invalid status")
 
     def test_autonomy_values_valid(self):
-        valid = {"autonomous", "semi-autonomous", "assistive"}
+        valid = {"autonomous", "semi-autonomous", "assistive", "tool"}
         for op in self.operators:
             self.assertIn(op["autonomy"], valid, f"{op['id']} has invalid autonomy")
 
