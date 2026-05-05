@@ -18,8 +18,8 @@ Physical sensors → CONDUIT → VANGUARD → AI Operators → Approval Gates �
 |----------|--------|-------|
 | MQTT | Available (v0.47) | paho-mqtt required: `pip install paho-mqtt` |
 | Modbus TCP/RTU | Planned (v0.48) | Industrial PLC and sensor integration |
-| Zigbee | Planned (v0.49) | Low-power mesh sensor networks |
-| GPIO (Raspberry Pi) | Planned (v0.49) | Direct pin read on zyrcon-arm platform |
+| Zigbee | Planned (2026.4) | Low-power mesh sensor networks |
+| GPIO (Raspberry Pi) | Planned (2026.4) | Direct pin read on zyrcon-arm platform |
 
 ---
 

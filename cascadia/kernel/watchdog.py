@@ -15,7 +15,7 @@ from cascadia.kernel.operator_manager import OperatorManager
 
 def _migrate_heartbeat_files(data_dir: str, logger: object) -> None:
     """
-    Rename any .heartbeat files from pre-v0.50 to .pulse files. Runs once on startup.
+    Rename any .heartbeat files from pre-2026.5 to .pulse files. Runs once on startup.
     Safe to run repeatedly — skips if already done.
     """
     pattern = os.path.join(data_dir, 'runtime', '*.heartbeat')

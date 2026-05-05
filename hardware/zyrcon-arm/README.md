@@ -33,8 +33,8 @@ In `config.json`:
 The zyrcon-arm platform supports:
 - MQTT (v0.47)
 - Modbus TCP/RTU (v0.48)
-- Zigbee (v0.49)
-- GPIO direct pin access (v0.49)
+- Zigbee (2026.4)
+- GPIO direct pin access (2026.4)
 
 ## Use Cases
 

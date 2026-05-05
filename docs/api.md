@@ -12,7 +12,7 @@ Currently open on local network — no token required for local requests.
 
 **HMAC request signing** is supported for inbound webhooks. The `X-Cascadia-Signature` header carries a HMAC-SHA256 digest of the request body using a shared secret configured in HANDSHAKE.
 
-**API key auth** (`X-Cascadia-Key`) is supported and can be enabled by setting the `CASCADIA_INTERNAL_KEY` environment variable. Full per-client API key management is coming in v0.50.
+**API key auth** (`X-Cascadia-Key`) is supported and can be enabled by setting the `CASCADIA_INTERNAL_KEY` environment variable. Full per-client API key management is coming in 2026.5.
 
 ---
 
