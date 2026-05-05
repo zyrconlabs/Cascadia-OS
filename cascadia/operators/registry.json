@@ -1,4 +1,122 @@
 {
   "version": "0.44",
-  "operators": []
+  "operators": [
+    {
+      "id": "chief",
+      "name": "CHIEF",
+      "type": "operator",
+      "category": "operator",
+      "description": "Executive intelligence briefing agent. Pulls live data from all active operators, delivers briefs with anomalies and ranked actions.",
+      "status": "production",
+      "port": 8006,
+      "health_path": "/api/health",
+      "autonomy": "autonomous",
+      "autostart": true,
+      "sample_output": null
+    },
+    {
+      "id": "recon",
+      "name": "RECON",
+      "type": "operator",
+      "category": "operator",
+      "description": "Outbound opportunity scanning and research agent.",
+      "status": "production",
+      "port": 8002,
+      "health_path": "/api/health",
+      "autonomy": "semi-autonomous",
+      "autostart": true,
+      "sample_output": null
+    },
+    {
+      "id": "scout",
+      "name": "SCOUT",
+      "type": "operator",
+      "category": "operator",
+      "description": "Inbound lead capture and qualification engine.",
+      "status": "production",
+      "port": 7002,
+      "health_path": "/api/health",
+      "autonomy": "semi-autonomous",
+      "autostart": true,
+      "sample_output": null
+    },
+    {
+      "id": "quote",
+      "name": "QUOTE",
+      "type": "operator",
+      "category": "operator",
+      "description": "Proposal and quote generation operator.",
+      "status": "production",
+      "port": 8007,
+      "health_path": "/api/health",
+      "autonomy": "semi-autonomous",
+      "autostart": true,
+      "sample_output": null
+    },
+    {
+      "id": "debrief",
+      "name": "Debrief",
+      "type": "operator",
+      "category": "operator",
+      "description": "Post-meeting debrief extraction, action logging, and follow-up creation.",
+      "status": "production",
+      "port": 8008,
+      "health_path": "/api/health",
+      "autonomy": "assistive",
+      "autostart": true,
+      "sample_output": null
+    },
+    {
+      "id": "social_chat_operator",
+      "name": "SOCIAL",
+      "type": "operator",
+      "category": "operator",
+      "description": "Conversational campaign review interface. Generates, reviews, and approves social media post packages.",
+      "status": "production",
+      "port": 8011,
+      "health_path": "/api/health",
+      "autonomy": "assistive",
+      "autostart": true,
+      "sample_output": null
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "type": "connector",
+      "category": "connector",
+      "description": "Telegram bot connector — inbound message routing and outbound notifications.",
+      "status": "production",
+      "port": 9000,
+      "health_path": "/api/health",
+      "autonomy": "tool",
+      "autostart": true,
+      "sample_output": null
+    },
+    {
+      "id": "whatsapp",
+      "name": "WhatsApp Business",
+      "type": "connector",
+      "category": "connector",
+      "description": "WhatsApp Business API connector — inbound leads and outbound proposals via Meta Cloud API.",
+      "status": "production",
+      "port": 9001,
+      "health_path": "/api/health",
+      "autonomy": "tool",
+      "autostart": true,
+      "sample_output": null
+    },
+    {
+      "id": "google-accounts",
+      "name": "Google Accounts",
+      "type": "connector",
+      "category": "connector",
+      "description": "Google OAuth2 connector. Provides access tokens for Gmail, Calendar, Drive, and Contacts to other operators.",
+      "status": "production",
+      "port": 9020,
+      "health_path": "/api/health",
+      "autonomy": "tool",
+      "autostart": true,
+      "sample_output": null
+    }
+  ]
 }
