@@ -100,7 +100,7 @@ def sentinel_check(action: str, context: Optional[Dict[str, Any]] = None) -> boo
         })
         if result is None:
             return False  # fail-closed
-        return bool(result.get('allowed', False))
+        return bool(result.get('verdict') == 'allowed')
     except Exception:
         return False  # fail-closed — never permit on error
 
