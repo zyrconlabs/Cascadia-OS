@@ -240,6 +240,11 @@ class PrismService:
 
         self.runtime.register_route('POST', '/api/prism/demo/trigger',          self.demo_trigger)
         self.runtime.register_route('GET',  '/api/prism/demo/first-run-status', self.demo_first_run_status)
+        # RECON Leads — mobile integration
+        self.runtime.register_route('GET',  '/api/recon/leads',                  self.recon_leads)
+        self.runtime.register_route('GET',  '/api/recon/leads/download',         self.recon_leads_download)
+        self.runtime.register_route('POST', '/api/recon/leads/{lead_id}/action', self.recon_lead_action)
+        self.runtime.register_route('GET',  '/api/recon/status',                 self.recon_status)
 
         # Start operator watchdog
         try:
@@ -3043,6 +3048,280 @@ document.getElementById('key').addEventListener('keydown', function(e){
                            f'/api/missions/items/{item_id}',
                            {'status': payload.get('status', '')})
         return (200, data) if data is not None else (503, {'error': 'mission_manager_unavailable'})
+
+    # ------------------------------------------------------------------
+    # RECON Leads — mobile integration
+    # ------------------------------------------------------------------
+
+    @property
+    def _recon_csv_path(self) -> Path:
+        configured = self.config.get('recon_output_path')
+        if configured:
+            return Path(configured)
+        # prism.py lives at cascadia-os/cascadia/dashboard/prism.py
+        # operators live at ../../../operators/cascadia-os-operators/recon/output/
+        return Path(__file__).resolve().parents[3] / 'operators' / 'cascadia-os-operators' / 'recon' / 'output' / 'houston_contractors.csv'
+
+    def _recon_read_csv(self) -> List[Dict[str, Any]]:
+        import csv as _csv, hashlib as _hl
+        path = self._recon_csv_path
+        if not path.exists():
+            return []
+        rows: List[Dict[str, Any]] = []
+        with open(path, newline='', encoding='utf-8') as fh:
+            for row in _csv.DictReader(fh):
+                raw = (row.get('business_name', '') + row.get('phone', '')).encode()
+                row['id'] = _hl.sha256(raw).hexdigest()[:8]
+                row.setdefault('status', 'new')
+                rows.append(dict(row))
+        return rows
+
+    def _recon_write_csv(self, rows: List[Dict[str, Any]]) -> None:
+        import csv as _csv
+        if not rows:
+            return
+        path = self._recon_csv_path
+        fieldnames = list(rows[0].keys())
+        with open(path, 'w', newline='', encoding='utf-8') as fh:
+            writer = _csv.DictWriter(fh, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def recon_leads(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/recon/leads — verified leads from RECON CSV with filter/sort/pagination."""
+        confidence_filter = (payload.get('confidence') or 'all').lower()
+        try:
+            limit  = max(1, min(int(payload.get('limit',  50)), 200))
+            offset = max(0, int(payload.get('offset', 0)))
+        except (TypeError, ValueError):
+            limit, offset = 50, 0
+        sort_by = payload.get('sort', 'score')
+
+        csv_path = self._recon_csv_path
+        if not csv_path.exists():
+            return 200, {
+                'leads': [], 'total': 0,
+                'high_confidence': 0, 'medium_confidence': 0, 'low_confidence': 0,
+                'last_recon_run': None, 'csv_path': None, 'status': 'no_data',
+            }
+
+        all_rows = self._recon_read_csv()
+
+        # Confidence counts (over full dataset before filter)
+        conf_counts: Dict[str, int] = {'high': 0, 'medium': 0, 'low': 0}
+        for r in all_rows:
+            c = (r.get('confidence') or '').lower()
+            if c in conf_counts:
+                conf_counts[c] += 1
+
+        if confidence_filter != 'all':
+            all_rows = [r for r in all_rows if (r.get('confidence') or '').lower() == confidence_filter]
+
+        def _sort_key(r: Dict[str, Any]):
+            if sort_by == 'name':
+                return (r.get('business_name') or '').lower()
+            if sort_by == 'date':
+                return r.get('verified_at') or ''
+            try:
+                return -int(r.get('verification_score') or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        all_rows.sort(key=_sort_key)
+        total = len(all_rows)
+        page  = all_rows[offset: offset + limit]
+
+        def _bool(val: Any) -> bool:
+            return str(val).lower() in ('true', '1', 'yes')
+
+        def _int(val: Any, default: int = 0) -> int:
+            try:
+                return int(val or default)
+            except (TypeError, ValueError):
+                return default
+
+        def _float(val: Any, default: float = 0.0) -> float:
+            try:
+                return float(val or default)
+            except (TypeError, ValueError):
+                return default
+
+        leads = []
+        for r in page:
+            city_state = ' '.join(filter(None, [r.get('city', ''), r.get('state', '')])).strip()
+            leads.append({
+                'id':                 r['id'],
+                'business_name':      r.get('business_name', ''),
+                'phone':              r.get('phone', ''),
+                'address':            r.get('address', ''),
+                'city':               city_state,
+                'website_url':        r.get('website_url') or '',
+                'review_count':       _int(r.get('review_count')),
+                'rating':             _float(r.get('rating')),
+                'verification_score': _int(r.get('verification_score')),
+                'confidence':         (r.get('confidence') or 'low').lower(),
+                'hallucination_risk': (r.get('hallucination_risk') or 'medium').lower(),
+                'website_live':       _bool(r.get('website_live')),
+                'phone_verified':     _bool(r.get('phone_found')),
+                'source':             r.get('source', ''),
+                'verified_at':        r.get('verified_at', ''),
+                'status':             r.get('status', 'new'),
+                'notes':              r.get('notes') or '',
+            })
+
+        # Last recon run timestamp from summary.json
+        last_run = None
+        summary_path = csv_path.parent / 'summary.json'
+        if summary_path.exists():
+            try:
+                with open(summary_path) as fh:
+                    s = json.load(fh)
+                    last_run = s.get('generated_at') or s.get('run_at') or s.get('completed_at')
+            except Exception:
+                pass
+
+        return 200, {
+            'leads':             leads,
+            'total':             total,
+            'high_confidence':   conf_counts['high'],
+            'medium_confidence': conf_counts['medium'],
+            'low_confidence':    conf_counts['low'],
+            'last_recon_run':    last_run,
+            'csv_path':          csv_path.name,
+        }
+
+    def recon_leads_download(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/recon/leads/download — raw CSV as downloadable attachment."""
+        csv_path = self._recon_csv_path
+        if not csv_path.exists():
+            return 404, {'error': 'no_csv', 'message': 'No leads CSV found. Run RECON first.'}
+        date_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        with open(csv_path, 'rb') as fh:
+            data = fh.read()
+        return 200, {'__html__': data, 'content_type': 'text/csv'}
+
+    def recon_lead_action(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/recon/leads/{lead_id}/action — update lead status from mobile."""
+        import hashlib as _hl
+        lead_id = payload.get('lead_id', '')
+        action  = payload.get('action', '')
+        note    = payload.get('note') or ''
+
+        valid_actions = {'approve_outreach', 'dismiss', 'save_later'}
+        if not lead_id or action not in valid_actions:
+            return 400, {'error': 'lead_id and valid action required', 'valid_actions': list(valid_actions)}
+
+        status_map = {
+            'approve_outreach': 'approved',
+            'dismiss':          'dismissed',
+            'save_later':       'save_later',
+        }
+        new_status = status_map[action]
+
+        if not self._recon_csv_path.exists():
+            return 404, {'error': 'no_csv'}
+        rows = self._recon_read_csv()
+
+        matched = False
+        business_name = ''
+        for row in rows:
+            if row.get('id') == lead_id:
+                row['status'] = new_status
+                if note:
+                    row['notes'] = note
+                business_name = row.get('business_name', '')
+                matched = True
+                break
+
+        if not matched:
+            return 404, {'error': 'lead_not_found', 'lead_id': lead_id}
+
+        self._recon_write_csv(rows)
+
+        # On approve_outreach: create a pending approval so CHIEF can draft outreach
+        if action == 'approve_outreach':
+            try:
+                from cascadia.durability.run_store import RunStore
+                from cascadia.system.approval_store import ApprovalStore
+                run_store = RunStore(self.config['database_path'])
+                approval_store = ApprovalStore(run_store)
+                approval_store.insert_decision_request(
+                    run_id   = f'recon-{lead_id}',
+                    step_id  = 'mobile_approve',
+                    source   = 'prism_mobile',
+                    title    = f'Outreach approval: {business_name}',
+                    summary  = f'Mobile operator approved {business_name} for outreach via RECON Leads tab.',
+                    risk_level = 'LOW',
+                    options  = [
+                        {'id': 'send',   'label': 'Send outreach email', 'action': 'send_outreach'},
+                        {'id': 'skip',   'label': 'Skip for now',        'action': 'skip'},
+                    ],
+                )
+            except Exception as exc:
+                self.runtime.logger.warning('RECON: approval creation failed for %s: %s', lead_id, exc)
+
+        return 200, {'success': True, 'lead_id': lead_id, 'new_status': new_status}
+
+    def recon_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/recon/status — RECON operational status for mobile status bar."""
+        import hashlib as _hl
+        recon_port = self._ports.get('recon', 8002)
+        health = _http_get(recon_port, '/health', timeout=2.0)
+        recon_running = health is not None
+        recon_healthy = recon_running and health.get('status') in ('ok', 'healthy', 'running')
+
+        # Count leads from today
+        leads_today = 0
+        high_today  = 0
+        csv_path    = self._recon_csv_path
+        if csv_path.exists():
+            try:
+                today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+                for row in self._recon_read_csv():
+                    verified = row.get('verified_at', '')
+                    if verified.startswith(today):
+                        leads_today += 1
+                        if (row.get('confidence') or '').lower() == 'high':
+                            high_today += 1
+            except Exception:
+                pass
+
+        # Next run estimate from health response or summary.json
+        next_run: Optional[int] = None
+        last_run: Optional[str] = None
+        summary_path = csv_path.parent / 'summary.json' if csv_path else None
+        if summary_path and summary_path.exists():
+            try:
+                with open(summary_path) as fh:
+                    s = json.load(fh)
+                    last_run = s.get('generated_at') or s.get('run_at')
+                    if last_run and not recon_running:
+                        # Estimate next run ~6h after last
+                        from datetime import timedelta
+                        try:
+                            dt = datetime.fromisoformat(last_run.replace('Z', '+00:00'))
+                            nxt = dt + timedelta(hours=6)
+                            delta = int((nxt - datetime.now(timezone.utc)).total_seconds())
+                            next_run = max(0, delta)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        if recon_running and health:
+            last_run = last_run or health.get('last_run')
+            next_run = next_run if next_run is not None else health.get('next_run_in_seconds')
+
+        return 200, {
+            'recon_running':         recon_running,
+            'recon_healthy':         recon_healthy,
+            'last_run':              last_run,
+            'next_run_in_seconds':   next_run,
+            'leads_found_today':     leads_today,
+            'high_confidence_today': high_today,
+            'current_task':          (health or {}).get('current_task', 'Houston Contractor Lead Generation'),
+            'recon_port':            recon_port,
+        }
 
     def _start_approval_timeout_daemon(self) -> None:
         try:
