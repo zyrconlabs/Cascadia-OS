@@ -8,14 +8,15 @@ from typing import Any, Dict, List, Optional
 
 VALID_TYPES = {'system', 'service', 'skill', 'composite'}
 VALID_AUTONOMY = {'manual_only', 'assistive', 'semi_autonomous', 'autonomous'}
+VALID_QUALITY_LEVELS = frozenset({'apprentice', 'professional', 'advanced'})
 VALID_RISK_LEVELS = {'low', 'medium', 'high'}
 VALID_FIELD_TYPES = {'string', 'boolean', 'select', 'number', 'slider', 'tags', 'secret'}
 
 _MANIFEST_FIELDS = {
     'id', 'name', 'version', 'type', 'capabilities', 'required_dependencies',
     'requested_permissions', 'autonomy_level', 'health_hook', 'description',
-    'risk_level', 'permissions', 'requires_approval_for', 'data_access',
-    'writes_external_systems', 'network_access', 'setup_fields',
+    'risk_level', 'quality_level', 'permissions', 'requires_approval_for',
+    'data_access', 'writes_external_systems', 'network_access', 'setup_fields',
 }
 
 
@@ -60,6 +61,7 @@ class Manifest:
     health_hook: str
     description: str
     risk_level: str = 'low'
+    quality_level: str = 'apprentice'
     permissions: List[str] = field(default_factory=list)
     requires_approval_for: List[str] = field(default_factory=list)
     data_access: List[str] = field(default_factory=list)
@@ -122,6 +124,11 @@ def validate_manifest(data: Dict[str, Any]) -> Manifest:
         raise ManifestValidationError(f"Invalid type: {data['type']}")
     if data['autonomy_level'] not in VALID_AUTONOMY:
         raise ManifestValidationError(f"Invalid autonomy level: {data['autonomy_level']}")
+    ql = data.get('quality_level', 'apprentice')
+    if ql not in VALID_QUALITY_LEVELS:
+        raise ManifestValidationError(
+            f"quality_level must be one of {sorted(VALID_QUALITY_LEVELS)}, got: {ql!r}"
+        )
     if not data['id'].islower() or '-' in data['id']:
         raise ManifestValidationError('Manifest id must be lowercase and underscored')
     for key in ('capabilities', 'required_dependencies', 'requested_permissions'):

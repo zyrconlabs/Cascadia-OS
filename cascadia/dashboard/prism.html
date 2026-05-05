@@ -2790,6 +2790,14 @@ async function refreshOpCards() {
     const onlineBadge = online
       ? '<span class="op-badge op-badge--online">online</span>'
       : '<span class="op-badge op-badge--offline">offline</span>';
+    const _ql = op.quality_level;
+    const qualityBadge = _ql === 'professional'
+      ? '<span class="op-badge op-badge--production">Professional</span>'
+      : _ql === 'advanced'
+      ? '<span class="op-badge op-badge--production" style="background:rgba(212,175,55,.2);color:#7a6000">Advanced</span>'
+      : _ql === 'apprentice'
+      ? '<span class="op-badge op-badge--beta">Apprentice</span>'
+      : '';
     if (op.id === 'recon') {
       const rs = S.reconStatus || {};
       const lr = rs.last_run ? new Date(rs.last_run).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) : '—';
@@ -2801,7 +2809,7 @@ async function refreshOpCards() {
         <div class="op-body">
           <div class="op-name">${pill}RECON</div>
           <div style="font-size:11px;color:var(--gray-500);margin:2px 0 3px;font-family:var(--mono)">${rs.leads_found_today??'—'} leads · ${rs.high_confidence_today??'—'} high · ${lr}</div>
-          <div class="op-badges">${statBadge}${onlineBadge}</div>
+          <div class="op-badges">${statBadge}${qualityBadge}${onlineBadge}</div>
           <div style="display:flex;gap:5px;margin-top:7px">
             <button class="hbtn" onclick="event.stopPropagation();doStartRecon()" style="font-size:11px;padding:3px 9px">Start</button>
             <button class="hbtn" onclick="event.stopPropagation();doStopRecon()" style="font-size:11px;padding:3px 9px">Stop</button>
@@ -2819,7 +2827,7 @@ async function refreshOpCards() {
       <div class="op-body">
         <div class="op-name">${op.name}</div>
         <div class="op-desc">${op.description ? op.description.slice(0,52) + (op.description.length>52?'…':'') : ''}</div>
-        <div class="op-badges">${statBadge}${onlineBadge}</div>
+        <div class="op-badges">${statBadge}${qualityBadge}${onlineBadge}</div>
       </div>
       <div class="op-dot ${dotCls}"></div>
     </a>`;
@@ -3938,7 +3946,7 @@ function renderOverviewPanel(panel) {
       <div class="topbar__right">
         ${attnBadge}
         ${catSummaryText ? `<span style="font-family:var(--mono);font-size:9.5px;color:var(--gray-400)">${catSummaryText}</span>` : ''}
-        <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">auto-refresh 60s</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--gray-400)">auto-refresh 30s</span>
       </div>
     </div>
     <div class="surface">
