@@ -661,9 +661,10 @@ const steps = {
         Every action is logged and chain-verified. You stay in control — always.
       </div>
       <div class="finish-btns" style="margin-top:20px">
-        <button class="btn btn-primary" style="width:100%;height:44px;font-size:14px" onclick="completeWizard()">Open Dashboard</button>
+        <button class="btn btn-primary" style="width:100%;height:44px;font-size:14px" id="btn-open-dashboard" onclick="completeWizard()">Open Dashboard</button>
         <button class="btn btn-ghost" style="width:100%;height:44px" onclick="runDemo()">Run Demo First</button>
       </div>
+      <div id="wizard-complete-msg" class="wiz-body-text" style="text-align:center;min-height:18px;margin-top:10px"></div>
     </div>
     <div class="wiz-footer" style="border-top:none;padding-top:0">
       <button class="btn btn-ghost" onclick="back()">Back</button>
@@ -745,19 +746,35 @@ function installOp(id, btn) {
 }
 
 async function completeWizard() {
+  const msgEl  = document.getElementById('wizard-complete-msg');
+  const openBtn = document.getElementById('btn-open-dashboard');
+  if (openBtn) { openBtn.disabled = true; openBtn.textContent = 'Opening…'; }
   try {
-    await fetch(PRISM + '/api/wizard/complete', {
+    const resp = await fetch(PRISM + '/api/wizard/complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        business_type: state.businessType,
+        business_type:  state.businessType,
         approval_rules: state.approvalRules,
-        alert_email: state.alertEmail,
+        alert_email:    state.alertEmail,
       }),
       signal: AbortSignal.timeout(5000),
     });
-  } catch(_) {}
-  window.location.href = '/';
+    if (resp.ok) {
+      if (msgEl) msgEl.textContent = 'Setup complete! Opening your dashboard…';
+      await new Promise(r => setTimeout(r, 1500));
+      window.location.href = '/';
+    } else {
+      if (msgEl) {
+        msgEl.textContent = 'Could not save settings — click here to open dashboard';
+        msgEl.style.cursor = 'pointer';
+        msgEl.onclick = () => window.location.href = '/';
+      }
+      if (openBtn) { openBtn.disabled = false; openBtn.textContent = 'Open Dashboard'; }
+    }
+  } catch(_) {
+    window.location.href = '/';
+  }
 }
 
 async function runDemo() {
