@@ -1,6 +1,6 @@
 """
 tests/test_generic_alert.py
-Tests for Generic Alert Operator (port 8304).
+Tests for Generic Alert Operator (port 8910).
 """
 import json
 import threading
@@ -65,7 +65,7 @@ def test_health_returns_ok():
     result = check()
     assert result["status"] == "healthy"
     assert result["component"] == "generic_alert"
-    assert result["port"] == 8304
+    assert result["port"] == 8910
 
 
 def test_create_alert_creates_approval_request(ga):

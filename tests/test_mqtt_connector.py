@@ -1,6 +1,6 @@
 """
 tests/test_mqtt_connector.py
-Tests for MQTT Connector (port 8305).
+Tests for MQTT Connector (port 8911).
 """
 import json
 import threading
@@ -60,7 +60,7 @@ def test_health_returns_ok(server):
         result = json.loads(resp.read())
     assert result["status"] == "healthy"
     assert result["component"] == "mqtt"
-    assert result["port"] == 8305
+    assert result["port"] == 8911
 
 
 def test_simulated_mode_no_broker(mc):

@@ -1,14 +1,47 @@
 """
 cascadia/connectors/modbus/server.py
-Modbus Connector — port 8306 (env: MODBUS_CONNECTOR_PORT)
-Connects Cascadia to PLCs and industrial equipment via Modbus TCP.
+
+Open-core reference implementation — Apache 2.0
+See: https://github.com/zyrconlabs/cascadia-os
+
+Modbus Connector — port 8912 (env: MODBUS_CONNECTOR_PORT)
+Connects Cascadia to PLCs and industrial equipment via
+Modbus TCP. Demonstrates: read-free / write-gated pattern,
+simulated register bank, industrial safety approval gates.
 ALL equipment writes require approval — no exceptions.
+
+Copy and adapt this file to build your own industrial
+connectors. Commercial operators built on this pattern
+are available via the Zyrcon DEPOT: https://zyrcon.ai
 """
 import json
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-PORT = int(os.environ.get("MODBUS_CONNECTOR_PORT", 8306))
+PORT = int(os.environ.get("MODBUS_CONNECTOR_PORT", 8912))
+
+
+# ── Cascadia platform stubs ───────────────────────────────
+# These are no-op stubs matching the Cascadia operator
+# wiring contract. Replace with real implementations when
+# running inside a full Cascadia OS deployment.
+
+def vault_get(key: str, default=None):
+    """Retrieve a credential from the Cascadia Vault."""
+    return os.environ.get(key, default)
+
+def sentinel_check(action: str, payload: dict) -> bool:
+    """
+    Approval gate check. Returns True if action is
+    pre-approved, False if it requires human approval.
+    In production this calls the Cascadia Sentinel service.
+    """
+    return False  # default: all actions require approval
+
+def crew_register(operator_id: str, port: int) -> None:
+    """Register this operator with the Cascadia CREW."""
+    pass  # no-op in standalone mode
+# ─────────────────────────────────────────────────────────
 
 
 class ModbusSimulator:
@@ -151,6 +184,17 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/api/simulate":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length) or b"{}")
+            action = body.get("action", "")
+            try:
+                result = _dispatch(action, body)
+                result["simulated"] = True
+                self._send(200, result)
+            except Exception as exc:
+                self._send(400, {"error": str(exc)})
+            return
         if self.path != "/api/run":
             self._send(404, {"error": "not found"})
             return
@@ -195,6 +239,7 @@ def _dispatch(action: str, body: dict) -> dict:
 def main():
     server = HTTPServer(("0.0.0.0", PORT), _Handler)
     print(f"Modbus Connector listening on port {PORT}")
+    crew_register("modbus_connector", PORT)
     server.serve_forever()
 
 

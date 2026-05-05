@@ -1,7 +1,17 @@
 """
 cascadia/operators/generic_alert/server.py
-Generic Alert Operator — port 8304 (env: GENERIC_ALERT_PORT)
-Converts sensor threshold violations into Approval Center requests.
+
+Open-core reference implementation — Apache 2.0
+See: https://github.com/zyrconlabs/cascadia-os
+
+Generic Alert Operator — port 8910 (env: GENERIC_ALERT_PORT)
+Converts sensor threshold violations into Approval Center
+requests. Demonstrates: approval gate pattern, SQLite-backed
+state, IoT alert lifecycle (create → pending → resolve).
+
+Copy and adapt this file to build your own alert operators.
+Commercial operators built on this pattern are available
+via the Zyrcon DEPOT: https://zyrcon.ai
 """
 import json
 import os
@@ -11,7 +21,7 @@ import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-PORT = int(os.environ.get("GENERIC_ALERT_PORT", 8304))
+PORT = int(os.environ.get("GENERIC_ALERT_PORT", 8910))
 _DEFAULT_DB = os.environ.get(
     "GENERIC_ALERT_DB",
     os.path.join(os.path.dirname(__file__), "alerts.db"),
@@ -20,6 +30,29 @@ _DEFAULT_DB = os.environ.get(
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ── Cascadia platform stubs ───────────────────────────────
+# These are no-op stubs matching the Cascadia operator
+# wiring contract. Replace with real implementations when
+# running inside a full Cascadia OS deployment.
+
+def vault_get(key: str, default=None):
+    """Retrieve a credential from the Cascadia Vault."""
+    return os.environ.get(key, default)
+
+def sentinel_check(action: str, payload: dict) -> bool:
+    """
+    Approval gate check. Returns True if action is
+    pre-approved, False if it requires human approval.
+    In production this calls the Cascadia Sentinel service.
+    """
+    return False  # default: all actions require approval
+
+def crew_register(operator_id: str, port: int) -> None:
+    """Register this operator with the Cascadia CREW."""
+    pass  # no-op in standalone mode
+# ─────────────────────────────────────────────────────────
 
 
 class AlertStore:
@@ -249,6 +282,17 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/api/simulate":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length) or b"{}")
+            action = body.get("action", "")
+            try:
+                result = _dispatch(action, body)
+                result["simulated"] = True
+                self._send(200, result)
+            except Exception as exc:
+                self._send(400, {"error": str(exc)})
+            return
         if self.path != "/api/run":
             self._send(404, {"error": "not found"})
             return
@@ -304,6 +348,7 @@ def _dispatch(action: str, body: dict) -> dict:
 def main():
     server = HTTPServer(("0.0.0.0", PORT), _Handler)
     print(f"Generic Alert operator listening on port {PORT}")
+    crew_register("generic_alert", PORT)
     server.serve_forever()
 
 
