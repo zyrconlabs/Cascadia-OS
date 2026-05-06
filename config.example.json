@@ -107,6 +107,14 @@
       "pulse_file": "./data/runtime/almanac.pulse"
     },
     {
+      "name": "vantage",
+      "module": "cascadia.gateway.vantage",
+      "port": 6208,
+      "tier": 2,
+      "pulse_file": "./data/runtime/vantage.pulse",
+      "depends_on": ["crew", "sentinel"]
+    },
+    {
       "name": "prism",
       "module": "cascadia.dashboard.prism",
       "port": 6300,
@@ -200,5 +208,13 @@
     "_note": "SMTP credentials for transactional billing emails. Store in .env not here. Leave blank to disable email (logs only)."
   },
   "guided_configuration_enabled": false,
-  "_guided_configuration_note": "Set to true to enable the /api/config/* routes and guided setup wizard. Off by default — requires manual activation."
+  "_guided_configuration_note": "Set to true to enable the /api/config/* routes and guided setup wizard. Off by default — requires manual activation.",
+  "connectors": {
+    "vantage_url": "http://localhost:6208",
+    "port_ranges": {
+      "notification": [9000, 9003],
+      "saas": [9200, 9210],
+      "enterprise": [9300, 9310]
+    }
+  }
 }
