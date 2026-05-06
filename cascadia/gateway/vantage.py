@@ -10,6 +10,7 @@ import urllib.request
 from typing import Any, Dict, Optional
 
 from cascadia.shared.config import load_config
+from cascadia.shared.entitlements import get_risk_level
 from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.system.audit_log import AuditLog
 
@@ -17,68 +18,7 @@ VANTAGE_PORT = 6208
 CREW_PORT = 5100
 SENTINEL_PORT = 5102
 
-# SENTINEL's 17-entry generic vocabulary (domain.verb form)
-_SENTINEL_RISK_LEVELS: Dict[str, str] = {
-    'email.send': 'medium', 'email.delete': 'high',
-    'crm.write': 'low', 'crm.delete': 'high',
-    'file.read': 'low', 'file.write': 'medium', 'file.delete': 'high', 'file.overwrite': 'medium',
-    'calendar.read': 'low', 'calendar.write': 'medium',
-    'invoice.create': 'high', 'billing.write': 'high',
-    'shell.exec': 'critical', 'browser.submit': 'medium',
-    'payment.create': 'high', 'vault.read': 'low', 'vault.write': 'medium',
-}
-
-# Layer 1: map connector-specific prefix to SENTINEL's generic domain
-_PREFIX_TO_DOMAIN: Dict[str, str] = {
-    'gmail': 'email', 'email': 'email', 'outlook': 'email', 'smtp': 'email',
-    'slack': 'email', 'twilio': 'email', 'mailgun': 'email',
-    'salesforce': 'crm', 'hubspot': 'crm', 'pipedrive': 'crm', 'airtable': 'crm',
-    'gdrive': 'file', 'dropbox': 'file', 'box': 'file', 'onedrive': 'file', 'drive': 'file',
-    'gcal': 'calendar', 'calendar': 'calendar',
-    'stripe': 'billing', 'quickbooks': 'billing', 'xero': 'billing',
-    'invoice': 'invoice',
-    'shell': 'shell', 'bash': 'shell',
-    'browser': 'browser', 'chrome': 'browser',
-    'vault': 'vault',
-    'payment': 'payment',
-}
-
-# Layer 2: verb segment → risk override when domain+verb isn't in SENTINEL vocabulary
-_VERB_RISK: Dict[str, str] = {
-    'exec': 'critical', 'run': 'critical', 'shell': 'critical',
-    'delete': 'high', 'remove': 'high', 'destroy': 'high', 'drop': 'high',
-    'create': 'medium', 'send': 'medium', 'write': 'medium', 'update': 'medium',
-    'patch': 'medium', 'post': 'medium', 'submit': 'medium', 'overwrite': 'medium',
-    'upload': 'medium', 'publish': 'medium', 'add': 'medium',
-    'read': 'low', 'get': 'low', 'list': 'low', 'search': 'low', 'fetch': 'low',
-    'query': 'low', 'view': 'low', 'export': 'low', 'check': 'low',
-}
-
 _HIGH_RISK = {'high', 'critical'}
-
-
-def resolve_risk_level(capability: str) -> str:
-    """3-layer risk resolution for connector-specific capability strings.
-
-    Layer 1: exact match in SENTINEL vocabulary
-    Layer 2: map prefix to domain, find domain.verb in SENTINEL vocabulary
-    Layer 3: scan verb segments for direct risk match, fallback to low
-    """
-    if capability in _SENTINEL_RISK_LEVELS:
-        return _SENTINEL_RISK_LEVELS[capability]
-    parts = capability.lower().replace('-', '_').split('.')
-    prefix = parts[0] if parts else ''
-    domain = _PREFIX_TO_DOMAIN.get(prefix)
-    if domain and len(parts) >= 2:
-        verb_seg = parts[-1].split('_')[0]
-        domain_verb = f'{domain}.{verb_seg}'
-        if domain_verb in _SENTINEL_RISK_LEVELS:
-            return _SENTINEL_RISK_LEVELS[domain_verb]
-    for part in parts:
-        for seg in part.split('_'):
-            if seg in _VERB_RISK:
-                return _VERB_RISK[seg]
-    return 'low'
 
 
 def _http_post(url: str, data: Dict[str, Any], timeout: int = 5) -> Dict[str, Any]:
@@ -115,18 +55,13 @@ def check_capability(operator_id: str, capability: str) -> Dict[str, Any]:
 
 def call_sentinel(operator_id: str, capability: str, autonomy_level: str) -> Dict[str, Any]:
     """Map connector capability to nearest SENTINEL vocabulary entry and check."""
-    parts = capability.lower().replace('-', '_').split('.')
-    prefix = parts[0] if parts else ''
-    domain = _PREFIX_TO_DOMAIN.get(prefix, prefix)
-    verb_seg = parts[-1].split('_')[0] if len(parts) > 1 else 'write'
-    sentinel_action = f'{domain}.{verb_seg}'
-    if sentinel_action not in _SENTINEL_RISK_LEVELS:
-        risk = resolve_risk_level(capability)
-        sentinel_action = {
-            'critical': 'shell.exec',
-            'high': 'file.delete',
-            'medium': 'file.write',
-        }.get(risk, 'file.read')
+    risk = get_risk_level(capability)
+    sentinel_action = {
+        'critical': 'shell.exec',
+        'high': 'file.delete',
+        'medium': 'file.write',
+        'low': 'file.read',
+    }.get(risk, 'file.read')
     return _http_post(
         f'http://localhost:{SENTINEL_PORT}/check',
         {'action': sentinel_action, 'operator_id': operator_id, 'autonomy_level': autonomy_level},
@@ -158,14 +93,16 @@ class VantageService:
         self.runtime.register_route('POST', '/api/simulate', self.handle_simulate)
 
     def _log_vantage_call(self, operator_id: str, capability: str, risk_level: str,
-                          decision: str, run_id: Optional[str] = None) -> None:
-        self._audit.record(
-            event_type='vantage_call',
-            actor=operator_id,
-            action_key=capability,
+                          decision: str, run_id: Optional[str] = None,
+                          connector_id: str = '') -> None:
+        self._audit.log_capability_call(
+            operator_id=operator_id,
+            connector_id=connector_id,
+            capability=capability,
             risk_level=risk_level,
-            decision=decision,
-            run_id=run_id,
+            verdict=decision,
+            run_id=run_id or '',
+            simulated=False,
         )
 
     def handle_call(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
@@ -200,7 +137,7 @@ class VantageService:
             }
 
         # Step 2: resolve risk level
-        risk_level = resolve_risk_level(capability)
+        risk_level = get_risk_level(capability)
 
         # Step 3: gate high/critical through SENTINEL
         if risk_level in _HIGH_RISK:
@@ -233,7 +170,8 @@ class VantageService:
 
         self._call_count += 1
         decision = 'allowed' if 'error' not in connector_result else 'connector_error'
-        self._log_vantage_call(operator_id, capability, risk_level, decision, run_id)
+        self._log_vantage_call(operator_id, capability, risk_level, decision, run_id,
+                               connector_id=str(connector_port))
 
         self.runtime.logger.info(
             'VANTAGE %s %s risk=%s -> %s (%sms)',
@@ -263,7 +201,7 @@ class VantageService:
         operators = crew_data.get('operators', {})
         registry: Dict[str, Any] = {
             op_id: [
-                {'capability': c, 'risk_level': resolve_risk_level(c)}
+                {'capability': c, 'risk_level': get_risk_level(c)}
                 for c in op_data.get('capabilities', [])
             ]
             for op_id, op_data in operators.items()
@@ -280,7 +218,7 @@ class VantageService:
         return 200, {
             'operator_id': operator_id,
             'capabilities': [
-                {'capability': c, 'risk_level': resolve_risk_level(c)} for c in caps
+                {'capability': c, 'risk_level': get_risk_level(c)} for c in caps
             ],
         }
 
@@ -293,7 +231,7 @@ class VantageService:
         if not operator_id or not capability:
             return 400, {'error': 'operator_id and capability are required'}
 
-        risk_level = resolve_risk_level(capability)
+        risk_level = get_risk_level(capability)
         crew_result = check_capability(operator_id, capability)
         crew_valid: Optional[bool]
         if crew_result.get('error'):

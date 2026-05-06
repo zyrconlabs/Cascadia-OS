@@ -1,17 +1,13 @@
-"""sentinel.py - Cascadia OS v0.44 | SENTINEL: Security, compliance, data governance."""
+"""sentinel.py - Cascadia OS v0.47 | SENTINEL: Security, compliance, data governance."""
 from __future__ import annotations
 import argparse
 from typing import Any, Dict, List
 from cascadia.shared.config import load_config
+from cascadia.shared.entitlements import CAPABILITY_REGISTRY, get_risk_level
+from cascadia.shared.entitlements import RISK_LEVELS as _RISK_LEVELS_META  # noqa: F401
 from cascadia.shared.service_runtime import ServiceRuntime
-
-RISK_LEVELS: Dict[str, str] = {
-    'email.send':'medium','email.delete':'high','crm.write':'low','crm.delete':'high',
-    'file.read':'low','file.write':'medium','file.delete':'high','file.overwrite':'medium',
-    'calendar.read':'low','calendar.write':'medium','invoice.create':'high',
-    'billing.write':'high','shell.exec':'critical','browser.submit':'medium',
-    'payment.create':'high','vault.read':'low','vault.write':'medium',
-}
+# Sentinel exposes RISK_LEVELS as the flat capability→risk map that external callers depend on
+RISK_LEVELS = CAPABILITY_REGISTRY
 COMPLIANCE_RULES: Dict[str, List[str]] = {
     'email.send':['semi_autonomous','autonomous'],'crm.write':['assistive','semi_autonomous','autonomous'],
     'invoice.create':['autonomous'],'billing.write':['autonomous'],'shell.exec':[],
@@ -31,7 +27,7 @@ class SentinelService:
 
     def check_action(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         action = payload.get('action', ''); autonomy = payload.get('autonomy_level', 'manual_only'); op = payload.get('operator_id', '')
-        risk = RISK_LEVELS.get(action, 'low'); allowed = COMPLIANCE_RULES.get(action)
+        risk = get_risk_level(action); allowed = COMPLIANCE_RULES.get(action)
         if allowed is None: verdict, reason = 'allowed', 'no sentinel rule'
         elif len(allowed) == 0: verdict, reason = 'blocked', f'{action} blocked by sentinel'
         elif autonomy in allowed: verdict, reason = 'allowed', f'autonomy {autonomy} satisfies rule'

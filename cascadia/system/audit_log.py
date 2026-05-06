@@ -91,6 +91,33 @@ class AuditLog:
         self._last_hash = chain_hash
         logger.info('AuditLog: recorded %s for approval %s', event_type, approval_id)
 
+    def log_capability_call(
+        self,
+        operator_id: str,
+        connector_id: str,
+        capability: str,
+        risk_level: str,
+        verdict: str,
+        run_id: str = '',
+        simulated: bool = False,
+    ) -> None:
+        """Log an operator→connector capability call. Called by VANTAGE for every routing decision.
+
+        Appended to the same audit chain as approval events. Chain-hash preserved.
+        Column mapping: actor=operator_id, action_key=capability, decision=verdict,
+                        edit_summary=connector_id, edited=simulated.
+        """
+        self.record(
+            event_type='capability_call',
+            actor=operator_id,
+            action_key=capability,
+            risk_level=risk_level,
+            decision=verdict,
+            run_id=run_id or None,
+            edited=simulated,
+            edit_summary=connector_id or None,
+        )
+
     def query(self, days: int = 30, actor: Optional[str] = None,
               decision: Optional[str] = None) -> List[Dict[str, Any]]:
         """Query audit events with optional filters."""
