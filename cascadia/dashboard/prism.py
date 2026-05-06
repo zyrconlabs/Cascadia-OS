@@ -203,6 +203,7 @@ class PrismService:
         # Billing sprint — Stripe webhook, billing portal, checkout, waitlist, notifications, tier
         self.runtime.register_route('POST', '/api/stripe/webhook',                       self.billing_stripe_webhook)
         self.runtime.register_route('GET',  '/api/prism/billing',                        self.get_billing_status)
+        self.runtime.register_route('GET',  '/api/prism/billing/seats',                 self.get_billing_seats)
         self.runtime.register_route('POST', '/api/prism/billing/portal',                 self.create_portal_session)
         self.runtime.register_route('POST', '/api/prism/billing/checkout',               self.create_checkout_session)
         self.runtime.register_route('POST', '/api/waitlist',                             self.handle_waitlist)
@@ -2248,6 +2249,30 @@ document.getElementById('key').addEventListener('keydown', function(e){
             return 200, {
                 'stats': sub_mgr.get_stats(),
                 'customers': sub_mgr.list_customers(),
+            }
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+
+    def get_billing_seats(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/billing/seats — seat usage for a customer."""
+        stripe_customer_id = payload.get('stripe_customer_id', '')
+        if not stripe_customer_id:
+            return 400, {'error': 'stripe_customer_id required'}
+        try:
+            from cascadia.billing.subscription_manager import SubscriptionManager
+            sm = SubscriptionManager()
+            customer = sm.get_customer(stripe_customer_id)
+            if not customer:
+                return 404, {'error': 'customer not found'}
+            max_u = sm.get_max_users(stripe_customer_id)
+            seat_count = customer.get('seat_count') or 0
+            return 200, {
+                'stripe_customer_id': stripe_customer_id,
+                'tier': customer['tier'],
+                'max_users': max_u,
+                'seat_count': seat_count,
+                'seats_available': max_u - seat_count,
+                'can_add_user': seat_count < max_u,
             }
         except Exception as exc:
             return 500, {'error': str(exc)}

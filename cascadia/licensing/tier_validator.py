@@ -19,14 +19,31 @@ from typing import Any, Dict
 
 CURRENT_KEY_VERSION = 'v2'
 
-VALID_TIERS = ('lite', 'pro', 'business', 'enterprise')
+VALID_TIERS = ('lite', 'pro', 'pro_workspace', 'business', 'enterprise')
 
 TIER_RANKS: Dict[str, int] = {
-    'lite':       0,
-    'pro':        1,
-    'business':   2,
-    'enterprise': 3,
+    'lite':          0,
+    'pro':           1,
+    'pro_workspace': 2,
+    'business':      3,
+    'enterprise':    4,
 }
+
+TIER_MAX_USERS: Dict[str, int] = {
+    'lite':             1,
+    'pro':              1,
+    'pro_workspace':    3,
+    'business_starter': 5,
+    'business_growth':  10,
+    'business_max':     999,
+    'business':         5,
+    'enterprise':       999,
+}
+
+
+def get_max_users(tier: str) -> int:
+    """Return the maximum number of users allowed for a given tier."""
+    return TIER_MAX_USERS.get(tier, 1)
 
 _VERSION_PREFIX = 'v'
 
@@ -56,24 +73,39 @@ class TierValidator:
         if not key or not key.startswith('zyrcon_'):
             return {'valid': False, 'error': 'invalid_format'}
 
-        parts = key.split('_')
+        # Match tier by prefix (handles tiers that contain underscores, e.g. pro_workspace)
+        tier = None
+        for t in sorted(VALID_TIERS, key=len, reverse=True):
+            if key.startswith(f'zyrcon_{t}_'):
+                tier = t
+                break
+        if not tier:
+            return {'valid': False, 'error': 'invalid_tier'}
 
-        # Distinguish v1 (5 parts) from v2+ (6+ parts with version tag)
-        if len(parts) == 6 and _is_version_tag(parts[4]):
-            _, tier, customer_id, expiry_str, key_version, sig = parts
-        elif len(parts) == 5:
-            # v1 format — no version tag; reject after secret rotation
+        # remainder is everything after 'zyrcon_{tier}_'
+        remainder_parts = key[len(f'zyrcon_{tier}_'):].split('_')
+
+        # v2+: [...customer_id..., expiry, version_tag, sig]
+        # v1:  [...customer_id..., expiry, sig]
+        if len(remainder_parts) >= 4 and _is_version_tag(remainder_parts[-2]):
+            sig = remainder_parts[-1]
+            key_version = remainder_parts[-2]
+            expiry_str = remainder_parts[-3]
+            customer_id = '_'.join(remainder_parts[:-3])
+        elif len(remainder_parts) >= 3:
+            sig = remainder_parts[-1]
+            expiry_str = remainder_parts[-2]
+            customer_id = '_'.join(remainder_parts[:-2])
             key_version = 'v1'
-            _, tier, customer_id, expiry_str, sig = parts
         else:
+            return {'valid': False, 'error': 'invalid_format'}
+
+        if not customer_id:
             return {'valid': False, 'error': 'invalid_format'}
 
         if key_version != self._key_version:
             return {'valid': False, 'error': 'key_version_rejected',
                     'key_version': key_version, 'expected': self._key_version}
-
-        if tier not in VALID_TIERS:
-            return {'valid': False, 'error': 'invalid_tier'}
 
         try:
             expiry_ts = int(expiry_str)
