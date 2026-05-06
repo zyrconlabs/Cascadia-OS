@@ -4,7 +4,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from cascadia.gateway.vantage import VantageService, resolve_risk_level
+from cascadia.gateway.vantage import VantageService
+from cascadia.shared.entitlements import get_risk_level as resolve_risk_level
 
 
 def _make_service() -> VantageService:
@@ -55,8 +56,8 @@ class TestResolveRiskLevel(unittest.TestCase):
     def test_default_low_read(self):
         assert resolve_risk_level('some_service.read_data') == 'low'
 
-    def test_default_low_unknown(self):
-        assert resolve_risk_level('totally.unknown') == 'low'
+    def test_default_medium_unknown(self):
+        assert resolve_risk_level('totally.unknown') == 'medium'  # safe default
 
 
 class TestVantageHandlers(unittest.TestCase):
