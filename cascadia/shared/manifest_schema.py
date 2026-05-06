@@ -17,6 +17,7 @@ _MANIFEST_FIELDS = {
     'requested_permissions', 'autonomy_level', 'health_hook', 'description',
     'risk_level', 'quality_level', 'permissions', 'requires_approval_for',
     'data_access', 'writes_external_systems', 'network_access', 'setup_fields',
+    'requires_connectors',
 }
 
 
@@ -68,6 +69,7 @@ class Manifest:
     writes_external_systems: bool = False
     network_access: bool = False
     setup_fields: List[SetupField] = field(default_factory=list)
+    requires_connectors: List[str] = field(default_factory=list)
 
 
 class ManifestValidationError(ValueError):

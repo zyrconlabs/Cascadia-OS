@@ -1,0 +1,18 @@
+{
+  "id": "vantage",
+  "name": "VANTAGE Capability Gateway",
+  "version": "0.1.0",
+  "type": "system",
+  "description": "Internal capability enforcement gateway. Validates declared capabilities against CREW registry, resolves risk levels via 3-layer mapping, gates high-risk calls through SENTINEL, and logs every connector call to AuditLog.",
+  "capabilities": [],
+  "requires_connectors": [],
+  "required_dependencies": ["crew", "sentinel"],
+  "requested_permissions": [],
+  "autonomy_level": "manual_only",
+  "health_hook": "http://localhost:6208/api/health",
+  "risk_level": "low",
+  "quality_level": "professional",
+  "writes_external_systems": false,
+  "network_access": true,
+  "setup_fields": []
+}
