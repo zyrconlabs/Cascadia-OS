@@ -37,6 +37,7 @@ license gate.
 | `icon` | string | Filename of icon in package — e.g. `"icon.png"` |
 | `approval_required` | boolean | Operator requires human approval before actions |
 | `approval_required_for_writes` | boolean | Connector requires approval before any write |
+| `quality_level` | string | Operator quality tier — see valid values below. Default: `"apprentice"` |
 | `nats_subjects` | array | NATS subjects this item subscribes to |
 | `auth_type` | string | Connector auth method — see valid values below |
 | `screenshots` | array | Filenames of screenshots in package |
@@ -52,6 +53,25 @@ license gate.
 **type:** `operator`, `connector`, `orchestrator`
 
 **tier_required:** `lite`, `pro`, `business`, `enterprise`
+
+> **Canonical field name is `tier_required`.** The alias `tier` is accepted for backwards
+> compatibility (present in some older first-party connectors) but `tier_required` is the
+> standard for all new manifests. The manifest validator and CREW registry both prefer
+> `tier_required`.
+
+**quality_level:** `apprentice`, `professional`, `advanced`
+
+Describes the operator's maturity and capability level. Displayed as a badge in the PRISM
+operator catalog. Validated by `manifest_schema` at registration time — invalid values are
+rejected.
+
+| Value | Meaning |
+|-------|---------|
+| `apprentice` | Basic automation, handles common cases, may need human guidance |
+| `professional` | Production-ready, handles edge cases, minimal supervision |
+| `advanced` | Expert-level, handles complex multi-step scenarios autonomously |
+
+Default: `"apprentice"` (applied automatically if the field is absent).
 
 **category:**
 `sales`, `marketing`, `support`, `finance`, `operations`, `devops`,
