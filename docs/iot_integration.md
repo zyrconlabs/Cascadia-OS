@@ -1,4 +1,4 @@
-# IoT Integration Guide — Cascadia OS v0.47
+# IoT Integration Guide — Cascadia OS 2026.5
 
 ## Overview
 
@@ -16,10 +16,10 @@ Physical sensors → CONDUIT → VANGUARD → AI Operators → Approval Gates �
 
 | Protocol | Status | Notes |
 |----------|--------|-------|
-| MQTT | Available (v0.47) | paho-mqtt required: `pip install paho-mqtt` |
-| Modbus TCP/RTU | Planned (v0.48) | Industrial PLC and sensor integration |
-| Zigbee | Planned (2026.4) | Low-power mesh sensor networks |
-| GPIO (Raspberry Pi) | Planned (2026.4) | Direct pin read on zyrcon-arm platform |
+| MQTT | Available (2026.5) | paho-mqtt required: `pip install paho-mqtt` |
+| Modbus TCP/RTU | Available (2026.5) | Industrial PLC and sensor integration |
+| Zigbee | Available (2026.5) | Low-power mesh sensor networks |
+| GPIO (Raspberry Pi) | Available (2026.5) | Direct pin read on zyrcon-arm platform |
 
 ---
 

@@ -1,5 +1,5 @@
 # EU AI Act Articles 8–15 Compliance Reference
-### Cascadia OS v0.47 · April 2026
+### Cascadia OS 2026.5 · May 2026
 
 ---
 
@@ -17,7 +17,7 @@ The EU AI Act (Regulation 2024/1689), Articles 8–15, imposes mandatory require
 
 ## Compliance Statement
 
-Cascadia OS v0.47 is designed from its foundations to satisfy the risk management, data governance, technical documentation, logging, transparency, human oversight, and accuracy requirements of EU AI Act Articles 8–15 for high-risk AI systems.
+Cascadia OS 2026.5 is designed from its foundations to satisfy the risk management, data governance, technical documentation, logging, transparency, human oversight, and accuracy requirements of EU AI Act Articles 8–15 for high-risk AI systems.
 
 This compliance is implemented at the kernel level and enforced by the runtime. It cannot be accidentally circumvented by operator developers.
 
