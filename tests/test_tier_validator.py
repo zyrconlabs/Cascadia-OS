@@ -8,9 +8,11 @@ import unittest
 
 from cascadia.licensing.tier_validator import (
     CURRENT_KEY_VERSION,
+    TIER_MAX_USERS,
     TIER_RANKS,
     VALID_TIERS,
     TierValidator,
+    get_max_users,
 )
 
 SECRET_V2 = 'e4806882a41883d35af2aa4ecfa20e89939b3cc53adf103e342f45e1e9661e4d'
@@ -38,6 +40,22 @@ class TestTierValidatorConstants(unittest.TestCase):
     def test_valid_tiers_complete(self) -> None:
         for tier in ('lite', 'pro', 'business', 'enterprise'):
             self.assertIn(tier, VALID_TIERS)
+
+    def test_pro_workspace_in_valid_tiers(self) -> None:
+        self.assertIn('pro_workspace', VALID_TIERS)
+
+    def test_pro_workspace_rank(self) -> None:
+        self.assertGreater(TIER_RANKS['pro_workspace'], TIER_RANKS['pro'])
+        self.assertLess(TIER_RANKS['pro_workspace'], TIER_RANKS['business'])
+        self.assertEqual(TIER_RANKS['pro_workspace'], 2)
+
+    def test_pro_workspace_max_users(self) -> None:
+        self.assertEqual(get_max_users('pro_workspace'), 3)
+        self.assertEqual(get_max_users('lite'), 1)
+        self.assertEqual(get_max_users('pro'), 1)
+        self.assertEqual(get_max_users('business'), 5)
+        self.assertEqual(get_max_users('enterprise'), 999)
+        self.assertEqual(get_max_users('unknown_tier'), 1)
 
 
 class TestTierValidatorGenerate(unittest.TestCase):

@@ -9,6 +9,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from cascadia.licensing.tier_validator import get_max_users
 from cascadia.shared.logger import get_logger
 
 logger = get_logger('subscription_manager')
@@ -47,6 +48,14 @@ class SubscriptionManager:
                     processed_at TEXT NOT NULL
                 )
             ''')
+            self._migrate_add_seats(conn)
+
+    def _migrate_add_seats(self, conn: sqlite3.Connection) -> None:
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(customers)").fetchall()}
+        if 'max_users' not in existing:
+            conn.execute("ALTER TABLE customers ADD COLUMN max_users INTEGER NOT NULL DEFAULT 1")
+        if 'seat_count' not in existing:
+            conn.execute("ALTER TABLE customers ADD COLUMN seat_count INTEGER NOT NULL DEFAULT 0")
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
@@ -72,25 +81,40 @@ class SubscriptionManager:
     def upsert_customer(self, stripe_customer_id: str, email: str, tier: str,
                         license_key: str = None, stripe_sub_id: str = None) -> None:
         now = self._now()
+        max_u = get_max_users(tier)
         existing = self.get_customer(stripe_customer_id)
         with sqlite3.connect(self._db) as conn:
             if existing:
                 conn.execute('''
                     UPDATE customers SET
                         email = ?, tier = ?, license_key = ?, stripe_sub_id = ?,
-                        status = 'active', renewed_at = ?, updated_at = ?
+                        status = 'active', renewed_at = ?, updated_at = ?, max_users = ?
                     WHERE stripe_customer_id = ?
-                ''', (email, tier, license_key, stripe_sub_id, now, now, stripe_customer_id))
+                ''', (email, tier, license_key, stripe_sub_id, now, now, max_u, stripe_customer_id))
                 logger.info('SubscriptionManager: updated %s → %s', stripe_customer_id, tier)
             else:
                 conn.execute('''
                     INSERT INTO customers
                     (stripe_customer_id, email, tier, license_key, stripe_sub_id,
-                     status, subscribed_at, created_at, updated_at)
-                    VALUES (?,?,?,?,?,'active',?,?,?)
+                     status, subscribed_at, created_at, updated_at, max_users)
+                    VALUES (?,?,?,?,?,'active',?,?,?,?)
                 ''', (stripe_customer_id, email, tier, license_key, stripe_sub_id,
-                      now, now, now))
+                      now, now, now, max_u))
                 logger.info('SubscriptionManager: created %s tier=%s', stripe_customer_id, tier)
+
+    def get_max_users(self, stripe_customer_id: str) -> int:
+        customer = self.get_customer(stripe_customer_id)
+        if not customer:
+            return 1
+        return customer.get('max_users') or get_max_users(customer['tier'])
+
+    def can_add_user(self, stripe_customer_id: str) -> bool:
+        customer = self.get_customer(stripe_customer_id)
+        if not customer:
+            return False
+        max_u = customer.get('max_users') or get_max_users(customer['tier'])
+        seat_count = customer.get('seat_count') or 0
+        return seat_count < max_u
 
     def update_tier(self, stripe_customer_id: str, new_tier: str) -> None:
         now = self._now()

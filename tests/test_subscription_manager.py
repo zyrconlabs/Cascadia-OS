@@ -76,5 +76,30 @@ class SubscriptionManagerTests(unittest.TestCase):
         self.assertEqual(len(all_customers), 3)
 
 
+    def test_seat_limit_check_pro_workspace(self) -> None:
+        self.mgr.upsert_customer('cus_pw1', 'pw1@test.com', 'pro_workspace')
+        customer = self.mgr.get_customer('cus_pw1')
+        self.assertEqual(customer['max_users'], 3)
+        self.assertTrue(self.mgr.can_add_user('cus_pw1'))
+
+    def test_seat_limit_check_pro(self) -> None:
+        self.mgr.upsert_customer('cus_pro1', 'pro1@test.com', 'pro')
+        customer = self.mgr.get_customer('cus_pro1')
+        self.assertEqual(customer['max_users'], 1)
+
+    def test_can_add_user_false_when_at_limit(self) -> None:
+        self.mgr.upsert_customer('cus_full', 'full@test.com', 'pro')
+        import sqlite3
+        with sqlite3.connect(self.mgr._db) as conn:
+            conn.execute("UPDATE customers SET seat_count = 1 WHERE stripe_customer_id = 'cus_full'")
+        self.assertFalse(self.mgr.can_add_user('cus_full'))
+
+    def test_can_add_user_false_for_unknown(self) -> None:
+        self.assertFalse(self.mgr.can_add_user('cus_notexist'))
+
+    def test_get_max_users_fallback_for_unknown(self) -> None:
+        self.assertEqual(self.mgr.get_max_users('cus_notexist'), 1)
+
+
 if __name__ == '__main__':
     unittest.main()
