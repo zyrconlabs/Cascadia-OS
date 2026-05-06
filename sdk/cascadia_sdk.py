@@ -1,5 +1,5 @@
 """
-cascadia_sdk.py — Cascadia OS SDK v0.47
+cascadia_sdk.py — Cascadia OS SDK 2026.5
 Stdlib-only helper functions for operator developers.
 Provides type-safe wrappers for VAULT, SENTINEL, BEACON, and CREW APIs.
 
