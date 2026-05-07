@@ -44,6 +44,9 @@ stop_service "social" 8011
 # ── 7. CHIEF ──────────────────────────────────────────────────────────────
 stop_service "chief" 8006
 
+# ── 6.5. RECON ────────────────────────────────────────────────────────────
+stop_service "recon" 8002
+
 # ── 6. Mission Manager ────────────────────────────────────────────────────
 stop_service "mission_manager" 6207
 
@@ -119,7 +122,7 @@ fi
 echo ""
 echo "Verifying clean shutdown..."
 CONFLICTS=""
-for _P in 4222 4011 5100 6100 6207 6300 8006 8011 6209; do
+for _P in 4222 4011 5100 6100 6207 6300 8002 8006 8011 6209; do
     _PPID=$(lsof -ti:$_P 2>/dev/null)
     [ -n "$_PPID" ] && CONFLICTS="$CONFLICTS $_P($_PPID)"
 done

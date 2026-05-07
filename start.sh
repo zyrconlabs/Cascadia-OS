@@ -174,6 +174,23 @@ if curl -sf http://127.0.0.1:6207/healthz > /dev/null 2>&1; then
 fi
 
 # ── 6. Operators ──────────────────────────────────────────────────────────
+# ── RECON operator ──────────────────────────────────
+RECON_DIR="/Users/andy/Zyrcon/operators/cascadia-os-operators/recon"
+echo "▸ Starting RECON..."
+if curl -sf http://127.0.0.1:8002/api/health > /dev/null 2>&1; then
+    echo "✓ RECON already running"
+else
+    cd "$RECON_DIR"
+    python3 dashboard.py >> "$REPO/data/logs/recon.log" 2>&1 &
+    RECON_PID=$!
+    echo $RECON_PID > "$REPO/data/runtime/pids/recon.pid"
+    cd "$REPO"
+    sleep 3
+    curl -sf http://127.0.0.1:8002/api/health > /dev/null \
+        && echo "✓ RECON ready (PID $RECON_PID)" \
+        || echo "⚠ RECON started but health check failed — check recon.log"
+fi
+
 # ── CHIEF operator ──────────────────────────────────
 CHIEF_DIR="/Users/andy/Zyrcon/operators/cascadia-os-operators/chief"
 if [ -f "$CHIEF_DIR/server.py" ]; then
