@@ -36,6 +36,7 @@ _PORTS: Dict[str, int] = {
     'sentinel': 5102,
     'beacon':   6200,
     'crew':     5100,
+    'vantage':  6208,
 }
 
 
@@ -73,6 +74,37 @@ def _get(port: int, path: str, timeout: int = 3) -> Optional[Dict[str, Any]]:
             return json.loads(r.read().decode('utf-8'))
     except Exception:
         return None
+
+
+def vantage_call(
+    operator_id: str,
+    capability: str,
+    connector_port: int,
+    payload: dict = None,
+    connector_path: str = "/api/run",
+    run_id: str = "",
+    autonomy_level: str = "assistive",
+) -> dict | None:
+    """
+    Route an operator→connector call through VANTAGE
+    capability gateway (port 6208).
+    Enforces capability declaration, risk-based gating,
+    and audit logging on every call.
+    Returns connector response dict or None on failure.
+    """
+    return _post(
+        6208,
+        "/call",
+        {
+            "operator_id":    operator_id,
+            "capability":     capability,
+            "connector_port": connector_port,
+            "connector_path": connector_path,
+            "payload":        payload or {},
+            "run_id":         run_id,
+            "autonomy_level": autonomy_level,
+        }
+    )
 
 
 def vault_store(key: str, value: str) -> bool:
