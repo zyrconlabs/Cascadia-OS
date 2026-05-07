@@ -36,6 +36,13 @@ case "${1:-}" in
     bash stop.sh > "$LOG_DIR/shutdown.log" 2>&1 &
     exit 0
     ;;
+  restart-all)
+    cd "$REPO_DIR"
+    bash stop.sh > "$LOG_DIR/shutdown.log" 2>&1
+    sleep 3
+    bash start.sh > "$LOG_DIR/startup.log" 2>&1 &
+    exit 0
+    ;;
   open-prism)
     open "http://localhost:$PRISM_PORT/" 2>/dev/null
     exit 0
@@ -134,11 +141,9 @@ fi
 
 # ── Actions ───────────────────────────────────────────────────────────────────
 echo "---"
-if [[ "$flint_up" == "1" ]]; then
-  echo "■ Stop All | bash='$0' param1=stop-all terminal=false refresh=true color=#FF3B30 font=Menlo size=12"
-else
-  echo "▶ Start All | bash='$0' param1=start-all terminal=false refresh=true color=#00C853 font=Menlo size=12"
-fi
+echo "▶ Start | bash='$0' param1=start-all terminal=false refresh=true color=#00C853 font=Menlo size=12"
+echo "■ Hard Stop | bash='$0' param1=stop-all terminal=false refresh=true color=#FF3B30 font=Menlo size=12"
+echo "↺ Restart | bash='$0' param1=restart-all terminal=false refresh=true color=#FF9500 font=Menlo size=12"
 
 # ── Links ─────────────────────────────────────────────────────────────────────
 echo "---"
