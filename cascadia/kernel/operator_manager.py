@@ -6,8 +6,8 @@ Remove the folder, it's gone. The manager has zero hardcoded operator knowledge.
 
 Design contract:
   - Scans OPERATORS_DIR for subdirectories containing manifest.json
-  - Respects manifest fields: autostart, port, health_path, start_cmd
-  - Supervises with restart-on-crash and health polling
+  - Respects manifest fields: autostart, port, health_path, start_cmd, worker_cmd
+  - Supervises with restart-on-crash, exponential backoff, and health polling
   - Shuts down cleanly when stop() is called
 
 If this file grows complex, that is a design error.
@@ -26,11 +26,17 @@ from pathlib import Path
 from typing import Optional
 
 
+_LOG_DIR = Path(__file__).parent.parent.parent / "data" / "logs"
+
 DEFAULT_OPERATORS_DIR = Path(__file__).parent.parent / "operators"
-HEALTH_INTERVAL = 10       # seconds between health checks
-RESTART_DELAY   = 5        # seconds before restarting a crashed operator
+HEALTH_INTERVAL = 30       # seconds between health checks
 STARTUP_GRACE   = 8        # seconds to wait after start before first health check
 HTTP_TIMEOUT    = 3        # seconds for health check HTTP request
+
+RESTART_BACKOFFS = [5, 15, 30, 60, 120, 300]
+MAX_RESTARTS     = 6
+
+CREW_URL = "http://127.0.0.1:5100"
 
 
 class OperatorProcess:
@@ -42,27 +48,54 @@ class OperatorProcess:
         self.port         = manifest["port"]
         self.health_path  = manifest.get("health_path", "/api/health")
         self.start_cmd    = manifest.get("start_cmd", "dashboard.py")
+        self.worker_cmd   = manifest.get("worker_cmd")
+        self.manifest     = manifest
         self.operator_dir = operator_dir
         self.logger       = logger
         self.proc: Optional[subprocess.Popen] = None
+        self.worker_proc: Optional[subprocess.Popen] = None
+        self.worker_started = False
+        self.status       = "pending"
         self._stopped     = False
 
-    def _build_cmd(self) -> list:
-        # start_cmd is a script filename relative to operator_dir
-        script = self.operator_dir / self.start_cmd.replace("python3 ", "").strip()
-        if script.exists():
-            return [sys.executable, str(script)]
-        raise ValueError(f"Operator {self.id}: script not found at {script}")
+    def _resolve_script(self, cmd: str) -> Path:
+        filename = cmd.replace("python3 ", "").strip()
+        if Path(filename).is_absolute():
+            p = Path(filename)
+            if p.exists():
+                return p
+            raise FileNotFoundError(
+                f"Operator {self.id}: script not found. Tried:\n   {p}\n   Skipping."
+            )
+        candidates = [
+            self.operator_dir / filename,
+            self.operator_dir / self.id / filename,
+        ]
+        # start_cmd sometimes carries a redundant op-id prefix (e.g. "telegram/server.py")
+        # Strip it so the path resolves to operator_dir/server.py correctly.
+        prefix = f"{self.id}/"
+        if filename.startswith(prefix):
+            candidates.append(self.operator_dir / filename[len(prefix):])
+        for p in candidates:
+            if p.exists():
+                return p
+        tried = "\n   ".join(str(p) for p in candidates)
+        raise FileNotFoundError(
+            f"Operator {self.id}: script not found. Tried:\n   {tried}\n   Skipping."
+        )
 
-    def _log_file(self):
-        log_dir = self.operator_dir.parent.parent.parent / "data" / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        return open(str(log_dir / f"{self.id}.log"), "a")
+    def _build_cmd(self) -> list:
+        script = self._resolve_script(self.start_cmd)
+        return [sys.executable, str(script)]
+
+    def _log_file(self, name: str):
+        _LOG_DIR.mkdir(parents=True, exist_ok=True)
+        return open(str(_LOG_DIR / f"{name}.log"), "a")
 
     def start(self, preexec_fn=None) -> None:
         cmd = self._build_cmd()
         self.logger.info("OperatorManager starting %s (port %s)", self.name, self.port)
-        log = self._log_file()
+        log = self._log_file(self.id)
         popen_kwargs = dict(
             cwd=str(self.operator_dir),
             env=self._env(),
@@ -72,6 +105,28 @@ class OperatorProcess:
         if preexec_fn is not None and sys.platform != 'win32':
             popen_kwargs['preexec_fn'] = preexec_fn
         self.proc = subprocess.Popen(cmd, **popen_kwargs)
+        self.status = "starting"
+
+    def start_worker(self) -> None:
+        if not self.worker_cmd:
+            return
+        try:
+            worker_script = self._resolve_script(self.worker_cmd)
+        except FileNotFoundError as e:
+            self.logger.warning(str(e))
+            return
+        log = self._log_file(f"{self.id}_worker")
+        self.worker_proc = subprocess.Popen(
+            [sys.executable, str(worker_script)],
+            cwd=str(self.operator_dir),
+            env=self._env(),
+            stdout=log,
+            stderr=log,
+        )
+        self.worker_started = True
+        self.logger.info(
+            "Operator %s worker started (PID %d)", self.id, self.worker_proc.pid
+        )
 
     def _env(self) -> dict:
         env = os.environ.copy()
@@ -100,6 +155,12 @@ class OperatorProcess:
                 self.proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
+        if self.worker_proc and self.worker_proc.poll() is None:
+            self.worker_proc.terminate()
+            try:
+                self.worker_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.worker_proc.kill()
 
 
 class OperatorManager:
@@ -109,12 +170,15 @@ class OperatorManager:
     """
 
     def __init__(self, logger, operators_dir: Path = None, config: dict = None) -> None:
-        self.logger       = logger
+        self.logger        = logger
         self.operators_dir = operators_dir or DEFAULT_OPERATORS_DIR
         self.operators: dict = {}
+        self._disabled: list = []
         self._thread: Optional[threading.Thread] = None
         self._running  = False
         self._config   = config or {}
+        self._restart_counts: dict = {}
+        self._worker_restart_counts: dict = {}
 
     def _get_preexec_fn(self, sandbox_config: dict):
         if sys.platform == 'win32':
@@ -149,44 +213,162 @@ class OperatorManager:
                 op_id = manifest["id"]
                 if not manifest.get("autostart", False):
                     self.logger.info("OperatorManager skipping %s (autostart: false)", op_id)
+                    self._disabled.append(op_id)
                     continue
                 self.operators[op_id] = OperatorProcess(manifest, op_dir, self.logger)
-                self.logger.info("OperatorManager discovered: %s (port %s)", manifest.get("name", op_id), manifest.get("port"))
+                self.logger.info(
+                    "OperatorManager discovered: %s (port %s)",
+                    manifest.get("name", op_id), manifest.get("port")
+                )
             except Exception as e:
                 self.logger.error("OperatorManager: bad manifest at %s — %s", op_dir, e)
 
     def start_all(self) -> None:
-        """Start all discovered operators."""
+        """Start all discovered operators and log a startup summary."""
         sandbox_cfg = self._config.get('sandbox', {})
         sandbox_enabled = sandbox_cfg.get('enabled', False)
         preexec = self._get_preexec_fn(sandbox_cfg) if sandbox_enabled else None
+
+        started, skipped, failed = [], [], []
         for op in self.operators.values():
             try:
                 op.start(preexec_fn=preexec)
+                started.append(op.id)
+            except FileNotFoundError as e:
+                self.logger.error(str(e))
+                op.status = "skipped_bad_path"
+                skipped.append(op.id)
             except Exception as e:
                 self.logger.error("OperatorManager: failed to start %s — %s", op.name, e)
+                op.status = "failed"
+                failed.append(op.id)
+
+        self.logger.info("OperatorManager startup complete:")
+        self.logger.info("  Started:                    %s", started or "none")
+        self.logger.info("  Skipped (bad path):         %s", skipped or "none")
+        self.logger.info("  Disabled (autostart=false): %s", self._disabled or "none")
+        self.logger.info("  Failed:                     %s", failed or "none")
 
     def stop_all(self) -> None:
         self._running = False
         for op in self.operators.values():
             op.stop()
 
+    def _try_restart(self, op: OperatorProcess) -> None:
+        op_id = op.id
+        count = self._restart_counts.get(op_id, 0)
+
+        if count >= MAX_RESTARTS:
+            self.logger.error(
+                "Operator %s exceeded %d restart attempts — "
+                "marking as failed. Fix the operator and "
+                "restart OperatorManager to retry.",
+                op_id, MAX_RESTARTS
+            )
+            op.status = "failed"
+            return
+
+        backoff = RESTART_BACKOFFS[min(count, len(RESTART_BACKOFFS) - 1)]
+        self._restart_counts[op_id] = count + 1
+        self.logger.warning(
+            "Operator %s died — restarting in %ds (attempt %d/%d)",
+            op_id, backoff, count + 1, MAX_RESTARTS
+        )
+        time.sleep(backoff)
+        try:
+            op.start()
+        except Exception as e:
+            self.logger.error("OperatorManager: restart failed for %s — %s", op.name, e)
+
+    def _try_restart_worker(self, op: OperatorProcess) -> None:
+        op_id = op.id
+        count = self._worker_restart_counts.get(op_id, 0)
+
+        if count >= MAX_RESTARTS:
+            self.logger.error(
+                "Operator %s worker exceeded %d restart attempts — giving up.",
+                op_id, MAX_RESTARTS
+            )
+            return
+
+        backoff = RESTART_BACKOFFS[min(count, len(RESTART_BACKOFFS) - 1)]
+        self._worker_restart_counts[op_id] = count + 1
+        self.logger.warning(
+            "Operator %s worker died — restarting in %ds (attempt %d/%d)",
+            op_id, backoff, count + 1, MAX_RESTARTS
+        )
+        time.sleep(backoff)
+        op.start_worker()
+
+    def _register_with_crew(self, op_id: str, manifest: dict) -> None:
+        import urllib.request
+
+        for _ in range(30):
+            try:
+                urllib.request.urlopen(f"{CREW_URL}/health", timeout=2)
+                break
+            except Exception:
+                time.sleep(2)
+
+        for attempt in range(10):
+            try:
+                payload = json.dumps(manifest).encode()
+                req = urllib.request.Request(
+                    f"{CREW_URL}/register",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                urllib.request.urlopen(req, timeout=5)
+                self.logger.info("Operator %s registered with CREW", op_id)
+                return
+            except Exception as e:
+                self.logger.debug(
+                    "CREW registration attempt %d failed: %s", attempt + 1, e
+                )
+                time.sleep(15)
+
     def _supervise(self) -> None:
         """Background supervision loop — restarts crashed operators."""
         time.sleep(STARTUP_GRACE)
         while self._running:
             for op in list(self.operators.values()):
-                if op._stopped:
+                if op._stopped or op.status in ("failed", "skipped_bad_path"):
                     continue
+
                 if not op.is_alive():
                     if op.is_healthy():
+                        # Port still up (e.g., process forked) — treat as running
+                        if op.status != "running":
+                            op.status = "running"
+                            self._restart_counts[op.id] = 0
                         continue
-                    self.logger.warning("OperatorManager: %s exited — restarting in %ss", op.name, RESTART_DELAY)
-                    time.sleep(RESTART_DELAY)
-                    try:
-                        op.start()
-                    except Exception as e:
-                        self.logger.error("OperatorManager: restart failed for %s — %s", op.name, e)
+                    self._try_restart(op)
+                    continue
+
+                # Process is alive — check health
+                if op.is_healthy():
+                    first_healthy = op.status != "running"
+                    op.status = "running"
+                    if first_healthy:
+                        self._restart_counts[op.id] = 0
+                        self.logger.info(
+                            "Operator %s healthy — restart count reset", op.id
+                        )
+                        if op.worker_cmd and not op.worker_started:
+                            op.start_worker()
+                        threading.Thread(
+                            target=self._register_with_crew,
+                            args=(op.id, op.manifest),
+                            daemon=True,
+                            name=f"crew-register-{op.id}"
+                        ).start()
+
+                # Monitor worker
+                if op.worker_started and op.worker_proc is not None:
+                    if op.worker_proc.poll() is not None:
+                        self._try_restart_worker(op)
+
             time.sleep(HEALTH_INTERVAL)
 
     def run(self) -> None:
@@ -194,6 +376,8 @@ class OperatorManager:
         self.discover()
         self.start_all()
         self._running = True
-        self._thread = threading.Thread(target=self._supervise, daemon=True, name="operator-supervisor")
+        self._thread = threading.Thread(
+            target=self._supervise, daemon=True, name="operator-supervisor"
+        )
         self._thread.start()
         self.logger.info("OperatorManager supervising %d operator(s)", len(self.operators))
