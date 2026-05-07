@@ -140,55 +140,37 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
 fi
 
 # ── 4. PRISM Dashboard ────────────────────────────────────────────────────
-if curl -sf http://127.0.0.1:6300/health > /dev/null 2>&1; then
-    echo "✓ PRISM already running"
-else
-    echo "▸ Starting PRISM..."
-    PYTHON="${REPO}/.venv/bin/python3"
-    [[ ! -f "$PYTHON" ]] && PYTHON="python3"
-    "$PYTHON" -m cascadia.dashboard.prism --config config.json --name prism >> data/logs/prism.log 2>&1 &
-    sleep 3
-    PRISM_OK=false
-    for _i in $(seq 1 10); do
-        if curl -sf http://127.0.0.1:6300/health > /dev/null 2>&1; then
-            PRISM_OK=true
-            break
-        fi
-        sleep 1
-    done
-    if [[ "$PRISM_OK" == "true" ]]; then
-        echo "✓ PRISM ready on port 6300"
-    else
-        echo "✗ PRISM did not respond — killing and restarting..."
-        lsof -ti :6300 | xargs kill -9 2>/dev/null || true
-        sleep 2
-        "$PYTHON" -m cascadia.dashboard.prism --config config.json --name prism >> data/logs/prism.log 2>&1 &
-        sleep 5
-        if curl -sf http://127.0.0.1:6300/health > /dev/null 2>&1; then
-            echo "✓ PRISM ready on port 6300 (second attempt)"
-        else
-            echo "✗ PRISM failed to start after two attempts — check data/logs/prism.log"
-            exit 1
-        fi
+echo "▸ Waiting for PRISM (tier 3)..."
+PRISM_WAIT=0
+until curl -sf http://127.0.0.1:6300/health > /dev/null 2>&1; do
+    sleep 2
+    PRISM_WAIT=$((PRISM_WAIT + 2))
+    if [ $PRISM_WAIT -ge 60 ]; then
+        echo "✗ PRISM did not come up after 60s — check data/logs/prism.log"
+        break
     fi
-    _PRISM_PID=$(lsof -ti:6300 2>/dev/null | head -1)
-    [ -n "$_PRISM_PID" ] && echo "$_PRISM_PID" > data/runtime/pids/prism.pid
+done
+if curl -sf http://127.0.0.1:6300/health > /dev/null 2>&1; then
+    echo "✓ PRISM ready on port 6300"
 fi
 
 # ── 5. Mission Manager ────────────────────────────────────────────────────
+echo "Running missions migration..."
+PYTHON="${REPO}/.venv/bin/python3"
+[[ ! -f "$PYTHON" ]] && PYTHON="python3"
+"$PYTHON" -m cascadia.missions.migrate >> data/logs/mission_manager.log 2>&1
+echo "▸ Waiting for Mission Manager (tier 2)..."
+MM_WAIT=0
+until curl -sf http://127.0.0.1:6207/healthz > /dev/null 2>&1; do
+    sleep 2
+    MM_WAIT=$((MM_WAIT + 2))
+    if [ $MM_WAIT -ge 60 ]; then
+        echo "✗ Mission Manager did not come up after 60s — check logs"
+        break
+    fi
+done
 if curl -sf http://127.0.0.1:6207/healthz > /dev/null 2>&1; then
-    echo "✓ Mission Manager already running"
-else
-    echo "Running missions migration..."
-    PYTHON="${REPO}/.venv/bin/python3"
-    [[ ! -f "$PYTHON" ]] && PYTHON="python3"
-    "$PYTHON" -m cascadia.missions.migrate >> data/logs/mission_manager.log 2>&1
-    echo "▸ Starting Mission Manager..."
-    "$PYTHON" -m cascadia.missions.manager --config config.json --name mission_manager >> data/logs/mission_manager.log 2>&1 &
-    sleep 3
-    curl -sf http://127.0.0.1:6207/healthz > /dev/null && echo "✓ Mission Manager ready" || echo "✗ Mission Manager failed — check data/logs/mission_manager.log"
-    _MM_PID=$(lsof -ti:6207 2>/dev/null | head -1)
-    [ -n "$_MM_PID" ] && echo "$_MM_PID" > data/runtime/pids/mission_manager.pid
+    echo "✓ Mission Manager ready on port 6207"
 fi
 
 # ── 6. Operators ──────────────────────────────────────────────────────────
@@ -200,7 +182,7 @@ if [ -f "$CHIEF_DIR/server.py" ]; then
     python3 server.py \
       >> /Users/andy/Zyrcon/cascadia-os/data/logs/chief.log 2>&1 &
     CHIEF_PID=$!
-    mkdir -p data/runtime/pids && echo $CHIEF_PID > data/runtime/pids/chief.pid
+    echo $CHIEF_PID > "$REPO/data/runtime/pids/chief.pid"
     cd /Users/andy/Zyrcon/cascadia-os
     sleep 2
     if curl -sf http://localhost:8006/api/health > /dev/null 2>&1; then
@@ -220,7 +202,7 @@ if [ -f "$SOCIAL_DIR/server.py" ]; then
     python3 server.py \
       >> /Users/andy/Zyrcon/cascadia-os/data/logs/social.log 2>&1 &
     SOCIAL_PID=$!
-    mkdir -p data/runtime/pids && echo $SOCIAL_PID > data/runtime/pids/social.pid
+    echo $SOCIAL_PID > "$REPO/data/runtime/pids/social.pid"
     cd /Users/andy/Zyrcon/cascadia-os
     sleep 2
     if curl -sf http://localhost:8011/api/health > /dev/null 2>&1; then
