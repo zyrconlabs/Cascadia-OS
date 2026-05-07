@@ -1,25 +1,14 @@
 """
-cascadia_sdk.py — Cascadia OS SDK 2026.5
+cascadia/sdk/client.py — Cascadia OS SDK 2026.5
 Stdlib-only helper functions for operator developers.
 Provides type-safe wrappers for VAULT, SENTINEL, BEACON, and CREW APIs.
 
 All functions are safe to call even when Cascadia OS components are not running —
 they catch all exceptions and return safe defaults.
+
+This module is the pip-installable form of sdk/cascadia_sdk.py.
+Both expose identical function signatures and behavior.
 """
-# ─────────────────────────────────────────────────────────
-# USAGE — TWO OPTIONS
-#
-# Option A: pip install (recommended for developers)
-#   pip install cascadia-os
-#   from cascadia.sdk import vault_get
-#
-# Option B: standalone template (no pip required)
-#   Copy this file into your operator directory:
-#   cp cascadia_sdk.py your_operator/
-#   from cascadia_sdk import vault_get
-#
-# Both options expose identical function signatures.
-# ─────────────────────────────────────────────────────────
 from __future__ import annotations
 
 import json
@@ -76,10 +65,7 @@ def _get(port: int, path: str, timeout: int = 3) -> Optional[Dict[str, Any]]:
 
 
 def vault_store(key: str, value: str) -> bool:
-    """
-    Store a value in VAULT under the given key.
-    Returns True on success, False on failure.
-    """
+    """Store a value in VAULT under the given key. Returns True on success, False on failure."""
     try:
         result = _post(_PORTS['vault'], '/write', {'key': key, 'value': value})
         return bool(result and result.get('written', False))
@@ -88,10 +74,7 @@ def vault_store(key: str, value: str) -> bool:
 
 
 def vault_get(key: str) -> Optional[str]:
-    """
-    Retrieve a value from VAULT by key.
-    Returns the value string or None if not found or on error.
-    """
+    """Retrieve a value from VAULT by key. Returns the value string or None if not found or on error."""
     try:
         result = _post(_PORTS['vault'], '/read', {'key': key})
         if result and 'value' in result:
@@ -102,11 +85,7 @@ def vault_get(key: str) -> Optional[str]:
 
 
 def sentinel_check(action: str, context: Optional[Dict[str, Any]] = None) -> bool:
-    """
-    Check whether an action is permitted by SENTINEL risk policy.
-    Returns True if allowed, False if denied.
-    Fail-closed: returns False on any exception (connection error, timeout, etc.).
-    """
+    """Check whether an action is permitted by SENTINEL risk policy. Fail-closed: returns False on any error."""
     try:
         result = _post(_PORTS['sentinel'], '/check', {
             'action': action,
@@ -120,10 +99,7 @@ def sentinel_check(action: str, context: Optional[Dict[str, Any]] = None) -> boo
 
 
 def beacon_route(target: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Route a message to a target operator via BEACON.
-    Returns the response dict, or an empty dict on failure.
-    """
+    """Route a message to a target operator via BEACON. Returns the response dict, or an empty dict on failure."""
     try:
         result = _post(_PORTS['beacon'], '/route', {
             'target': target,
@@ -135,11 +111,7 @@ def beacon_route(target: str, payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def crew_register(manifest: Dict[str, Any]) -> bool:
-    """
-    Register this operator with CREW on startup.
-    Returns True on success, False on failure.
-    Failure is non-fatal — the operator continues running unregistered.
-    """
+    """Register this operator with CREW on startup. Returns True on success, False on failure (non-fatal)."""
     try:
         result = _post(_PORTS['crew'], '/register', {
             'operator_id': manifest.get('id', ''),
