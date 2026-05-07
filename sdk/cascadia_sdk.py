@@ -36,6 +36,7 @@ _PORTS: Dict[str, int] = {
     'sentinel': 5102,
     'beacon':   6200,
     'crew':     5100,
+    'vantage':  6208,
 }
 
 
@@ -153,3 +154,45 @@ def crew_register(manifest: Dict[str, Any]) -> bool:
         return bool(result and result.get('ok', False))
     except Exception:
         return False
+
+
+def vantage_call(
+    operator_id: str,
+    capability: str,
+    connector_port: int,
+    payload: dict = None,
+    connector_path: str = '/api/run',
+    run_id: str = '',
+    autonomy_level: str = 'assistive',
+) -> dict | None:
+    """
+    Route an operator→connector call through VANTAGE capability gateway (port 6208).
+
+    VANTAGE enforces:
+      - Capability declared in operator manifest
+      - Risk-based sentinel gating
+      - Audit logging of every call
+
+    Returns connector response dict, or None on failure.
+
+    Usage:
+      result = vantage_call(
+          operator_id="hubspot",
+          capability="crm.write",
+          connector_port=9201,
+          payload={"action": "create_contact", "name": "..."},
+      )
+    """
+    return _post(
+        _PORTS['vantage'],
+        '/call',
+        {
+            'operator_id':    operator_id,
+            'capability':     capability,
+            'connector_port': connector_port,
+            'connector_path': connector_path,
+            'payload':        payload or {},
+            'run_id':         run_id,
+            'autonomy_level': autonomy_level,
+        },
+    )
