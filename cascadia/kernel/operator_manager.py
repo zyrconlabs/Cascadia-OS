@@ -8,6 +8,7 @@ Design contract:
   - Scans OPERATORS_DIR for subdirectories containing manifest.json
   - Respects manifest fields: autostart, port, health_path, start_cmd, worker_cmd
   - Supervises with restart-on-crash, exponential backoff, and health polling
+  - Exposes HTTP control API on localhost:6210
   - Shuts down cleanly when stop() is called
 
 If this file grows complex, that is a design error.
@@ -22,11 +23,15 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from flask import Flask, jsonify, request
 
-_LOG_DIR = Path(__file__).parent.parent.parent / "data" / "logs"
+
+_LOG_DIR    = Path(__file__).parent.parent.parent / "data" / "logs"
+INTENT_FILE = Path(__file__).parent.parent.parent / "data" / "runtime" / "operator_intent.json"
 
 DEFAULT_OPERATORS_DIR = Path(__file__).parent.parent / "operators"
 HEALTH_INTERVAL = 30       # seconds between health checks
@@ -37,6 +42,7 @@ RESTART_BACKOFFS = [5, 15, 30, 60, 120, 300]
 MAX_RESTARTS     = 6
 
 CREW_URL = "http://127.0.0.1:5100"
+OM_API_PORT = 6210         # localhost-only kernel/admin surface
 
 
 class OperatorProcess:
@@ -167,6 +173,7 @@ class OperatorManager:
     """
     Discovers operators from operators_dir, starts autostart ones,
     and supervises all running operators in a background thread.
+    Exposes a localhost HTTP control API on OM_API_PORT.
     """
 
     def __init__(self, logger, operators_dir: Path = None, config: dict = None) -> None:
@@ -179,6 +186,42 @@ class OperatorManager:
         self._config   = config or {}
         self._restart_counts: dict = {}
         self._worker_restart_counts: dict = {}
+
+    # ── Intent storage ────────────────────────────────────────────────────────
+
+    def _load_intent(self) -> dict:
+        """Load durable operator intent from disk."""
+        try:
+            if INTENT_FILE.exists():
+                return json.loads(INTENT_FILE.read_text())
+        except Exception:
+            pass
+        return {}
+
+    def _save_intent(self, op_id: str, worker_intent: str,
+                     updated_by: str = "system") -> None:
+        """Save operator worker intent to disk. worker_intent: 'running' or 'stopped'."""
+        try:
+            INTENT_FILE.parent.mkdir(parents=True, exist_ok=True)
+            intents = self._load_intent()
+            intents[op_id] = {
+                "worker_intent": worker_intent,
+                "updated_at": datetime.now().isoformat(),
+                "updated_by": updated_by,
+            }
+            INTENT_FILE.write_text(json.dumps(intents, indent=2))
+        except Exception as e:
+            self.logger.warning("Could not save intent for %s: %s", op_id, e)
+
+    def _get_worker_intent(self, op_id: str) -> str:
+        """Return the durable worker intent: 'running' (default) or 'stopped'."""
+        return self._load_intent().get(op_id, {}).get("worker_intent", "running")
+
+    def _get_operator(self, op_id: str) -> Optional[OperatorProcess]:
+        """Find operator by id. Returns None if not found."""
+        return self.operators.get(op_id)
+
+    # ── Sandbox ───────────────────────────────────────────────────────────────
 
     def _get_preexec_fn(self, sandbox_config: dict):
         if sys.platform == 'win32':
@@ -197,6 +240,8 @@ class OperatorManager:
             except ValueError:
                 pass
         return apply_limits
+
+    # ── Discovery & startup ───────────────────────────────────────────────────
 
     def discover(self) -> None:
         """Scan operators directory for valid manifests."""
@@ -254,6 +299,8 @@ class OperatorManager:
         for op in self.operators.values():
             op.stop()
 
+    # ── Restart helpers ───────────────────────────────────────────────────────
+
     def _try_restart(self, op: OperatorProcess) -> None:
         op_id = op.id
         count = self._restart_counts.get(op_id, 0)
@@ -282,6 +329,16 @@ class OperatorManager:
 
     def _try_restart_worker(self, op: OperatorProcess) -> None:
         op_id = op.id
+
+        # Durable intent check — never restart a worker the user explicitly stopped.
+        if self._get_worker_intent(op_id) == "stopped":
+            self.logger.info(
+                "Operator %s worker exited — intent is stopped, not restarting",
+                op_id
+            )
+            op.worker_proc = None
+            return
+
         count = self._worker_restart_counts.get(op_id, 0)
 
         if count >= MAX_RESTARTS:
@@ -294,11 +351,13 @@ class OperatorManager:
         backoff = RESTART_BACKOFFS[min(count, len(RESTART_BACKOFFS) - 1)]
         self._worker_restart_counts[op_id] = count + 1
         self.logger.warning(
-            "Operator %s worker died — restarting in %ds (attempt %d/%d)",
+            "Operator %s worker died unexpectedly — restarting in %ds (attempt %d/%d)",
             op_id, backoff, count + 1, MAX_RESTARTS
         )
         time.sleep(backoff)
         op.start_worker()
+
+    # ── CREW registration ─────────────────────────────────────────────────────
 
     def _register_with_crew(self, op_id: str, manifest: dict) -> None:
         import urllib.request
@@ -327,6 +386,93 @@ class OperatorManager:
                     "CREW registration attempt %d failed: %s", attempt + 1, e
                 )
                 time.sleep(15)
+
+    # ── HTTP control API ──────────────────────────────────────────────────────
+
+    def _start_api(self, port: int = OM_API_PORT) -> None:
+        """Start the OM control API on a background daemon thread."""
+        api = Flask("operator_manager_api")
+        # Suppress Flask startup banner and request logs
+        import logging as _logging
+        _logging.getLogger("werkzeug").setLevel(_logging.ERROR)
+
+        @api.route("/operators/<op_id>/worker/stop", methods=["POST"])
+        def worker_stop(op_id):
+            op = self._get_operator(op_id)
+            if not op:
+                return jsonify({"ok": False, "error": f"Unknown operator: {op_id}"}), 404
+
+            self._save_intent(op_id, "stopped", "api")
+
+            if op.worker_proc and op.worker_proc.poll() is None:
+                try:
+                    op.worker_proc.terminate()
+                    try:
+                        op.worker_proc.wait(timeout=5)
+                    except Exception:
+                        op.worker_proc.kill()
+                    op.worker_proc = None
+                    self.logger.info("Operator %s worker stopped via API", op_id)
+                    return jsonify({"ok": True, "status": "stopping", "op_id": op_id})
+                except Exception as e:
+                    return jsonify({"ok": False, "error": str(e)}), 500
+            else:
+                op.worker_proc = None
+                return jsonify({"ok": True, "status": "stopped", "op_id": op_id})
+
+        @api.route("/operators/<op_id>/worker/start", methods=["POST"])
+        def worker_start(op_id):
+            op = self._get_operator(op_id)
+            if not op:
+                return jsonify({"ok": False, "error": f"Unknown operator: {op_id}"}), 404
+
+            self._save_intent(op_id, "running", "api")
+
+            if op.worker_proc and op.worker_proc.poll() is None:
+                return jsonify({"ok": True, "status": "already_running", "op_id": op_id})
+
+            try:
+                self._worker_restart_counts[op_id] = 0
+                op.start_worker()
+                return jsonify({"ok": True, "status": "starting", "op_id": op_id})
+            except Exception as e:
+                return jsonify({"ok": False, "error": str(e)}), 500
+
+        @api.route("/operators/<op_id>/status", methods=["GET"])
+        def operator_status(op_id):
+            op = self._get_operator(op_id)
+            if not op:
+                return jsonify({"ok": False, "error": f"Unknown operator: {op_id}"}), 404
+
+            worker_running = (
+                op.worker_proc is not None and op.worker_proc.poll() is None
+            )
+            return jsonify({
+                "ok": True,
+                "op_id": op_id,
+                "status": op.status,
+                "worker_running": worker_running,
+                "worker_intent": self._get_worker_intent(op_id),
+                "restart_count": self._restart_counts.get(op_id, 0),
+            })
+
+        @api.route("/health", methods=["GET"])
+        def health():
+            return jsonify({"ok": True, "service": "operator_manager"})
+
+        threading.Thread(
+            target=lambda: api.run(
+                host="127.0.0.1",
+                port=port,
+                debug=False,
+                use_reloader=False,
+            ),
+            daemon=True,
+            name="om-api",
+        ).start()
+        self.logger.info("OperatorManager API running on port %d", port)
+
+    # ── Supervision loop ──────────────────────────────────────────────────────
 
     def _supervise(self) -> None:
         """Background supervision loop — restarts crashed operators."""
@@ -357,11 +503,12 @@ class OperatorManager:
                         )
                         if op.worker_cmd and not op.worker_started:
                             op.start_worker()
+                            self._save_intent(op.id, "running", "operator_manager")
                         threading.Thread(
                             target=self._register_with_crew,
                             args=(op.id, op.manifest),
                             daemon=True,
-                            name=f"crew-register-{op.id}"
+                            name=f"crew-register-{op.id}",
                         ).start()
 
                 # Monitor worker
@@ -371,10 +518,13 @@ class OperatorManager:
 
             time.sleep(HEALTH_INTERVAL)
 
+    # ── Entry point ───────────────────────────────────────────────────────────
+
     def run(self) -> None:
-        """Discover, start, and begin supervising. Non-blocking."""
+        """Discover, start, supervise, and expose control API. Non-blocking."""
         self.discover()
         self.start_all()
+        self._start_api(port=OM_API_PORT)
         self._running = True
         self._thread = threading.Thread(
             target=self._supervise, daemon=True, name="operator-supervisor"
