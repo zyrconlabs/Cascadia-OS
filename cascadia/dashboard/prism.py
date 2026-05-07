@@ -3454,10 +3454,13 @@ document.getElementById('key').addEventListener('keydown', function(e){
 
     def recon_operator_start(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """POST /api/operators/recon/start — launch RECON dashboard.py subprocess."""
-        import subprocess
-        proc = getattr(self, '_recon_proc', None)
-        if proc is not None and proc.poll() is None:
-            return 200, {'ok': True, 'status': 'already_running', 'pid': proc.pid}
+        import subprocess, urllib.request as _ur
+        # Check health first — works even after PRISM restart when proc handle is gone
+        try:
+            _ur.urlopen('http://127.0.0.1:8002/api/health', timeout=2)
+            return 200, {'ok': True, 'status': 'already_running'}
+        except Exception:
+            pass  # Not responding — proceed to start
         ops_path = Path(
             self.config.get('operators_path') or
             self.config.get('operators_dir', '')
@@ -3474,20 +3477,25 @@ document.getElementById('key').addEventListener('keydown', function(e){
         return 200, {'ok': True, 'status': 'started', 'pid': self._recon_proc.pid}
 
     def recon_operator_stop(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/operators/recon/stop — SIGTERM RECON, SIGKILL after 5 s."""
-        import threading
+        """POST /api/operators/recon/stop — SIGTERM RECON, port-kill fallback."""
+        import subprocess as _sp, threading, time as _t, urllib.request as _ur
         _http_post(self._ports.get('recon', 8002), '/stop', {}, timeout=2.0)
         proc = getattr(self, '_recon_proc', None)
         if proc is not None and proc.poll() is None:
             proc.terminate()
-            def _delayed_kill(p=proc):
-                import time as _t
-                _t.sleep(5)
-                try:
-                    p.kill()
-                except Exception:
-                    pass
-            threading.Thread(target=_delayed_kill, daemon=True).start()
+        def _port_kill_fallback():
+            _t.sleep(3)
+            try:
+                _ur.urlopen('http://127.0.0.1:8002/api/health', timeout=1)
+                # Still up — kill by port
+                result = _sp.run(['/usr/sbin/lsof', '-ti', ':8002'],
+                                 capture_output=True, text=True)
+                pid = result.stdout.strip()
+                if pid:
+                    _sp.run(['kill', '-9', pid])
+            except Exception:
+                pass  # Already stopped
+        threading.Thread(target=_port_kill_fallback, daemon=True).start()
         return 200, {'ok': True, 'status': 'stop_signal_sent'}
 
     def recon_operator_status_ext(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
