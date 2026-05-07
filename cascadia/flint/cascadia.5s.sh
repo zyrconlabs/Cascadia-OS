@@ -92,8 +92,12 @@ fi
 echo "---"
 
 # ── Header ────────────────────────────────────────────────────────────────────
-echo "Zyrcon AI | font=Menlo-Bold size=14 color=#60C8F5"
-echo "Cascadia OS | font=Menlo size=11 color=#B794F4"
+echo "Zyrcon AI | font=Menlo-Bold size=11 color=#60C8F5"
+echo "Cascadia OS | font=Menlo size=11 color=#7C3AED"
+echo "---"
+echo "⬡ PRISM Dashboard | bash='$0' param1=open-prism terminal=false color=#FF9500 font=Menlo size=12"
+echo "⚙ Settings | bash='$0' param1=open-settings terminal=false color=#FF9500 font=Menlo size=12"
+echo "♥ System Health | bash='$0' param1=open-health terminal=false color=#FF9500 font=Menlo size=12"
 echo "---"
 
 # ── Kernel status ─────────────────────────────────────────────────────────────
@@ -145,10 +149,5 @@ echo "▶ Start | bash='$0' param1=start-all terminal=false refresh=true color=#
 echo "■ Hard Stop | bash='$0' param1=stop-all terminal=false refresh=true color=#FF3B30 font=Menlo size=12"
 echo "↺ Restart | bash='$0' param1=restart-all terminal=false refresh=true color=#FF9500 font=Menlo size=12"
 
-# ── Links ─────────────────────────────────────────────────────────────────────
-echo "---"
-echo "⬡ PRISM Dashboard | bash='$0' param1=open-prism terminal=false color=#60A5FA font=Menlo size=12"
-echo "⚙ Settings | bash='$0' param1=open-settings terminal=false color=#60A5FA font=Menlo size=12"
-echo "♥ System Health | bash='$0' param1=open-health terminal=false color=#60A5FA font=Menlo size=12"
 echo "---"
 echo "📂 Vault | bash='$0' param1=open-vault terminal=false color=#888888 font=Menlo size=12"
