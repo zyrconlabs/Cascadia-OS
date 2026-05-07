@@ -150,6 +150,6 @@ def crew_register(manifest: Dict[str, Any]) -> bool:
             'version':      manifest.get('version', ''),
             'name':         manifest.get('name', ''),
         })
-        return bool(result and result.get('ok', False))
+        return bool(result and (result.get('registered') or result.get('ok')))
     except Exception:
         return False
