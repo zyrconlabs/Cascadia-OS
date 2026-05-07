@@ -6,6 +6,9 @@
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 
+# Clear intentional-stop flag so LaunchAgent resumes normal KeepAlive
+rm -f "$REPO/data/runtime/cascadia.stopped"
+
 # Find llama-server — priority: brew → Zyrcon → fallback
 LLAMA_BIN=""
 for _candidate in \

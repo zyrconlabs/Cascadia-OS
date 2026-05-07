@@ -6,6 +6,9 @@
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 
+# Signal intentional stop so LaunchAgent does not restart the stack
+touch "$REPO/data/runtime/cascadia.stopped"
+
 echo "Stopping Cascadia OS stack..."
 echo ""
 
