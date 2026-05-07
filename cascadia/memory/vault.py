@@ -11,14 +11,36 @@ import json
 import urllib.request
 
 import argparse
+import base64
 import json
+import logging
+import os
+import secrets
 import sqlite3
 import threading
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
+from cascadia.encryption.curtain import encrypt_field, decrypt_field
+
+_log = logging.getLogger('vault')
+
+
+def _load_vault_key() -> bytes:
+    """Load AES-256 key from VAULT_ENCRYPTION_KEY env var (base64), or generate ephemeral."""
+    key_b64 = os.environ.get('VAULT_ENCRYPTION_KEY', '')
+    if key_b64:
+        return base64.b64decode(key_b64)
+    key = secrets.token_bytes(32)
+    warnings.warn(
+        'VAULT_ENCRYPTION_KEY not set — using ephemeral key. '
+        'Encrypted values will be unreadable after restart.',
+        stacklevel=2,
+    )
+    return key
 
 
 class VaultStore:
@@ -28,7 +50,10 @@ class VaultStore:
         self.db_path = db_path
         self._lock = threading.Lock()
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._enc_key = _load_vault_key()
         self._init()
+        if os.environ.get('VAULT_MIGRATION') == '1':
+            self.migrate_to_encrypted()
 
     def _conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -53,18 +78,29 @@ class VaultStore:
     def read(self, key: str, namespace: str = 'default') -> Optional[Any]:
         with self._lock, self._conn() as db:
             row = db.execute('SELECT value FROM vault WHERE key=? AND namespace=?', (key, namespace)).fetchone()
-        return json.loads(row['value']) if row else None
+        if not row:
+            return None
+        raw = row['value']
+        try:
+            return json.loads(decrypt_field(raw, self._enc_key))
+        except Exception:
+            _log.warning('vault value for %s may be unencrypted', key)
+            try:
+                return json.loads(raw)
+            except Exception:
+                return None
 
     def write(self, key: str, value: Any, created_by: str, namespace: str = 'default') -> None:
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
+        stored = encrypt_field(json.dumps(value), self._enc_key)
         with self._lock, self._conn() as db:
             db.execute("""
                 INSERT INTO vault (key, namespace, value, created_by, created_at, updated_at)
                 VALUES (?,?,?,?,?,?)
                 ON CONFLICT(key, namespace) DO UPDATE
                 SET value=excluded.value, updated_at=excluded.updated_at
-            """, (key, namespace, json.dumps(value), created_by, now, now))
+            """, (key, namespace, stored, created_by, now, now))
             db.commit()
 
     def delete(self, key: str, namespace: str = 'default') -> bool:
@@ -78,6 +114,25 @@ class VaultStore:
             rows = db.execute('SELECT key FROM vault WHERE namespace=? AND key LIKE ?',
                               (namespace, f'{prefix}%')).fetchall()
         return [r['key'] for r in rows]
+
+    def migrate_to_encrypted(self) -> int:
+        """Re-encrypt any plaintext values in-place. Returns count of migrated rows."""
+        migrated = 0
+        with self._lock, self._conn() as db:
+            rows = db.execute('SELECT key, namespace, value FROM vault').fetchall()
+            for row in rows:
+                raw = row['value']
+                try:
+                    decrypt_field(raw, self._enc_key)
+                except Exception:
+                    db.execute(
+                        'UPDATE vault SET value=? WHERE key=? AND namespace=?',
+                        (encrypt_field(raw, self._enc_key), row['key'], row['namespace']),
+                    )
+                    migrated += 1
+            if migrated:
+                db.commit()
+        return migrated
 
 
 class VaultService:
