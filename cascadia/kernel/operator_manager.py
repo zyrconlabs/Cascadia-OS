@@ -186,6 +186,7 @@ class OperatorManager:
         self._config   = config or {}
         self._restart_counts: dict = {}
         self._worker_restart_counts: dict = {}
+        self._shutting_down = False
 
     # ── Intent storage ────────────────────────────────────────────────────────
 
@@ -295,13 +296,34 @@ class OperatorManager:
         self.logger.info("  Failed:                     %s", failed or "none")
 
     def stop_all(self) -> None:
+        self._shutting_down = True
         self._running = False
+        self.logger.info("OperatorManager shutting down — stopping all operators")
+        # Stop workers first so they don't become orphans
         for op in self.operators.values():
-            op.stop()
+            if op.worker_proc and op.worker_proc.poll() is None:
+                self.logger.info("Stopping worker for %s (PID %d)", op.id, op.worker_proc.pid)
+                op.worker_proc.terminate()
+                try:
+                    op.worker_proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    op.worker_proc.kill()
+                op.worker_proc = None
+        # Then stop main operator processes
+        for op in self.operators.values():
+            if op.proc and op.proc.poll() is None:
+                self.logger.info("Stopping %s (PID %d)", op.name, op.proc.pid)
+                op.proc.terminate()
+                try:
+                    op.proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    op.proc.kill()
 
     # ── Restart helpers ───────────────────────────────────────────────────────
 
     def _try_restart(self, op: OperatorProcess) -> None:
+        if self._shutting_down:
+            return
         op_id = op.id
         count = self._restart_counts.get(op_id, 0)
 
@@ -328,6 +350,8 @@ class OperatorManager:
             self.logger.error("OperatorManager: restart failed for %s — %s", op.name, e)
 
     def _try_restart_worker(self, op: OperatorProcess) -> None:
+        if self._shutting_down:
+            return
         op_id = op.id
 
         # Durable intent check — never restart a worker the user explicitly stopped.
@@ -522,6 +546,8 @@ class OperatorManager:
 
     def run(self) -> None:
         """Discover, start, supervise, and expose control API. Non-blocking."""
+        import signal as _signal
+        _signal.signal(_signal.SIGTERM, lambda sig, frame: self.stop_all())
         self.discover()
         self.start_all()
         self._start_api(port=OM_API_PORT)
