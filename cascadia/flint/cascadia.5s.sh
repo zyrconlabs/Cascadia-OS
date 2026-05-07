@@ -92,12 +92,12 @@ fi
 echo "---"
 
 # ── Header ────────────────────────────────────────────────────────────────────
-echo "Zyrcon AI | font=Menlo-Bold size=14 color=#1d1d1f"
-echo "Cascadia OS | font=Menlo size=11 color=#888888"
+echo "Zyrcon AI | font=Menlo-Bold size=14 color=#60C8F5"
+echo "Cascadia OS | font=Menlo size=11 color=#B794F4"
 echo "---"
 
 # ── Kernel status ─────────────────────────────────────────────────────────────
-echo "KERNEL | color=#888888 font=Menlo-Bold size=11"
+echo "KERNEL | color=#F5ECD7 font=Menlo-Bold size=11"
 if [[ "$flint_up" == "1" ]]; then
   echo "⬤ Running | color=#00C853 font=Menlo size=12"
 else
@@ -106,7 +106,7 @@ fi
 
 # ── AI model status ───────────────────────────────────────────────────────────
 echo "---"
-echo "AI MODEL | color=#888888 font=Menlo-Bold size=11"
+echo "AI MODEL | color=#F5ECD7 font=Menlo-Bold size=11"
 if [[ "$llama_up" == "1" ]]; then
   echo "⬤ llama.cpp running :8080 | color=#00C853 font=Menlo size=12"
 else
@@ -115,7 +115,7 @@ fi
 
 # ── MISSIONS ──────────────────────────────────────────────────────────────────
 echo "---"
-echo "MISSIONS | color=#888888 font=Menlo-Bold size=11"
+echo "MISSIONS | color=#F5ECD7 font=Menlo-Bold size=11"
 
 chief_up=$(curl -sf --max-time 1 http://127.0.0.1:8006/api/health > /dev/null 2>&1 && echo "1" || echo "0")
 social_up=$(curl -sf --max-time 1 http://127.0.0.1:8011/api/health > /dev/null 2>&1 && echo "1" || echo "0")
