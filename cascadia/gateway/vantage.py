@@ -126,7 +126,7 @@ class VantageService:
                 'CREW unreachable for %s/%s: %s', operator_id, capability, crew_result['error']
             )
             return 503, {'error': 'CREW registry unavailable', 'operator_id': operator_id, 'capability': capability}
-        if not crew_result.get('valid', False):
+        if not crew_result.get('ok', False):
             self._blocked_count += 1
             self._log_vantage_call(operator_id, capability, 'low', 'blocked_undeclared', run_id)
             return 403, {
@@ -237,7 +237,7 @@ class VantageService:
         if crew_result.get('error'):
             crew_valid = None
         else:
-            crew_valid = crew_result.get('valid', False)
+            crew_valid = crew_result.get('ok', False)
 
         sentinel_verdict: Optional[str] = None
         if risk_level in _HIGH_RISK and crew_valid:

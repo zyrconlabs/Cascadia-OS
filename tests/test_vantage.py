@@ -89,7 +89,7 @@ class TestVantageHandlers(unittest.TestCase):
         self.assertIn('CREW', body['error'])
 
     def test_handle_call_undeclared_capability(self):
-        with patch('cascadia.gateway.vantage.check_capability', return_value={'valid': False}):
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': False}):
             code, body = self.svc.handle_call(
                 {'operator_id': 'test_op', 'capability': 'gmail.send', 'connector_port': 9000}
             )
@@ -97,7 +97,7 @@ class TestVantageHandlers(unittest.TestCase):
         self.assertEqual(body['verdict'], 'blocked')
 
     def test_handle_call_low_risk_allowed(self):
-        with patch('cascadia.gateway.vantage.check_capability', return_value={'valid': True}), \
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
              patch('cascadia.gateway.vantage._http_post', return_value={'result': 'ok'}):
             code, body = self.svc.handle_call({
                 'operator_id': 'test_op', 'capability': 'salesforce.read_contact',
@@ -108,7 +108,7 @@ class TestVantageHandlers(unittest.TestCase):
         self.assertEqual(body['risk_level'], 'low')
 
     def test_handle_call_high_risk_sentinel_blocks(self):
-        with patch('cascadia.gateway.vantage.check_capability', return_value={'valid': True}), \
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
              patch('cascadia.gateway.vantage.call_sentinel',
                    return_value={'verdict': 'blocked', 'reason': 'insufficient autonomy'}):
             code, body = self.svc.handle_call({
@@ -119,7 +119,7 @@ class TestVantageHandlers(unittest.TestCase):
         self.assertIn('blocked', body['verdict'])
 
     def test_handle_call_high_risk_sentinel_allowed(self):
-        with patch('cascadia.gateway.vantage.check_capability', return_value={'valid': True}), \
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
              patch('cascadia.gateway.vantage.call_sentinel', return_value={'verdict': 'allowed'}), \
              patch('cascadia.gateway.vantage._http_post', return_value={'deleted': True}):
             code, body = self.svc.handle_call({
@@ -130,7 +130,7 @@ class TestVantageHandlers(unittest.TestCase):
         self.assertEqual(body['verdict'], 'allowed')
 
     def test_handle_call_sentinel_unavailable(self):
-        with patch('cascadia.gateway.vantage.check_capability', return_value={'valid': True}), \
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
              patch('cascadia.gateway.vantage.call_sentinel', return_value={'error': 'timeout'}):
             code, body = self.svc.handle_call({
                 'operator_id': 'test_op', 'capability': 'file.delete',
@@ -139,7 +139,7 @@ class TestVantageHandlers(unittest.TestCase):
         self.assertEqual(code, 503)
 
     def test_handle_simulate_allowed(self):
-        with patch('cascadia.gateway.vantage.check_capability', return_value={'valid': True}), \
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
              patch('cascadia.gateway.vantage.call_sentinel', return_value={'verdict': 'allowed'}):
             code, body = self.svc.handle_simulate({
                 'operator_id': 'test_op', 'capability': 'file.delete',
@@ -151,7 +151,7 @@ class TestVantageHandlers(unittest.TestCase):
         self.assertEqual(body['risk_level'], 'high')
 
     def test_handle_simulate_blocked_undeclared(self):
-        with patch('cascadia.gateway.vantage.check_capability', return_value={'valid': False}):
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': False}):
             code, body = self.svc.handle_simulate({
                 'operator_id': 'test_op', 'capability': 'gmail.send',
             })
@@ -180,6 +180,33 @@ class TestVantageHandlers(unittest.TestCase):
             code, body = self.svc.handle_capabilities({'operator_id': 'missing_op'})
         self.assertEqual(code, 404)
         self.assertIn('missing_op', body['error'])
+
+    def test_crew_ok_contract(self):
+        """
+        VANTAGE must read 'ok' from CREW /validate response.
+        CREW returns {ok: bool} — reading 'valid' would always return False
+        and block every capability check regardless of manifest declarations.
+        Regression guard: never revert to reading 'valid' from CREW response.
+        """
+        base = {'operator_id': 'test_op', 'capability': 'connector.auth', 'connector_port': 9020}
+
+        # CREW returns ok=True → capability check passes, call forwarded
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
+             patch('cascadia.gateway.vantage._http_post', return_value={'access_token': 'tok'}):
+            code, body = self.svc.handle_call(base)
+        self.assertEqual(code, 200)
+        self.assertEqual(body['verdict'], 'allowed')
+
+        # CREW returns ok=False → capability check fails, 403 blocked
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': False}):
+            code, body = self.svc.handle_call(base)
+        self.assertEqual(code, 403)
+        self.assertEqual(body['verdict'], 'blocked')
+
+        # CREW returns legacy 'valid' key (wrong key) → treated as False → 403
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'valid': True}):
+            code, body = self.svc.handle_call(base)
+        self.assertEqual(code, 403, "VANTAGE must not read 'valid' from CREW — use 'ok'")
 
 
 if __name__ == '__main__':
