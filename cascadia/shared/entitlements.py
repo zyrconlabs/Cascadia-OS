@@ -109,7 +109,7 @@ CAPABILITY_REGISTRY: Dict[str, str] = {
     "connector.write":      "medium",
     "connector.delete":     "high",
     "connector.sync":       "medium",
-    "connector.auth":       "high",
+    "connector.auth":       "low",
     # Gateway
     "gateway.route":        "low",
     "gateway.enforce":      "medium",
