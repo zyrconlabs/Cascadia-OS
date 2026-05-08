@@ -195,6 +195,42 @@ class Flint:
                     )
             self.shutdown_event.wait(timeout=poll_interval)
 
+    def _cleanup_orphan_components(self) -> None:
+        """Kill orphan component processes left by a previous FLINT instance.
+
+        Each FLINT restart via watchdog creates a fresh self.processes dict,
+        so it has no handle on processes started by the prior FLINT run.
+        Without this cleanup those processes accumulate across restarts.
+        """
+        try:
+            import psutil
+        except ImportError:
+            self.logger.warning('FLINT: psutil not available — orphan cleanup skipped')
+            return
+
+        known_modules = {c.module for c in self.components.values()}
+        my_pid = os.getpid()
+        killed = 0
+
+        for proc in psutil.process_iter(['pid', 'cmdline']):
+            try:
+                cmdline = ' '.join(proc.info['cmdline'] or [])
+                for module in known_modules:
+                    if f'-m {module}' in cmdline and proc.pid != my_pid:
+                        self.logger.info(
+                            'FLINT startup: killing orphan %s (PID %d)',
+                            module, proc.pid,
+                        )
+                        proc.kill()
+                        killed += 1
+                        break
+            except Exception:
+                pass
+
+        if killed:
+            self.logger.info('FLINT startup: killed %d orphan component process(es)', killed)
+            time.sleep(1)  # brief pause for ports to clear before re-binding
+
     def _maybe_restart(self, component: ProcessEntry) -> None:
         now = time.time()
         if (component.restart_attempts >= self.config['flint']['max_restart_attempts']
@@ -391,6 +427,7 @@ class Flint:
         threading.Thread(target=self._pulse_loop, daemon=True, name='flint-pulse').start()
         threading.Thread(target=self._serve_status, daemon=True, name='flint-status').start()
         threading.Thread(target=self._llm_health_loop, daemon=True, name='flint-llm-health').start()
+        self._cleanup_orphan_components()
         self.start_tiers()
         self.process_state = 'ready'
         self.logger.info('FLINT ready — Cascadia OS v' + VERSION)
