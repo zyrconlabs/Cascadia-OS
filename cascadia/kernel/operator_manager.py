@@ -459,21 +459,38 @@ class OperatorManager:
     def _boot_check(self) -> None:
         """Check activity_driven operators for pending work after startup grace period.
         Keeps running if work found, puts to sleep if idle."""
-        self.logger.info("OperatorManager boot check starting...")
+        self.logger.info("=== OperatorManager boot check starting ===")
+        woken_count = 0
+        sleeping_count = 0
+
+        intents = self._load_intent()
 
         for op in list(self.operators.values()):
             lifecycle = op.manifest.get("lifecycle", "on_demand")
             if lifecycle != "activity_driven":
                 continue
 
+            intent_record = intents.get(op.id, {})
+            intent = intent_record.get("worker_intent", "running")
+            updated_by = intent_record.get("updated_by", "system")
+
+            # Respect explicit user-stops — don't auto-wake on boot
+            if intent == "stopped" and updated_by == "api":
+                self.logger.info("Boot check: %s is api-stopped — skipping", op.id)
+                continue
+
+            # Non-api stopped (e.g. crash-stopped) → treat as sleeping
+            if intent == "stopped":
+                self._save_intent(op.id, "sleeping", "boot_check")
+
             has_work = self._check_operator_has_work(op)
 
             if has_work:
                 self.logger.info(
-                    "Boot check: %s has pending work — keeping running", op.id
+                    "Boot check: %s has pending work — waking", op.id
                 )
-                if op.proc is None or op.proc.poll() is not None:
-                    self.wake_operator(op.id, "boot_work_detected")
+                self.wake_operator(op.id, "boot_work_detected")
+                woken_count += 1
             else:
                 self.logger.info(
                     "Boot check: %s has no pending work — sleeping", op.id
@@ -483,8 +500,12 @@ class OperatorManager:
                 else:
                     self._save_intent(op.id, "sleeping", "boot_check")
                     op.status = "sleeping"
+                sleeping_count += 1
 
-        self.logger.info("OperatorManager boot check complete")
+        self.logger.info(
+            "=== Boot check complete: %d woken, %d sleeping ===",
+            woken_count, sleeping_count,
+        )
 
     # ── Restart helpers ───────────────────────────────────────────────────────
 
@@ -717,48 +738,56 @@ class OperatorManager:
         @api.route("/operators/<op_id>/wake", methods=["POST"])
         def operator_wake(op_id):
             """Wake a sleeping operator. Called by Mission Manager, PRISM, or another operator."""
-            op = om._get_operator(op_id)
-            if not op:
-                return jsonify({"ok": False, "error": f"Unknown operator: {op_id}"}), 404
+            try:
+                op = om._get_operator(op_id)
+                if not op:
+                    return jsonify({"ok": False, "error": f"Unknown operator: {op_id}"}), 404
 
-            intent = om._get_worker_intent(op_id)
+                intent = om._get_worker_intent(op_id)
 
-            if intent == "stopped":
+                if intent == "stopped":
+                    return jsonify({
+                        "ok": False,
+                        "error": "Operator is explicitly stopped. Use /start to override.",
+                    }), 409
+
+                body = request.get_json(force=True) or {}
+                reason = body.get("reason", "api_request")
+
+                previous_intent = intent
+                success = om.wake_operator(op_id, reason)
+
                 return jsonify({
-                    "ok": False,
-                    "error": "Operator is explicitly stopped. Use /start to override.",
-                }), 409
-
-            body = request.get_json(force=True) or {}
-            reason = body.get("reason", "api_request")
-
-            previous_intent = intent
-            success = om.wake_operator(op_id, reason)
-
-            return jsonify({
-                "ok": success,
-                "op_id": op_id,
-                "status": "waking" if success else "failed",
-                "previous_intent": previous_intent,
-            })
+                    "ok": success,
+                    "op_id": op_id,
+                    "status": "waking" if success else "failed",
+                    "previous_intent": previous_intent,
+                })
+            except Exception as e:
+                om.logger.error("Wake endpoint error for %s: %s", op_id, e, exc_info=True)
+                return jsonify({"ok": False, "error": str(e)}), 500
 
         @api.route("/operators/<op_id>/sleep", methods=["POST"])
         def operator_sleep(op_id):
             """Put an operator to sleep. Called by Mission Manager after a step or soft pulse."""
-            op = om._get_operator(op_id)
-            if not op:
-                return jsonify({"ok": False, "error": f"Unknown operator: {op_id}"}), 404
+            try:
+                op = om._get_operator(op_id)
+                if not op:
+                    return jsonify({"ok": False, "error": f"Unknown operator: {op_id}"}), 404
 
-            body = request.get_json(force=True) or {}
-            reason = body.get("reason", "api_request")
+                body = request.get_json(force=True) or {}
+                reason = body.get("reason", "api_request")
 
-            success = om.sleep_operator(op_id, reason)
+                success = om.sleep_operator(op_id, reason)
 
-            return jsonify({
-                "ok": success,
-                "op_id": op_id,
-                "status": "sleeping" if success else "failed",
-            })
+                return jsonify({
+                    "ok": success,
+                    "op_id": op_id,
+                    "status": "sleeping" if success else "failed",
+                })
+            except Exception as e:
+                om.logger.error("Sleep endpoint error for %s: %s", op_id, e, exc_info=True)
+                return jsonify({"ok": False, "error": str(e)}), 500
 
         @api.route("/operators/<op_id>/status", methods=["GET"])
         def operator_status(op_id):
