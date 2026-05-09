@@ -1217,6 +1217,21 @@ async function handleCommand(id, cmd) {
       await Vault.saveMessages(id,S.messages[id]);
       renderMain(); scrollChat(); return;
     }
+    if (cmd==='/start' && id==='recon') {
+      showAct(id,'Starting RECON…');
+      try {
+        const r=await fetch(PRISM_URL+'/api/operators/recon/start',{
+          method:'POST',headers:{'Content-Type':'application/json'},body:'{}',
+          signal:AbortSignal.timeout(5000),
+        });
+        const d=await r.json(); clearAct(id);
+        const msg=d.already_running?'RECON worker is already running.':d.ok?'RECON worker started.':'Could not start RECON: '+(d.error||'unknown error');
+        S.messages[id].push({time:t,type:'agent',text:msg});
+        if (d.ok) { setTimeout(refreshReconStatus,2000); setTimeout(refreshOpCards,2000); }
+      } catch(e) { clearAct(id); S.messages[id].push({time:t,type:'agent',text:'Start failed: '+e.message}); }
+      await Vault.saveMessages(id,S.messages[id]);
+      renderMain(); scrollChat(); return;
+    }
     if (cmd==='/recent-tasks') {
       showAct(id,'Loading runs…');
       const vaultRuns = S.runs[id]||[];
@@ -1597,7 +1612,8 @@ function renderMain() {
   } else if (c.status==='standby'&&!c.isBeacon&&!c.isWorker) {
     actHTML=`<div class="act-bar act-bar--visible"><div class="standby-pulse"><div class="standby-ring"></div><span class="standby-text">Standby · Ready</span></div></div>`;
   } else { actHTML=`<div class="act-bar act-bar--hidden"></div>`; }
-  const cBtns=cmds.map(x=>`<button class="cmd-btn" onclick="runCmd('${x.cmd}')">${x.label}</button>`).join('');
+  const _cmds=c.id==='recon'?[...cmds.slice(0,-1),{cmd:'/start',label:'Start'},cmds[cmds.length-1]]:cmds;
+  const cBtns=_cmds.map(x=>`<button class="cmd-btn" onclick="runCmd('${x.cmd}')">${x.label}</button>`).join('');
   const modelOpts=MODELS.map(m=>`<div class="model-opt${m.id===S.model?' model-opt--active':''}" onclick="setModel('${m.id}')">${m.name}<span>${m.desc}</span></div>`).join('');
   let mHTML='';
   msgs.forEach(m=>{

@@ -153,7 +153,6 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/prism/pairing/status',   self.pairing_status)
         self.runtime.register_route('POST', '/api/prism/leads/recover',    self.leads_recover)
         # Sprint v2
-        self.runtime.register_route('POST', '/api/prism/stripe/webhook',       self.stripe_webhook)
         self.runtime.register_route('POST', '/api/prism/approve/edit',         self.approve_edit)
         self.runtime.register_route('GET',  '/api/prism/approvals/analytics',  self.approval_analytics)
         self.runtime.register_route('GET',  '/api/prism/outcomes',             self.approval_outcomes)
