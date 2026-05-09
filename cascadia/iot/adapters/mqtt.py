@@ -1,5 +1,5 @@
 """
-mqtt.py — Cascadia OS v0.47
+mqtt.py — Cascadia OS 2026.5
 MQTT sensor adapter for CONDUIT IoT bridge.
 """
 from __future__ import annotations

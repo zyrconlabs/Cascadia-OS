@@ -1,5 +1,5 @@
 """
-tests/test_smoke.py - Cascadia OS v0.43
+tests/test_smoke.py - Cascadia OS 2026.5
 # MATURITY: PRODUCTION — End-to-end smoke tests and restart-under-load drills.
 
 End-to-end scenarios that prove the system behaves correctly across

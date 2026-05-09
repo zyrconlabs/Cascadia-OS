@@ -1,5 +1,5 @@
 """
-audit_log.py — Cascadia OS v0.46
+audit_log.py — Cascadia OS 2026.5
 Immutable approval audit trail with SHA-256 chain hashing.
 Owns: append-only audit event storage, chain integrity verification,
       export (CSV, JSON), and querying.

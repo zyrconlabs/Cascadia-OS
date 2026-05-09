@@ -1,5 +1,5 @@
 """
-vault.py - Cascadia OS v0.44
+vault.py - Cascadia OS 2026.5
 VAULT: Private institutional memory.
 Structured durable storage for operator knowledge, customer context,
 approved outputs, and shared memory. Capability-checked on every access.

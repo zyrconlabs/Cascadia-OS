@@ -1,5 +1,5 @@
 """
-prism/prism.py - Cascadia OS v0.44
+prism/prism.py - Cascadia OS 2026.5
 PRISM: Command center and dashboard aggregation layer.
 
 Owns: aggregating status from all Cascadia OS components,
@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib import request as urllib_request
 
+from cascadia import __version__ as _cascadia_version
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
 
@@ -815,7 +816,7 @@ class PrismService:
         except Exception:
             hw = {'available': False}
         return 200, {
-            'cascadia_os': 'v0.44',
+            'cascadia_os': f'v{_cascadia_version}',
             'generated_at': _now(),
             'system': {
                 'flint_state': flint.get('state', 'unknown'),

@@ -1,5 +1,5 @@
 """
-tests/test_e2e_approval_flow.py - Cascadia OS v0.43
+tests/test_e2e_approval_flow.py - Cascadia OS 2026.5
 # MATURITY: PRODUCTION — End-to-end approval flow tests under restart conditions.
 
 Proves the complete lifecycle for approval-gated runs:

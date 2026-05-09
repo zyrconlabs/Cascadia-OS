@@ -13,6 +13,6 @@
   "start_cmd": "sensor_operator.py",
   "autostart": true,
   "author": "",
-  "min_cascadia_version": "0.47",
+  "min_cascadia_version": "2026.5",
   "network_access": false
 }

@@ -1,5 +1,5 @@
 """
-bridge.py — Cascadia OS v0.47
+bridge.py — Cascadia OS 2026.5
 CONDUIT: IoT bridge service.
 Owns: sensor adapter management, sensor event normalization, VANGUARD routing.
 Does not own: sensor storage (SensorStore), workflow execution (STITCH), risk classification (SENTINEL).

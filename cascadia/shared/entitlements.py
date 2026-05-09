@@ -1,4 +1,4 @@
-"""entitlements.py - Cascadia OS v0.47
+"""entitlements.py - Cascadia OS 2026.5
 Canonical single source of truth for capability strings and risk levels.
 Owns: capability registry, risk classification, helper functions.
 Does not own: enforcement (VANTAGE), compliance rules (SENTINEL), routing (BEACON).

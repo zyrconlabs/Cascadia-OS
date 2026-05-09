@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-IoT Sensor Operator Template — Cascadia OS v0.47
+IoT Sensor Operator Template — Cascadia OS 2026.5
 Owns: sensor data analysis, anomaly detection, threshold alerting
 Does not own: physical actuation (Enterprise only), sensor storage (CONDUIT)
 

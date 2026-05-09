@@ -1,5 +1,5 @@
 """
-base.py — Cascadia OS v0.47
+base.py — Cascadia OS 2026.5
 Abstract base class for IoT sensor adapters.
 """
 from __future__ import annotations

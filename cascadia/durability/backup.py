@@ -1,5 +1,5 @@
 """
-backup.py — Cascadia OS v0.47
+backup.py — Cascadia OS 2026.5
 BackupManager: SQLite database backup with gzip compression and integrity verification.
 Owns: backup creation, retention, and verification. Does not own restoration.
 """

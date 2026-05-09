@@ -1,5 +1,5 @@
 """
-trigger.py — Cascadia OS v0.47
+trigger.py — Cascadia OS 2026.5
 TriggerEngine: IoT threshold-based workflow trigger evaluation.
 Owns: trigger definition evaluation, cooldown tracking, VANGUARD ingest routing.
 Does not own: sensor storage (SensorStore), workflow execution (STITCH), risk (SENTINEL).
