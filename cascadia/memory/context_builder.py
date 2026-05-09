@@ -1,5 +1,5 @@
 """
-context_builder.py — Cascadia OS v0.46
+context_builder.py — Cascadia OS 2026.5
 Builds contextual memory snapshots for operator decision-making.
 Owns: querying VAULT for relevant past interactions, assembling
       structured context for CHIEF and other operators.

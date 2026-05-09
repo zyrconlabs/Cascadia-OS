@@ -1,5 +1,5 @@
 """
-tests/test_v02.py - Cascadia OS v0.43
+tests/test_v02.py - Cascadia OS 2026.5
 Full integration test suite covering all named components.
 """
 from __future__ import annotations

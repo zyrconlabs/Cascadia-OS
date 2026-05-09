@@ -1,5 +1,5 @@
 """
-system_monitor.py — Cascadia OS v0.46
+system_monitor.py — Cascadia OS 2026.5
 Hardware health monitoring for the Zyrcon AI Server.
 Owns: reading CPU, RAM, disk, temperature, model inference speed.
 Does not own: alerting (HANDSHAKE), display (PRISM), process management (FLINT).

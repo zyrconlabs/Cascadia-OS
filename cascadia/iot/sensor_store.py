@@ -1,5 +1,5 @@
 """
-sensor_store.py — Cascadia OS v0.47
+sensor_store.py — Cascadia OS 2026.5
 SensorStore: durable SQLite-backed sensor reading persistence.
 Owns: sensor reading storage and query. Does not own routing or analysis.
 """

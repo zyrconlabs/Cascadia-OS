@@ -1,5 +1,5 @@
 """
-tests/test_crash_recovery.py - Cascadia OS v0.43
+tests/test_crash_recovery.py - Cascadia OS 2026.5
 Failure drills. These test what matters most:
 
   1. Kill mid-run -> restart -> resume from last committed step (not step 0)

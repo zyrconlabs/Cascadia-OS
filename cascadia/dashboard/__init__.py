@@ -1,1 +1,1 @@
-# PRISM - Cascadia OS v0.44 dashboard
+# PRISM - Cascadia OS 2026.5 dashboard

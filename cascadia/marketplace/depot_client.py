@@ -1,5 +1,5 @@
 """
-depot_client.py — Cascadia OS v0.46
+depot_client.py — Cascadia OS 2026.5
 Client for the DEPOT operator marketplace API.
 Owns: fetching operator listings, categories, and download URLs.
 Does not own: payment processing (Stripe), installation (CREW), display (PRISM).

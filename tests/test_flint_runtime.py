@@ -1,5 +1,5 @@
 """
-tests/test_flint_runtime.py - Cascadia OS v0.43
+tests/test_flint_runtime.py - Cascadia OS 2026.5
 # MATURITY: PRODUCTION — Live subprocess crash drills for FLINT and watchdog.
 
 Tests FLINT supervision behavior using real subprocesses — not mocks.

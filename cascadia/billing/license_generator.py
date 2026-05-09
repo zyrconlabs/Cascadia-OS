@@ -1,5 +1,5 @@
 """
-license_generator.py — Cascadia OS v0.46
+license_generator.py — Cascadia OS 2026.5
 Delivers license keys on successful Stripe payment.
 Owns: VAULT storage, email delivery via HANDSHAKE, and activation coordination.
 Does not own: key generation (enterprise service), tier validation (TierValidator).

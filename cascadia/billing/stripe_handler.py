@@ -1,5 +1,5 @@
 """
-stripe_handler.py — Cascadia OS v0.46
+stripe_handler.py — Cascadia OS 2026.5
 Stripe webhook receiver and subscription lifecycle manager.
 Owns: receiving Stripe events, validating webhook signatures,
       mapping subscription status to tier changes.

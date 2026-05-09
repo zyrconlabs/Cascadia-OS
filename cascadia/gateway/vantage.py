@@ -1,4 +1,4 @@
-"""vantage.py - Cascadia OS v0.47 | VANTAGE: Capability enforcement gateway."""
+"""vantage.py - Cascadia OS 2026.5 | VANTAGE: Capability enforcement gateway."""
 # MATURITY: FUNCTIONAL — Validates declared capabilities, gates high-risk through SENTINEL, logs all calls.
 from __future__ import annotations
 

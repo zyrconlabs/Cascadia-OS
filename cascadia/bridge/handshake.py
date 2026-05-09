@@ -1,5 +1,5 @@
 """
-handshake/handshake.py - Cascadia OS v0.44
+handshake/handshake.py - Cascadia OS 2026.5
 HANDSHAKE: API bridge to external services.
 
 Owns: connection registry for external APIs (CRMs, ERPs, payment systems),

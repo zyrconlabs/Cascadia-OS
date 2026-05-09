@@ -1,5 +1,5 @@
 """
-approval_timeout.py — Cascadia OS v0.46
+approval_timeout.py — Cascadia OS 2026.5
 Approval timeout and escalation daemon.
 Owns: monitoring pending approvals for timeout, escalating to secondary
       contact, auto-rejecting after final timeout, maintaining audit trail.

@@ -1,5 +1,5 @@
 """
-tests/test_operators.py — Cascadia OS v0.43
+tests/test_operators.py — Cascadia OS 2026.5
 Smoke tests for the operator ecosystem.
 
 Tests operator manifests, configs, registry integrity, and API contracts

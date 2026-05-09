@@ -1,2 +1,2 @@
-# VANGUARD - Cascadia OS v0.44 communication gateway
-# VANTAGE  - Cascadia OS v0.47 capability enforcement gateway
+# VANGUARD - Cascadia OS 2026.5 communication gateway
+# VANTAGE  - Cascadia OS 2026.5 capability enforcement gateway
