@@ -194,45 +194,8 @@ else
         || echo "⚠ RECON started but health check failed — check recon.log"
 fi
 
-# ── CHIEF operator ──────────────────────────────────
-CHIEF_DIR="/Users/andy/Zyrcon/operators/cascadia-os-operators/chief"
-if [ -f "$CHIEF_DIR/server.py" ]; then
-    echo "▸ Starting CHIEF..."
-    cd "$CHIEF_DIR"
-    python3 server.py \
-      >> /Users/andy/Zyrcon/cascadia-os/data/logs/chief.log 2>&1 &
-    CHIEF_PID=$!
-    echo $CHIEF_PID > "$REPO/data/runtime/pids/chief.pid"
-    cd /Users/andy/Zyrcon/cascadia-os
-    sleep 2
-    if curl -sf http://localhost:8006/api/health > /dev/null 2>&1; then
-        echo "✓ CHIEF ready (PID $CHIEF_PID)"
-    else
-        echo "⚠ CHIEF started but health check failed — check chief.log"
-    fi
-else
-    echo "⚠ CHIEF not found at $CHIEF_DIR — skipping"
-fi
-
-# ── SOCIAL operator ─────────────────────────────────
-SOCIAL_DIR="/Users/andy/Zyrcon/operators/cascadia-os-operators/social"
-if [ -f "$SOCIAL_DIR/server.py" ]; then
-    echo "▸ Starting SOCIAL..."
-    cd "$SOCIAL_DIR"
-    python3 server.py \
-      >> /Users/andy/Zyrcon/cascadia-os/data/logs/social.log 2>&1 &
-    SOCIAL_PID=$!
-    echo $SOCIAL_PID > "$REPO/data/runtime/pids/social.pid"
-    cd /Users/andy/Zyrcon/cascadia-os
-    sleep 2
-    if curl -sf http://localhost:8011/api/health > /dev/null 2>&1; then
-        echo "✓ SOCIAL ready (PID $SOCIAL_PID)"
-    else
-        echo "⚠ SOCIAL started but health check failed — check social.log"
-    fi
-else
-    echo "⚠ SOCIAL not found at $SOCIAL_DIR — skipping"
-fi
+# CHIEF (on_demand) — started by Mission Manager via OM API: POST /operators/chief/wake
+# SOCIAL (activity_driven) — started by OM boot check if active sessions exist
 
 # ── 7. Register operators with CREW ──────────────────────────────────────
 # BELL self-registers with CREW automatically after startup.

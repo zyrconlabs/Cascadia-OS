@@ -41,11 +41,7 @@ stop_service() {
 # ── 9. Health Monitor ─────────────────────────────────────────────────────
 stop_service "health_monitor" 6209
 
-# ── 8. SOCIAL ─────────────────────────────────────────────────────────────
-stop_service "social" 8011
-
-# ── 7. CHIEF ──────────────────────────────────────────────────────────────
-stop_service "chief" 8006
+# CHIEF and SOCIAL stopped by OperatorManager stop_all() — do not stop here
 
 # ── 6.5. RECON ────────────────────────────────────────────────────────────
 stop_service "recon" 8002
