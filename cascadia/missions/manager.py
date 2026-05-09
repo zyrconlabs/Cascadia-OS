@@ -5,6 +5,7 @@ import argparse
 import json
 import logging
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any, Dict
 
@@ -278,12 +279,75 @@ def handle_runs(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
 
 # ── Write handlers ────────────────────────────────────────────────────────────
 
+_OM_API = "http://127.0.0.1:6210"
+
+
+def _get_operator_port(operator_id: str) -> int | None:
+    """Return the port for an operator by querying the OM status API."""
+    try:
+        import urllib.request as _ur
+        with _ur.urlopen(f"{_OM_API}/operators/{operator_id}/status", timeout=3) as r:
+            return json.loads(r.read().decode()).get("port")
+    except Exception:
+        return None
+
+
+def _wake_operator_for_step(operator_id: str) -> bool:
+    """Wake an operator before using it in a mission step.
+    Returns True if operator is ready within 30s, False if unreachable."""
+    import urllib.request as _ur
+
+    try:
+        # Check current status
+        with _ur.urlopen(f"{_OM_API}/operators/{operator_id}/status", timeout=3) as r:
+            status_data = json.loads(r.read().decode())
+        if status_data.get("status") == "running":
+            return True  # Already running
+
+        # Send wake request
+        wake_data = json.dumps({"reason": "mission_step"}).encode()
+        wake_req = _ur.Request(
+            f"{_OM_API}/operators/{operator_id}/wake",
+            data=wake_data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        _ur.urlopen(wake_req, timeout=5)
+
+        # Poll health endpoint until ready (up to 30s)
+        port = status_data.get("port")
+        health_path = status_data.get("health_path", "/api/health")
+        if port:
+            for _ in range(15):
+                time.sleep(2)
+                try:
+                    _ur.urlopen(f"http://127.0.0.1:{port}{health_path}", timeout=2)
+                    return True
+                except Exception:
+                    continue
+
+        return False
+
+    except Exception as e:
+        log.warning("Could not wake operator %s: %s", operator_id, e)
+        return False
+
+
 def handle_run_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
     mission_id = payload.get("mission_id", "")
     workflow_id = payload.get("workflow_id", "")
     trigger_type = payload.get("trigger_type", "manual")
     if _runner is None:
         return 503, {"error": "runner_not_available"}
+
+    # Wake required operators before starting the mission
+    if _registry is not None:
+        m = _registry.get_mission(mission_id)
+        if m:
+            required_ops = (m.get("operators") or {}).get("required", [])
+            for op_id in required_ops:
+                _wake_operator_for_step(op_id)
+
     try:
         result = _runner.start_mission(
             mission_id, workflow_id, trigger_type, payload.get("input")
