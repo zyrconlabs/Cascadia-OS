@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 _SENTINEL = Path('data/runtime/.first_run_complete')
+FIRST_RUN_FLAG = _SENTINEL
 
 
 def is_first_run() -> bool:

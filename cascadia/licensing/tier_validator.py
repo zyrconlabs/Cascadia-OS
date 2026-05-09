@@ -30,14 +30,11 @@ TIER_RANKS: Dict[str, int] = {
 }
 
 TIER_MAX_USERS: Dict[str, int] = {
-    'lite':             1,
-    'pro':              1,
-    'pro_workspace':    3,
-    'business_starter': 5,
-    'business_growth':  10,
-    'business_max':     999,
-    'business':         5,
-    'enterprise':       999,
+    'lite':          1,
+    'pro':           1,
+    'pro_workspace': 3,
+    'business':      10,
+    'enterprise':    999,
 }
 
 

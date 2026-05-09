@@ -23,9 +23,9 @@ STRIPE_TIER_MAP = {
     'price_pro_monthly':       'pro',
     'price_pro_annual':        'pro',
     'price_pro_workspace':     'pro_workspace',
-    'price_business_starter':  'business_starter',
-    'price_business_growth':   'business_growth',
-    'price_business_max':      'business_max',
+    'price_business_starter':  'business',
+    'price_business_growth':   'business',
+    'price_business_max':      'business',
     'price_enterprise':        'enterprise',
 }
 

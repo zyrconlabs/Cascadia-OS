@@ -6,6 +6,8 @@
 > Architecturally compliant with EU AI Act Articles 8-15 for high-risk AI systems — by design, not by retrofit.
 > → [EU AI Act Compliance Reference](./docs/eu_ai_act_compliance.md)
 
+**Version:** 2026.5 · May 2026 · [Changelog](CHANGELOG.md) · ![Tests](https://img.shields.io/badge/tests-1200%20passing-green)
+
 ---
 
 I was five years old the first time I took apart a telephone. Not for school. Because I needed to understand how the sound got through the wire.

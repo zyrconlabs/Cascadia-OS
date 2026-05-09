@@ -53,7 +53,7 @@ class TestTierValidatorConstants(unittest.TestCase):
         self.assertEqual(get_max_users('pro_workspace'), 3)
         self.assertEqual(get_max_users('lite'), 1)
         self.assertEqual(get_max_users('pro'), 1)
-        self.assertEqual(get_max_users('business'), 5)
+        self.assertEqual(get_max_users('business'), 10)
         self.assertEqual(get_max_users('enterprise'), 999)
         self.assertEqual(get_max_users('unknown_tier'), 1)
 
