@@ -266,10 +266,10 @@ class Flint:
                 if component.process_state == 'draining':
                     if component.draining_since is None:
                         component.draining_since = time.time()
-                    elif time.time() - component.draining_since > interval * 3:
+                    elif time.time() - component.draining_since > 60:
                         self.logger.warning(
-                            'FLINT %s stuck draining for %.0fs — forcing restart',
-                            component.name, interval * 3,
+                            'FLINT %s stuck draining for 60s — forcing restart',
+                            component.name,
                         )
                         component.draining_since = None
                         ok = False

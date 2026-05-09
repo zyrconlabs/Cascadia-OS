@@ -145,6 +145,9 @@ class ServiceRuntime:
         if method == 'POST' and clean == '/drain':
             self.state = 'draining'
             self._shutdown.set()
+            if self._httpd is not None:
+                # Must run in a thread — calling shutdown() from inside serve_forever() deadlocks.
+                threading.Thread(target=self._httpd.shutdown, daemon=True).start()
             return 202, {'component': self.name, 'state': self.state}
         return 404, {'error': f'Unknown route {method} {path}'}
 
