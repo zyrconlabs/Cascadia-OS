@@ -3454,50 +3454,44 @@ document.getElementById('key').addEventListener('keydown', function(e){
     # ------------------------------------------------------------------
 
     def recon_operator_start(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/operators/recon/start — launch RECON dashboard.py subprocess."""
-        import subprocess, urllib.request as _ur
-        # Check health first — works even after PRISM restart when proc handle is gone
+        """POST /api/operators/recon/start — delegate to OperatorManager."""
+        import urllib.request as _ur, json as _json
         try:
-            _ur.urlopen('http://127.0.0.1:8002/api/health', timeout=2)
-            return 200, {'ok': True, 'status': 'already_running'}
-        except Exception:
-            pass  # Not responding — proceed to start
-        ops_path = Path(
-            self.config.get('operators_path') or
-            self.config.get('operators_dir', '')
-        ).expanduser()
-        dashboard_py = ops_path / 'recon' / 'dashboard.py'
-        if not dashboard_py.exists():
-            return 404, {'ok': False, 'error': 'recon_not_found', 'path': str(dashboard_py)}
-        self._recon_proc = subprocess.Popen(
-            ['python3', str(dashboard_py)],
-            cwd=str(dashboard_py.parent),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return 200, {'ok': True, 'status': 'started', 'pid': self._recon_proc.pid}
+            r = _ur.Request(
+                'http://127.0.0.1:6210/operators/recon/wake',
+                data=_json.dumps({'reason': 'prism_start_button'}).encode(),
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            resp = _ur.urlopen(r, timeout=5)
+            result = _json.loads(resp.read())
+            return 200, {'ok': True, **result}
+        except Exception as e:
+            return 500, {
+                'ok': False,
+                'error': str(e),
+                'message': 'OperatorManager not reachable on port 6210',
+            }
 
     def recon_operator_stop(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/operators/recon/stop — SIGTERM RECON, port-kill fallback."""
-        import subprocess as _sp, threading, time as _t, urllib.request as _ur
-        _http_post(self._ports.get('recon', 8002), '/stop', {}, timeout=2.0)
-        proc = getattr(self, '_recon_proc', None)
-        if proc is not None and proc.poll() is None:
-            proc.terminate()
-        def _port_kill_fallback():
-            _t.sleep(3)
-            try:
-                _ur.urlopen('http://127.0.0.1:8002/api/health', timeout=1)
-                # Still up — kill by port
-                result = _sp.run(['/usr/sbin/lsof', '-ti', ':8002'],
-                                 capture_output=True, text=True)
-                pid = result.stdout.strip()
-                if pid:
-                    _sp.run(['kill', '-9', pid])
-            except Exception:
-                pass  # Already stopped
-        threading.Thread(target=_port_kill_fallback, daemon=True).start()
-        return 200, {'ok': True, 'status': 'stop_signal_sent'}
+        """POST /api/operators/recon/stop — delegate to OperatorManager."""
+        import urllib.request as _ur, json as _json
+        try:
+            r = _ur.Request(
+                'http://127.0.0.1:6210/operators/recon/worker/stop',
+                data=_json.dumps({'reason': 'prism_stop_button'}).encode(),
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            resp = _ur.urlopen(r, timeout=5)
+            result = _json.loads(resp.read())
+            return 200, {'ok': True, **result}
+        except Exception as e:
+            return 500, {
+                'ok': False,
+                'error': str(e),
+                'message': 'OperatorManager not reachable on port 6210',
+            }
 
     def recon_operator_status_ext(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """GET /api/operators/recon/status — proxy to recon_status."""
