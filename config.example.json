@@ -208,8 +208,6 @@
     "password": "",
     "_note": "SMTP credentials for transactional billing emails. Store in .env not here. Leave blank to disable email (logs only)."
   },
-  "guided_configuration_enabled": false,
-  "_guided_configuration_note": "Set to true to enable the /api/config/* routes and guided setup wizard. Off by default — requires manual activation.",
   "connectors": {
     "vantage_url": "http://localhost:6208",
     "port_ranges": {
