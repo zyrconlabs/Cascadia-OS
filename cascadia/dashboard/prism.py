@@ -2876,56 +2876,76 @@ document.getElementById('key').addEventListener('keydown', function(e){
         }
 
     def operator_settings_get(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """GET /api/prism/operator/{id}/settings — return operator settings fields."""
+        """GET /api/prism/operator/{id}/settings — return setup_fields from manifest."""
         op_id = payload.get('id', '')
-        # Return a generic placeholder field set
-        # (actual settings engine is off-limits; this is the UI contract only)
-        return 200, {
-            'operator_id': op_id,
-            'fields': [
-                {'key': 'lead_score_threshold', 'label': 'Lead Score Threshold',
-                 'type': 'slider', 'min': 0, 'max': 100, 'default': 70,
-                 'simple_mode': True, 'advanced_mode': True,
-                 'hint': 'Leads above this score trigger automatic actions.'},
-                {'key': 'approval_mode', 'label': 'Approval Mode',
-                 'type': 'select', 'options': ['always', 'on_high_risk', 'never'], 'default': 'always',
-                 'simple_mode': True, 'advanced_mode': True,
-                 'hint': 'When to pause and request human approval.'},
-                {'key': 'notifications_enabled', 'label': 'Notifications Enabled',
-                 'type': 'boolean', 'default': True, 'simple_mode': True},
-                {'key': 'notify_email', 'label': 'Notification Email',
-                 'type': 'string', 'default': '', 'simple_mode': True, 'advanced_mode': True},
-                {'key': 'api_key', 'label': 'API Key',
-                 'type': 'secret', 'simple_mode': False, 'advanced_mode': True, 'developer_mode': True},
-                {'key': 'debug_mode', 'label': 'Debug Mode',
-                 'type': 'boolean', 'default': False, 'simple_mode': False,
-                 'advanced_mode': False, 'developer_mode': True},
-                {'key': 'tags', 'label': 'Tags',
-                 'type': 'tags', 'default': '', 'simple_mode': False, 'advanced_mode': True},
-                {'key': 'max_retries', 'label': 'Max Retries',
-                 'type': 'number', 'min': 0, 'max': 10, 'default': 3,
-                 'simple_mode': False, 'advanced_mode': True},
-            ],
-        }
+        try:
+            manifest = self._load_setup_manifest('operator', op_id)
+            if manifest is None:
+                return 200, {
+                    'operator_id': op_id,
+                    'fields': [],
+                    'note': 'manifest not found',
+                }
+            settings = self._cfg_engine().get_settings('operator', op_id, manifest)
+            fields = []
+            for f in manifest.setup_fields:
+                entry: Dict[str, Any] = {
+                    'key': f.name,
+                    'label': f.label,
+                    'type': 'secret' if f.secret else f.type,
+                    'required': f.required,
+                    'default': f.default,
+                    'hint': f.help_text,
+                    'placeholder': f.placeholder,
+                    'simple_mode': f.simple_mode,
+                    'advanced_mode': f.advanced_mode,
+                    'developer_mode': f.developer_mode,
+                    'options': f.options,
+                    'min': f.min,
+                    'max': f.max,
+                }
+                if f.secret and f.vault_key:
+                    val = settings.get(f.name, {})
+                    entry['configured'] = val.get('configured', False) if isinstance(val, dict) else False
+                    entry['current_value'] = ''
+                else:
+                    current = settings.get(f.name)
+                    entry['current_value'] = current if current is not None else f.default
+                fields.append(entry)
+            return 200, {
+                'operator_id': op_id,
+                'fields': fields,
+                'manifest_found': True,
+            }
+        except Exception as exc:
+            return 500, {
+                'error': str(exc),
+                'operator_id': op_id,
+                'fields': [],
+            }
 
     def operator_settings_post(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/prism/operator/{id}/settings — save operator settings (demo mode)."""
+        """POST /api/prism/operator/{id}/settings — save operator settings to vault."""
         op_id = payload.get('id', '')
-        settings = payload.get('settings', {})
-        # Demo mode: acknowledge save without persisting
-        # (actual settings engine is off-limits)
-        return 200, {
-            'saved': True,
-            'operator_id': op_id,
-            'message': 'Settings saved (demo mode)',
-        }
+        changes = payload.get('fields', payload.get('settings', {}))
+        try:
+            manifest = self._load_setup_manifest('operator', op_id)
+            if manifest is None:
+                return 404, {'error': 'operator manifest not found', 'saved': False}
+            result = self._cfg_engine().save_patch(
+                'operator', op_id, changes,
+                confirmed=True, source='prism_settings', manifest=manifest,
+            )
+            return 200, {'operator_id': op_id, **result}
+        except Exception as exc:
+            return 500, {'error': str(exc), 'saved': False}
 
     # ------------------------------------------------------------------
     # Guided Configuration API (feature-flagged)
     # ------------------------------------------------------------------
 
     def _guided_config_enabled(self) -> bool:
-        return bool(self.config.get("guided_configuration_enabled", False))
+        return bool(self.config.get("guided_configuration_enabled", True))
 
     def _cfg_engine(self):
         from cascadia.settings.engine import SettingsEngine

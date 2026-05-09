@@ -4,6 +4,7 @@
   "operators_registry_path": "~/cascadia-os-operators/registry.json",
   "operators_dir": "",
   "_operators_dir_note": "Path to operators folder. Leave empty to use cascadia/operators/ (built-in). Set to absolute path for commercial operators e.g. /Users/yourname/Zyrcon/operators/cascadia-os-operators",
+  "guided_configuration_enabled": true,
   "llm": {
     "provider": null,
     "model": null,
