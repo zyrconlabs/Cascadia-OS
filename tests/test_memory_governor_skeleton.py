@@ -112,7 +112,7 @@ def test_outbox_disabled_returns_none():
     result = ob.enqueue(
         run_id="r1",
         action_type="email",
-        payload_hash="abc",
+        payload={"to": "test@example.com"},
         idempotency_key="key1",
     )
     assert result is None

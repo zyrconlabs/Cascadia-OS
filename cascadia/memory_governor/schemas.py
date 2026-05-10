@@ -10,11 +10,12 @@ CREATE TABLE IF NOT EXISTS outbox (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id              TEXT NOT NULL,
     action_type         TEXT NOT NULL,
+    payload_json        TEXT NOT NULL,
     payload_hash        TEXT NOT NULL,
     idempotency_key     TEXT NOT NULL UNIQUE,
     status              TEXT NOT NULL DEFAULT 'pending',
-    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    executed_at         TIMESTAMP,
+    created_at          REAL NOT NULL,
+    executed_at         REAL,
     external_result_id  TEXT,
     error_message       TEXT
 );

@@ -5,8 +5,12 @@ Flags live in their own module so submodules can import
 them without circular import risk. __init__.py re-exports
 these for public consumption.
 
-All flags default to false. Skeleton phase: enabling any
-flag triggers NotImplementedError where applicable.
+All flags default to false.
+
+# Phase 2 (skeleton): OUTBOX_ENABLED was a stub.
+# Phase 3 (this commit): OUTBOX_ENABLED=true activates
+# real SQLite outbox with idempotency + crash recovery.
+# Default remains false — enable explicitly in .env.
 """
 
 import os

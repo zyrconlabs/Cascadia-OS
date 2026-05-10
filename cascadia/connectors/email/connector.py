@@ -23,6 +23,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+from cascadia.memory_governor.outbox import Outbox
+
+_outbox = Outbox()
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -255,16 +259,42 @@ def execute_call(payload: dict) -> dict:
     action = payload.get("action")
 
     if action == "send_email":
-        return send_email(
+        run_id = payload.get("run_id", "")
+        to_addr = payload.get("to", "")
+        idem_key = Outbox.make_idempotency_key(
+            run_id=run_id, action_type="send_email", target=to_addr)
+
+        if _outbox.is_completed(idem_key):
+            log.info("send_email.already_sent.skipped to=%s", to_addr)
+            return {"ok": True, "status": "skipped", "reason": "duplicate"}
+
+        outbox_id = _outbox.enqueue(
+            run_id=run_id,
+            action_type="send_email",
+            payload={"to": to_addr, "subject": payload.get("subject", "")},
+            idempotency_key=idem_key,
+        )
+        if outbox_id:
+            _outbox.mark_executing(outbox_id)
+
+        result = send_email(
             smtp_host=payload["smtp_host"],
             smtp_port=payload.get("smtp_port", 587),
             username=payload["username"],
             password=payload["password"],
-            to=payload["to"],
+            to=to_addr,
             subject=payload["subject"],
             body=payload["body"],
             use_tls=payload.get("use_tls", True),
         )
+
+        if outbox_id:
+            if result.get("ok"):
+                _outbox.mark_completed(outbox_id, "")
+            else:
+                _outbox.mark_failed(outbox_id, result.get("error", "unknown"))
+
+        return result
     elif action == "list_inbox":
         return list_inbox(
             imap_host=payload["imap_host"],
