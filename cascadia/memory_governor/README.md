@@ -29,8 +29,12 @@ between submodules.
 
 ## Build Phases
 
-- **Phase 2 (this commit)** — module skeleton, all flags off
-- **Phase 3** — outbox implementation (highest value)
+- **Phase 2** — module skeleton, all flags off
+- **Phase 3 (this commit)** — outbox implementation
+  - SQLite-backed with idempotency keys
+  - Crash-safe: pending actions survive restart
+  - Reference integration: email connector (`execute_call`)
+  - `OUTBOX_ENABLED=true` to activate (default false)
 - **Phase 4** — RAM ring buffer + logger integration
 - **Phase 5** — mission summary compaction
 - **Phase 6** — retention enforcement
