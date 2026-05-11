@@ -1,12 +1,11 @@
 # Cascadia OS
 
-> AI operating system for small businesses.
-> Runs on your Mac. Connects to Zyrcon on iPhone.
+> AI-powered workflow missions for small businesses — running on Mac, Linux, or Windows.
 
 > Architecturally compliant with EU AI Act Articles 8-15 for high-risk AI systems — by design, not by retrofit.
 > → [EU AI Act Compliance Reference](./docs/eu_ai_act_compliance.md)
 
-**Version:** 2026.5 · May 2026 · [Changelog](CHANGELOG.md) · ![Tests](https://img.shields.io/badge/tests-1200%20passing-green)
+**Version:** 2026.5 · May 2026 · [Changelog](CHANGELOG.md) · ![Tests](https://img.shields.io/badge/tests-1242%20passing-green)
 
 ---
 
@@ -24,13 +23,26 @@ I didn't want a chatbot. I wanted an operator I could trust. Something that reme
 
 ## What It Does
 
-Three AI mission desks that run automatically:
+Zyrcon AI helps small businesses find customers, improve sales, organize work, and automate daily operations through AI-powered workflow missions — powered by Cascadia OS.
+
+Three mission desks run automatically:
 
 **Revenue Desk** — Scans email for leads, quotes, POs, invoices, and follow-ups. Classifies each one, scores urgency and value, and flags opportunities for your approval before taking action. Connects to the Zyrcon iPhone app so you can act from anywhere.
 
-**Growth Campaigns** — Turns completed jobs, old leads, and seasonal opportunities into approved email, SMS, and social media campaigns. Generates drafts, routes for approval, and dispatches on your schedule.
+**Growth Desk** — Turns completed jobs, old leads, and seasonal opportunities into approved email, SMS, and social media campaigns. Generates drafts, routes for approval, and dispatches on your schedule.
 
 **Operations Desk** — Reviews projects, tasks, assistant activity, planning gaps, and risks. Surfaces what needs attention without requiring you to ask.
+
+---
+
+**What runs automatically**
+
+| Schedule | What happens |
+|----------|-------------|
+| On first start | Demo workflow seeded — approval card ready within 60 seconds |
+| MON–FRI 09:00 | Growth Desk generates campaign drafts for your approval |
+| Daily 02:00 | SQLite backup with integrity verification |
+| Continuously | Health Monitor checks all components, escalates on failure |
 
 ---
 
@@ -64,6 +76,7 @@ Infrastructure
 
 | Name | Port | What it does |
 |---|---:|---|
+| FLINT | 4011 | Process supervisor — tiered startup, health polling, restart with backoff |
 | CREW | 5100 | Operator registry with wildcard capability validation |
 | VAULT | 5101 | Durable SQLite-backed memory, CREW-validated access |
 | SENTINEL | 5102 | Risk classification, blocks denied actions in execution loop |
@@ -76,8 +89,45 @@ Infrastructure
 | ALMANAC | 6205 | Component catalog, glossary, runbooks |
 | CONDUIT | 6206 | IoT device bridge and sensor event router |
 | Mission Manager | 6207 | Mission catalog, runs, items, and approval lifecycle |
-| DEPOT API | 6208 | Marketplace API — browse, search, install, purchase |
+| VANTAGE | 6208 | Capability enforcement gateway — validates operator permissions before every connector call |
+| Health Monitor | 6209 | 24/7 health daemon — detects failures and triggers escalation chain |
 | PRISM | 6300 | Live system visibility — runs, approvals, operators, mobile API |
+
+### Message fabric
+
+| Component | Port | What it does |
+|-----------|-----:|-------------|
+| NATS JetStream | 4222 | Health events, failure signals, escalation routing between components |
+
+On component failure: FailureEvent → NATS → supervisor → retry / escalate / dead-letter queue.
+
+---
+
+## Local AI inference
+
+Cascadia OS runs inference locally via llama.cpp. On Apple Silicon (M1–M4) this uses the Metal GPU. No cloud API key required. No per-token cost. No data leaves your hardware.
+
+| Model | Best for |
+|-------|----------|
+| 3B (fast) | Quick classifications, short drafts |
+| 7B (balanced) | Most business workflows |
+| 14B (quality) | Complex proposals, analysis |
+
+The iPhone app supports the same models for fully offline on-device AI.
+
+---
+
+## Zyrcon iPhone App
+
+The Zyrcon app connects to PRISM over your local network or VPN. From the app you can:
+
+- See live item counts for all three mission desks
+- Review and approve pending AI actions with one tap
+- Approve email sends, quotes, and invoices before they go out
+- Trigger missions from anywhere
+- View lead and campaign items with full context
+
+Approvals sync instantly to PRISM. Background refresh keeps item counts current.
 
 ---
 
@@ -126,6 +176,8 @@ After installing, run the demo — ~90 seconds end-to-end:
 bash demo.sh
 ```
 
+The demo uses a sample business — Gulf Coast HVAC Services — as its context. All data is seeded locally. Nothing is sent externally.
+
 **What you'll see:**
 1. Lead arrives → workflow starts automatically
 2. System classifies, enriches, drafts a response
@@ -146,7 +198,7 @@ Scans your inbox continuously. Each inbound email is classified by BELL, scored 
 **Triggers:** Inbound email · manual run · daily schedule
 **Creates:** `lead` · `quote_request` · `purchase_order` · `invoice` · `overdue_invoice` · `unsold_quote`
 
-### Growth Campaigns
+### Growth Desk
 Generates and schedules marketing campaigns across email, SMS, and social channels. Each campaign draft routes through the approval gate before anything is published.
 
 **Triggers:** Manual run · completed job · daily schedule
@@ -186,6 +238,8 @@ High-risk actions (email sends, quote dispatch, invoice sends) are held at an ap
 | Slack | 9003 | Channel messages, notifications |
 | Email / SMTP | built-in | SMTP + IMAP, Gmail API mode |
 
+342+ operators and connectors for Pro and Business tiers are available at [zyrcon.store](https://zyrcon.store).
+
 → [Connector documentation](./docs/connectors.md)
 
 ---
@@ -221,11 +275,15 @@ Tested in `tests/test_crash_recovery.py`. Not just claimed.
 | Approval-required run restarted | Stays `waiting_human`, never auto-resumes |
 | Multiple crashes in sequence | `retry_count` increments correctly each time |
 
+**Outbox pattern**
+
+External actions (email sends, webhook calls) write to an outbox before executing. Each gets a SHA-256 idempotency key. A crash between writing and sending triggers exactly one retry on restart — never duplicated, never lost. Enable with `OUTBOX_ENABLED=true` in config.
+
 ---
 
 ## Tests
 
-1107 tests passing, 0 failing.
+1242 tests passing, 0 failing.
 
 ```bash
 cd cascadia-os
@@ -272,9 +330,13 @@ Test coverage includes: crash recovery, durability layer, operator registry, app
 - [API Reference](./docs/api.md)
 - [Connectors](./docs/connectors.md)
 - [Operators](./docs/operators.md)
+- [Tiers & Pricing](./docs/tiers_and_pricing.md)
+- [EU AI Act Compliance](./docs/eu_ai_act_compliance.md)
+- [Production Checklist](./docs/production_checklist.md)
 - [Contributing](./CONTRIBUTING.md)
 - [Security Policy](./SECURITY.md)
 - [Story behind the project](./STORY.md)
+- [Full docs index](./docs/)
 
 ---
 
@@ -289,13 +351,10 @@ Cascadia OS average lead response: 4 minutes
 
 ---
 
-## License
+## Licence
 
-Core: Apache 2.0
-Commercial operators: Zyrcon Commercial License
-See [LICENSING.md](./LICENSING.md) for details.
-
-Certain components — including first-party pre-built business operators, hardware appliance images, Cascadia Pro, managed cloud services, marketplace infrastructure, and enterprise support — are offered under separate commercial terms. See [LICENSING.md](./LICENSING.md) and [COMMERCIAL.md](./COMMERCIAL.md) for the full breakdown, or contact zyrconlabs@gmail.com for commercial inquiries.
+Cascadia OS core is licensed under the **Apache License 2.0**.
+See [LICENSE](./LICENSE) for full terms.
 
 **Dependencies:** llama.cpp (MIT) · Qwen3 (Apache 2.0)
 
