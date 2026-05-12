@@ -1,3 +1,5 @@
+[![PyPI version](https://img.shields.io/pypi/v/cascadia-os)](https://pypi.org/project/cascadia-os/)
+
 # Cascadia OS SDK
 
 Two ways to use the SDK depending on your setup. Both expose identical function signatures.
