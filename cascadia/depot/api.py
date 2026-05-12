@@ -7,7 +7,7 @@ Owns: marketplace browsing, operator manifest serving, purchase event handling,
 Does not own: payment processing (Stripe webhook), credential storage (Vault),
               operator runtime (FLINT), dashboard display (PRISM).
 
-Port: 6208
+Port: 6212
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from cascadia.depot.manifest_validator import (
 
 NAME = "depot-api"
 VERSION = "1.0.0"
-PORT = 6208
+PORT = 6212
 
 # CREW install endpoint — forward installs to the running CREW service
 CREW_PORT = int(os.environ.get('CREW_PORT', '8100'))
@@ -213,6 +213,7 @@ class _DepotHandler(http.server.BaseHTTPRequestHandler):
             with _catalog_lock:
                 count = len(_catalog)
             self._json(200, {
+                'ok': True,
                 'status': 'healthy', 'service': NAME, 'version': VERSION,
                 'port': PORT, 'catalog_entries': count,
                 'uptime_seconds': round(time.time() - _start_time),

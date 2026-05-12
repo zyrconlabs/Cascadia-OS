@@ -1670,7 +1670,7 @@ document.getElementById('key').addEventListener('keydown', function(e){
 
     def depot_operators(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Browse the DEPOT operator marketplace catalogue.
-        Tries live fetch from depot.zyrcon.ai first; falls back to local catalog.
+        Priority: local DEPOT API (6212) → depot.zyrcon.ai → DEPOTClient fallback.
         Merges with registry to show installed/active status.
         """
         import urllib.request as _ur
@@ -1678,15 +1678,24 @@ document.getElementById('key').addEventListener('keydown', function(e){
 
         operators: List[Dict[str, Any]] = []
 
-        # Try live DEPOT catalog
+        # 1. Local DEPOT API (fastest, no network required)
         try:
-            with _ur.urlopen('https://depot.zyrcon.ai/api/v1/operators', timeout=2) as r:
+            with _ur.urlopen('http://127.0.0.1:6212/v1/operators', timeout=1) as r:
                 data = json.loads(r.read().decode())
                 operators = data.get('operators', [])
         except Exception:
             pass
 
-        # Fallback to local DEPOTClient catalog
+        # 2. Live DEPOT catalog at depot.zyrcon.ai
+        if not operators:
+            try:
+                with _ur.urlopen('https://depot.zyrcon.ai/api/v1/operators', timeout=2) as r:
+                    data = json.loads(r.read().decode())
+                    operators = data.get('operators', [])
+            except Exception:
+                pass
+
+        # 3. Fallback to local DEPOTClient catalog
         if not operators:
             try:
                 from cascadia.marketplace.depot_client import DEPOTClient

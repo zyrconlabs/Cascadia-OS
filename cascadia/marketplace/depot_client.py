@@ -8,8 +8,10 @@ Does not own: payment processing (Stripe), installation (CREW), display (PRISM).
 from __future__ import annotations
 
 import json
-import urllib.request
+import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+import urllib.request
 
 from cascadia.shared.logger import get_logger
 
@@ -17,36 +19,47 @@ logger = get_logger('depot')
 
 DEPOT_API = 'https://depot.zyrcon.ai/api/v1'
 
-# Fallback catalogue shown when DEPOT API is unreachable
-_FALLBACK_CATALOGUE: List[Dict[str, Any]] = [
-    {
-        'id': 'social-pro',
-        'name': 'Social Pro',
-        'category': 'marketing',
-        'description': 'LinkedIn + X scheduling with AI quality scoring',
-        'price_usd': 29,
-        'tier_required': 'pro',
-        'stripe_payment_link': '',
-    },
-    {
-        'id': 'crm-sync',
-        'name': 'CRM Sync',
-        'category': 'sales',
-        'description': 'Two-way sync with HubSpot, Pipedrive, and Salesforce',
-        'price_usd': 0,
-        'tier_required': 'pro',
-        'stripe_payment_link': '',
-    },
-    {
-        'id': 'invoice-ai',
-        'name': 'Invoice AI',
-        'category': 'operations',
-        'description': 'Auto-generate and send invoices from completed job records',
-        'price_usd': 19,
-        'tier_required': 'business',
-        'stripe_payment_link': '',
-    },
-]
+
+def _load_local_catalog() -> List[Dict[str, Any]]:
+    """Load operator catalog from OPERATORS_REGISTRY_PATH if set, else built-in fallback."""
+    reg_path_env = os.environ.get('OPERATORS_REGISTRY_PATH', '').strip()
+    if reg_path_env:
+        try:
+            p = Path(reg_path_env).expanduser()
+            data = json.loads(p.read_text())
+            return data.get('operators', [])
+        except Exception as e:
+            logger.warning('DEPOTClient: could not load registry at %s: %s', reg_path_env, e)
+
+    return [
+        {
+            'id': 'social-pro',
+            'name': 'Social Pro',
+            'category': 'marketing',
+            'description': 'LinkedIn + X scheduling with AI quality scoring',
+            'price_usd': 29,
+            'tier_required': 'pro',
+            'stripe_payment_link': '',
+        },
+        {
+            'id': 'crm-sync',
+            'name': 'CRM Sync',
+            'category': 'sales',
+            'description': 'Two-way sync with HubSpot, Pipedrive, and Salesforce',
+            'price_usd': 0,
+            'tier_required': 'pro',
+            'stripe_payment_link': '',
+        },
+        {
+            'id': 'invoice-ai',
+            'name': 'Invoice AI',
+            'category': 'operations',
+            'description': 'Auto-generate and send invoices from completed job records',
+            'price_usd': 19,
+            'tier_required': 'business',
+            'stripe_payment_link': '',
+        },
+    ]
 
 
 class DEPOTClient:
@@ -61,9 +74,10 @@ class DEPOTClient:
                 return json.loads(r.read()).get('operators', [])
         except Exception as e:
             logger.warning('DEPOT: API unreachable (%s), using fallback catalogue', e)
+            catalog = _load_local_catalog()
             if category:
-                return [op for op in _FALLBACK_CATALOGUE if op.get('category') == category]
-            return list(_FALLBACK_CATALOGUE)
+                return [op for op in catalog if op.get('category') == category]
+            return catalog
 
     def get_operator(self, operator_id: str) -> Optional[Dict[str, Any]]:
         try:
@@ -71,4 +85,4 @@ class DEPOTClient:
             with urllib.request.urlopen(url, timeout=5) as r:
                 return json.loads(r.read())
         except Exception:
-            return next((op for op in _FALLBACK_CATALOGUE if op['id'] == operator_id), None)
+            return next((op for op in _load_local_catalog() if op['id'] == operator_id), None)
