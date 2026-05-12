@@ -138,6 +138,48 @@ class TestVantageHandlers(unittest.TestCase):
             })
         self.assertEqual(code, 503)
 
+    def test_tier_blocks_lite_license_on_business_operator(self):
+        """lite license (level 1) must not reach a business-tier operator (level 3)."""
+        crew_registry = {'operators': {'test_op': {
+            'capabilities': ['crm.write'], 'tier_required': 'business',
+        }}}
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
+             patch('cascadia.gateway.vantage.fetch_crew_registry', return_value=crew_registry):
+            code, body = self.svc.handle_call({
+                'operator_id': 'test_op', 'capability': 'crm.write', 'connector_port': 9200,
+            })
+        self.assertEqual(code, 403)
+        self.assertEqual(body['error'], 'tier_insufficient')
+        self.assertEqual(body['required_tier'], 'business')
+        self.assertEqual(body['current_tier'], 'lite')
+
+    def test_tier_allows_matching_tier(self):
+        """business license (level 3) satisfies a business-tier operator requirement."""
+        crew_registry = {'operators': {'test_op': {
+            'capabilities': ['crm.write'], 'tier_required': 'business',
+        }}}
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
+             patch('cascadia.gateway.vantage.fetch_crew_registry', return_value=crew_registry), \
+             patch('cascadia.gateway.vantage._http_post', return_value={'result': 'ok'}):
+            with patch.object(self.svc, '_config', {'license': {'tier': 'business'}, **self.svc._config}):
+                code, body = self.svc.handle_call({
+                    'operator_id': 'test_op', 'capability': 'crm.write', 'connector_port': 9200,
+                })
+        self.assertEqual(code, 200)
+        self.assertEqual(body['verdict'], 'allowed')
+
+    def test_tier_allows_lite_operator_on_lite_license(self):
+        """Operator with no tier_required (defaults to lite) is always accessible."""
+        crew_registry = {'operators': {'test_op': {'capabilities': ['crm.read']}}}
+        with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
+             patch('cascadia.gateway.vantage.fetch_crew_registry', return_value=crew_registry), \
+             patch('cascadia.gateway.vantage._http_post', return_value={'result': 'ok'}):
+            code, body = self.svc.handle_call({
+                'operator_id': 'test_op', 'capability': 'crm.read', 'connector_port': 9200,
+            })
+        self.assertEqual(code, 200)
+        self.assertEqual(body['verdict'], 'allowed')
+
     def test_handle_simulate_allowed(self):
         with patch('cascadia.gateway.vantage.check_capability', return_value={'ok': True}), \
              patch('cascadia.gateway.vantage.call_sentinel', return_value={'verdict': 'allowed'}):

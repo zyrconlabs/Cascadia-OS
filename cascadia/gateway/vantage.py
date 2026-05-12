@@ -19,6 +19,7 @@ CREW_PORT = 5100
 SENTINEL_PORT = 5102
 
 _HIGH_RISK = {'high', 'critical'}
+TIER_ORDER: Dict[str, int] = {"lite": 1, "pro": 2, "business": 3, "enterprise": 4}
 
 
 def _http_post(url: str, data: Dict[str, Any], timeout: int = 5) -> Dict[str, Any]:
@@ -73,11 +74,25 @@ def fetch_crew_registry() -> Dict[str, Any]:
     return _http_get(f'http://localhost:{CREW_PORT}/crew')
 
 
+def _active_tier_level(config: Dict[str, Any]) -> tuple[int, str]:
+    """Return (numeric_level, tier_name) for the active license. Defaults to lite."""
+    tier = config.get('license', {}).get('tier', 'lite')
+    return TIER_ORDER.get(tier, 1), tier
+
+
+def _fetch_operator_tier_required(operator_id: str) -> str:
+    """Return tier_required from CREW registry for this operator. Defaults to lite."""
+    registry = fetch_crew_registry()
+    op_data = registry.get('operators', {}).get(operator_id, {})
+    return op_data.get('tier_required', 'lite')
+
+
 class VantageService:
     """VANTAGE — Capability enforcement gateway. Sits between operators and connectors."""
 
     def __init__(self, config_path: str, name: str) -> None:
         config = load_config(config_path)
+        self._config = config
         comp = next(c for c in config['components'] if c['name'] == name)
         self.runtime = ServiceRuntime(
             name=name, port=comp['port'],
@@ -138,6 +153,23 @@ class VantageService:
 
         # Step 2: resolve risk level
         risk_level = get_risk_level(capability)
+
+        # Step 2b: tier enforcement
+        tier_required = _fetch_operator_tier_required(operator_id)
+        active_level, active_tier = _active_tier_level(self._config)
+        required_level = TIER_ORDER.get(tier_required, 1)
+        if active_level < required_level:
+            self._blocked_count += 1
+            self._log_vantage_call(operator_id, capability, risk_level, 'blocked_tier_insufficient', run_id)
+            return 403, {
+                'error': 'tier_insufficient',
+                'message': (
+                    f'This operator requires the {tier_required} tier. '
+                    f'Current license: {active_tier}. Upgrade at zyrcon.store.'
+                ),
+                'required_tier': tier_required,
+                'current_tier': active_tier,
+            }
 
         # Step 3: gate high/critical through SENTINEL
         if risk_level in _HIGH_RISK:
