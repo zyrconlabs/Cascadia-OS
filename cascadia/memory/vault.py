@@ -15,10 +15,8 @@ import base64
 import json
 import logging
 import os
-import secrets
 import sqlite3
 import threading
-import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,18 +27,15 @@ from cascadia.encryption.curtain import encrypt_field, decrypt_field
 _log = logging.getLogger('vault')
 
 
-def _load_vault_key() -> bytes:
-    """Load AES-256 key from VAULT_ENCRYPTION_KEY env var (base64), or generate ephemeral."""
+def _load_vault_key() -> Optional[bytes]:
+    """Load AES-256 key from VAULT_ENCRYPTION_KEY env var (base64).
+
+    Returns None when the env var is absent — callers must store plaintext in that case.
+    An ephemeral key would encrypt writes with a key lost on restart, making all values
+    unreadable without any indication of why.
+    """
     key_b64 = os.environ.get('VAULT_ENCRYPTION_KEY', '')
-    if key_b64:
-        return base64.b64decode(key_b64)
-    key = secrets.token_bytes(32)
-    warnings.warn(
-        'VAULT_ENCRYPTION_KEY not set — using ephemeral key. '
-        'Encrypted values will be unreadable after restart.',
-        stacklevel=2,
-    )
-    return key
+    return base64.b64decode(key_b64) if key_b64 else None
 
 
 class VaultStore:
@@ -81,6 +76,11 @@ class VaultStore:
         if not row:
             return None
         raw = row['value']
+        if self._enc_key is None:
+            try:
+                return json.loads(raw)
+            except Exception:
+                return None
         try:
             return json.loads(decrypt_field(raw, self._enc_key))
         except Exception:
@@ -93,7 +93,7 @@ class VaultStore:
     def write(self, key: str, value: Any, created_by: str, namespace: str = 'default') -> None:
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
-        stored = encrypt_field(json.dumps(value), self._enc_key)
+        stored = encrypt_field(json.dumps(value), self._enc_key) if self._enc_key else json.dumps(value)
         with self._lock, self._conn() as db:
             db.execute("""
                 INSERT INTO vault (key, namespace, value, created_by, created_at, updated_at)
@@ -117,6 +117,8 @@ class VaultStore:
 
     def migrate_to_encrypted(self) -> int:
         """Re-encrypt any plaintext values in-place. Returns count of migrated rows."""
+        if self._enc_key is None:
+            return 0
         migrated = 0
         with self._lock, self._conn() as db:
             rows = db.execute('SELECT key, namespace, value FROM vault').fetchall()
