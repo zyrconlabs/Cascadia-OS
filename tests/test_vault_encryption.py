@@ -80,6 +80,20 @@ class TestVaultEncryption(unittest.TestCase):
             result = store.read('envkey')
         self.assertEqual(result, {'nested': 'data', 'count': 42})
 
+    def test_no_key_passthrough(self):
+        """Without VAULT_ENCRYPTION_KEY, values are stored and read as plaintext JSON."""
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
+            db_path = tmp.name
+        env = {k: v for k, v in os.environ.items() if k != 'VAULT_ENCRYPTION_KEY'}
+        with patch.dict(os.environ, env, clear=True):
+            store = VaultStore(db_path)
+            store.write('plainkey', 'no encryption here', created_by='test')
+            result = store.read('plainkey')
+        self.assertEqual(result, 'no encryption here')
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute('SELECT value FROM vault WHERE key=?', ('plainkey',)).fetchone()
+        self.assertEqual(row[0], '"no encryption here"')
+
 
 if __name__ == '__main__':
     unittest.main()
