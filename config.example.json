@@ -35,6 +35,13 @@
   },
   "components": [
     {
+      "name": "license_gate",
+      "module": "cascadia.licensing.license_gate",
+      "port": 6100,
+      "tier": 0,
+      "pulse_file": "./data/runtime/license_gate.pulse"
+    },
+    {
       "name": "crew",
       "module": "cascadia.registry.crew",
       "port": 5100,

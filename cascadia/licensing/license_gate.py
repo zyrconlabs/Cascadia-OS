@@ -6,14 +6,16 @@ Owns: license key parsing, format validation, tier resolution, operator limit
       enforcement, and license status caching.
 Does not own: operator execution, capability checks, or payment processing.
 
-Runs on 127.0.0.1:6100. Infrastructure service — does not register with CREW.
+Runs on 127.0.0.1:6100. Registers with CREW on startup.
 """
 # MATURITY: PRODUCTION
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
+import threading
 import time
 from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,6 +32,7 @@ logger = get_logger('license_gate')
 # ---------------------------------------------------------------------------
 
 PORT = 6100
+CREW_URL = "http://127.0.0.1:5100"
 
 LICENSE_REGEX = re.compile(
     r'^ZYRCON-(LITE|PRO|BUSINESS|ENTERPRISE)-([0-9A-Fa-f]{16})$'
@@ -223,6 +226,38 @@ def _get_current_tier() -> str:
 
 
 # ---------------------------------------------------------------------------
+# CREW registration
+# ---------------------------------------------------------------------------
+
+def _register_with_crew() -> None:
+    manifest = {
+        'name':        'license_gate',
+        'port':        PORT,
+        'version':     '0.43',
+        'description': 'License validation and tier enforcement',
+        'capabilities': ['license.read'],
+        'routes': [
+            {'method': 'GET',  'path': '/api/license/status'},
+            {'method': 'GET',  'path': '/api/license/entitlement'},
+            {'method': 'POST', 'path': '/api/license/check_tier'},
+            {'method': 'GET',  'path': '/api/health'},
+        ],
+    }
+    try:
+        body = json.dumps(manifest).encode('utf-8')
+        req = urllib_request.Request(
+            f'{CREW_URL}/register',
+            data=body,
+            method='POST',
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib_request.urlopen(req, timeout=3) as r:
+            logger.info('registered with CREW: %s', r.status)
+    except Exception as exc:
+        logger.warning('could not register with CREW: %s', exc)
+
+
+# ---------------------------------------------------------------------------
 # HTTP server
 # ---------------------------------------------------------------------------
 
@@ -317,13 +352,51 @@ class _ReusableServer(ThreadingHTTPServer):
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _pulse_loop(pulse_file: Path) -> None:
+    """Write timestamp to pulse_file every 5 s so FLINT knows we're alive."""
+    while True:
+        try:
+            pulse_file.parent.mkdir(parents=True, exist_ok=True)
+            pulse_file.write_text(str(time.time()))
+        except Exception:
+            pass
+        time.sleep(5)
+
+
 def main() -> None:
+    p = argparse.ArgumentParser(description='LICENSE_GATE — Cascadia OS tier enforcement')
+    p.add_argument('--config', default='')
+    p.add_argument('--name', default='license_gate')
+    args = p.parse_args()
+
+    # Resolve pulse_file from config.json if provided
+    pulse_file: Optional[Path] = None
+    if args.config:
+        try:
+            cfg = json.loads(Path(args.config).read_text())
+            for comp in cfg.get('components', []):
+                if comp.get('name') == args.name:
+                    pf = comp.get('pulse_file', '')
+                    if pf:
+                        pulse_file = Path(pf)
+                    break
+        except Exception:
+            pass
+    if pulse_file is None:
+        pulse_file = Path(f'./data/runtime/{args.name}.pulse')
+
     # Pre-warm cache so first request is instant
     status = _get_status()
     logger.info(
         'starting — tier=%s valid=%s port=%d',
         status['tier'], status['valid'], PORT,
     )
+
+    threading.Thread(target=_pulse_loop, args=(pulse_file,), daemon=True,
+                     name='license-gate-pulse').start()
+
+    # Register with CREW (non-blocking — failure is logged, not fatal)
+    _register_with_crew()
 
     server = _ReusableServer(('127.0.0.1', PORT), _Handler)
     logger.info('listening on 127.0.0.1:%d', PORT)
