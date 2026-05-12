@@ -1,4 +1,4 @@
-"""Tests for Task A2 — DEPOT API Server (port 6208)."""
+"""Tests for Task A2 — DEPOT API Server (port 6212)."""
 from __future__ import annotations
 
 import json
@@ -396,4 +396,4 @@ def test_http_unknown_path(depot_server):
 def test_service_metadata():
     assert NAME == 'depot-api'
     assert VERSION == '1.0.0'
-    assert PORT == 6208
+    assert PORT == 6212
