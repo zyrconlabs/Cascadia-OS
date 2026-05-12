@@ -116,6 +116,11 @@ preserved and run first; new rules are appended.
   `sha256` (64-char lowercase hex); `size_bytes` optional positive int
 - Rule 32: `tier_required` values — aligned to `lite/pro/business/enterprise`
   (removes `free` as valid value — see RFC J2)
+- Rule 33: strings in `operators.required`, `operators.optional`,
+  `connectors.required`, `connectors.optional` must match the format
+  `^[a-z][a-z0-9_-]+(@(>=)?[0-9]+\.[0-9]+\.[0-9]+)?$` — bare ID or
+  pinned version. Malformed pinning (e.g., `"scout@invalid"`) is a validation
+  error, not an install-time error.
 
 **Tier alignment fix:**
 
@@ -157,6 +162,9 @@ No I/O. Pure computation over bytes. No side effects.
 - Rule 26: missing `author` → error
 - Rule 32: `tier_required: free` → error (now invalid)
 - Rule 32: `tier_required: lite` → OK
+- Rule 33: `operators.required: ["scout@invalid"]` → validation error
+- Rule 33: `operators.required: ["scout@1.2.0"]` → OK
+- Rule 33: `operators.required: ["scout@>=1.2.0"]` → OK
 
 `cascadia/tests/test_canonicalization.py`
 
@@ -272,15 +280,16 @@ Add a new private function `_verify_mission_signature(manifest, verifier)` that:
 1. Calls `verify_manifest(manifest, verifier)` from `signing.py`
 2. Returns `(True, "")` or `(False, error_code)`
 
-The existing `install_operator()` function already dispatches on `type == "mission"`
-implicitly (via `manifest_validator.py`). This phase adds an explicit mission
-branch in `install_operator()` that calls the two new verification functions before
-extraction and registry write.
+**NOTE:** The existing `install_operator()` zip path calls
+`_extract_and_validate_manifest()` (crew.py:584), which looks for files ending
+in `manifest.json` — it will NOT find `mission.json`. Mission packages therefore
+cannot be installed via `install_operator()`. Phase 5 adds a dedicated
+`install_mission` route. This phase (Phase 4) only implements the verification
+helper functions (`_verify_mission_package`, `_verify_mission_signature`) that
+Phase 5 will call. **Do not add a mission branch to `install_operator()`.**
 
-**Operator/connector install path:** The existing code path is unchanged. The
-mission branch is added as an early `if manifest.get("type") == "mission":` block
-that runs signature verification, then calls `_verify_mission_package()`, then
-continues to the existing install steps.
+**Operator/connector install path:** The existing code path is unchanged.
+No modifications to `install_operator()` in this phase.
 
 **Fail behavior:** Any verification failure returns immediately with a structured
 error dict (see spec Section H). No partial install state is left behind.
