@@ -4,7 +4,9 @@ version = "2026.5"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 description = "Cascadia OS — local-first single-node operator platform"
+readme = "README.md"
 requires-python = ">=3.11"
+authors = [{name = "Zyrcon Labs"}]
 dependencies = [
     "cryptography>=42.0.0",
     "flask>=3.0.0",
@@ -34,6 +36,9 @@ cascadia-watchdog = "cascadia.kernel.watchdog:main"
 cascadia-flint    = "cascadia.kernel.flint:main"
 cascadia-once     = "cascadia.installer.once:main"
 cascadia          = "cascadia.kernel.watchdog:main"
+
+[project.urls]
+Homepage = "https://github.com/zyrconlabs/cascadia-os"
 
 [tool.setuptools.packages.find]
 where = ["."]
