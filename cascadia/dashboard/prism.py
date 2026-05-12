@@ -209,6 +209,7 @@ class PrismService:
         self.runtime.register_route('POST', '/api/waitlist',                             self.handle_waitlist)
         self.runtime.register_route('GET',  '/api/waitlist/export',                      self.waitlist_export)
         self.runtime.register_route('POST', '/api/prism/notifications/register',         self.register_device_token)
+        self.runtime.register_route('POST', '/api/push/register',                        self.register_device_token)
         self.runtime.register_route('GET',  '/api/prism/tier',                           self.tier_status)
         # Scorecard routes
         self.runtime.register_route('GET',  '/api/prism/scorecard',                      self.scorecard_current)
@@ -255,6 +256,9 @@ class PrismService:
         self.runtime.register_route('POST', '/api/operators/recon/start',        self.recon_operator_start)
         self.runtime.register_route('POST', '/api/operators/recon/stop',         self.recon_operator_stop)
         self.runtime.register_route('GET',  '/api/operators/recon/status',       self.recon_operator_status_ext)
+
+        # WebSocket push channel used by the iOS mobile app
+        self.runtime.register_ws_route('/ws/prism')
 
         # Start operator watchdog
         try:
@@ -3150,11 +3154,65 @@ document.getElementById('key').addEventListener('keydown', function(e){
         age = _t.time() - sentinel.stat().st_mtime
         return 200, {"first_run": age < 300}
 
+    def _start_nats_bridge(self) -> None:
+        """Subscribe to NATS depot.sync subjects and forward events to WS clients.
+
+        Runs an asyncio event loop in a daemon thread so the subscription is
+        persistent. Uses broadcast_event() which is thread-safe.
+        """
+        import asyncio
+        import threading
+
+        async def _subscribe() -> None:
+            try:
+                import nats
+            except ImportError:
+                self.runtime.logger.warning('nats-py not installed — NATS→WS bridge disabled')
+                return
+
+            nc = await nats.connect('nats://127.0.0.1:4222')
+            subjects = [
+                'cascadia.sync.operators.*',
+                'cascadia.sync.catalog.snapshot',
+            ]
+            for subject in subjects:
+                await nc.subscribe(subject, cb=_on_msg)
+            self.runtime.logger.info('NATS→WS bridge subscribed to %s', subjects)
+
+            # Keep loop alive until runtime shuts down
+            while not self.runtime._shutdown.is_set():
+                await asyncio.sleep(1)
+            await nc.drain()
+
+        def _on_msg(msg: Any) -> None:
+            try:
+                payload = json.loads(msg.data.decode())
+            except Exception:
+                payload = {'raw': msg.data.decode(errors='replace')}
+            self.runtime.broadcast_event({
+                'type': 'depot_sync',
+                'subject': msg.subject,
+                'payload': payload,
+            })
+
+        def _run_loop() -> None:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(_subscribe())
+            except Exception as exc:
+                self.runtime.logger.warning('NATS bridge stopped: %s', exc)
+            finally:
+                loop.close()
+
+        threading.Thread(target=_run_loop, daemon=True, name='prism-nats-bridge').start()
+
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')
         if self._watchdog is not None:
             self._watchdog.start()
         self._start_approval_timeout_daemon()
+        self._start_nats_bridge()
         try:
             from cascadia.network.discovery import start_discovery
             ok = start_discovery(port=self.runtime.port)
