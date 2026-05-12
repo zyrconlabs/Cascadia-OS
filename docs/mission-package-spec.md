@@ -17,7 +17,7 @@ Before writing this spec, the following code was inspected:
 - `cascadia/encryption/curtain.py` — CURTAIN signing primitives
 - `cascadia/registry/crew.py` — CREW install path
 - `cascadia/automation/stitch.py` — STITCH workflow engine
-- `cascadia/shared/entitlements.py` — capability registry (65 capabilities)
+- `cascadia/shared/entitlements.py` — capability registry (61 capabilities)
 
 **Critical finding:** `cascadia/missions/manifest.py` and `cascadia/missions/registry.py`
 already exist and are wired into `manifest_validator.py` (line 80–82). A
@@ -128,8 +128,8 @@ won't silently lower apparent risk.
 ### Relationship to `entitlements.py`
 
 The `CAPABILITY_REGISTRY` in `cascadia/shared/entitlements.py` is the
-authoritative source. As of Sprint 2A inspection, it contains 65 capabilities
-across 4 risk levels (low, medium, high, critical).
+authoritative source. As of Sprint 2A inspection, it contains 61 capabilities
+across 4 risk levels (low=26, medium=16, high=13, critical=6).
 
 **Note:** The existing `manifest_validator.py` only accepts `low`, `medium`,
 `high` for `risk_level`. Sprint 2B must align it to also accept `critical`
@@ -242,7 +242,9 @@ Each workflow file is a standalone JSON document in STITCH's existing format.
 | `approval` | Pause workflow, await human approval |
 | `condition` | Evaluate a boolean expression; branch on result |
 | `delay` | Wait a fixed duration before next step |
-| `subworkflow` | Invoke another workflow inline (see J5) |
+
+**Note:** `subworkflow` (inline invocation of another mission's workflow) is deferred to v2 per
+J5 decision. It is not implemented in Sprint 2B. Do not implement this step type.
 
 ### Step Schema
 
@@ -504,8 +506,10 @@ response.
    → Fail with "unknown_key_id" if key_id is not in key map.
 
 4. Kill switch check
-   → Query local kill switch table (or Supabase if online) for this
-     package id + version.
+   → Query local kill switch table for this package id + version.
+     (Supabase-based revocation is deferred to Sprint 5+; Sprint 2B
+     uses local lookup only. Schema: NEEDS-ANDY-DECISION — see audit
+     finding SPEC-003 in docs/sprint-2a-rfc-audit-2026-05-12.md.)
    → Fail with "package_revoked" if found.
 
 5. Package digest verification
@@ -588,8 +592,11 @@ Mission packages have two separate registration targets:
    workflow definitions. Each workflow declared in `mission.json` is
    registered here so STITCH can execute it.
 
-Both registrations must succeed (or both are rolled back) — the install
-is atomic from the user's perspective.
+MissionRegistry write is the commit point. STITCH registration is
+best-effort: if STITCH is unreachable, the install still succeeds and
+returns `stitch_pending: true`. The pending registration is retried on
+next STITCH startup via a pending-registration sidecar file
+(`data/runtime/stitch_pending.json`).
 
 ### What Gets Stored Where
 
