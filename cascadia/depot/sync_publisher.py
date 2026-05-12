@@ -19,9 +19,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, List, Optional
 
 try:
@@ -214,11 +216,51 @@ async def handle_sync_request(nc, subject: str, raw: bytes,
         )
 
 
+# ── Health HTTP server (required by FLINT) ────────────────────────────────────
+
+HEALTH_PORT = 6213
+_ready = False
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path.split('?')[0] in ('/health', '/api/health'):
+            body = json.dumps({
+                'ok': _ready,
+                'component': NAME,
+                'version': VERSION,
+                'nats_available': _NATS_AVAILABLE,
+            }).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, fmt: str, *args: Any) -> None:
+        pass  # silence access log
+
+
+def _start_health_server() -> None:
+    class _Srv(ThreadingHTTPServer):
+        allow_reuse_address = True
+        allow_reuse_port = True
+
+    srv = _Srv(('127.0.0.1', HEALTH_PORT), _HealthHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True,
+                     name='sync-publisher-health').start()
+
+
 # ── Entry point (standalone) ──────────────────────────────────────────────────
 
 async def main(catalog_fn: Optional[Callable[[], List[Dict[str, Any]]]] = None) -> None:
+    global _ready
     if not _NATS_AVAILABLE:
         log.warning('nats-py not installed — sync publisher in no-op mode')
+        _ready = True  # report ready so FLINT doesn't block boot
         await asyncio.sleep(float('inf'))
         return
 
@@ -234,10 +276,13 @@ async def main(catalog_fn: Optional[Callable[[], List[Dict[str, Any]]]] = None) 
 
     await nc.subscribe('cascadia.sync.request.>', cb=_handler)
     log.info('Listening on cascadia.sync.request.>')
+    _ready = True
     await asyncio.sleep(float('inf'))
 
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s %(levelname)s [depot-sync] %(message)s')
+    _start_health_server()
+    log.info('health endpoint on 127.0.0.1:%d', HEALTH_PORT)
     asyncio.run(main())

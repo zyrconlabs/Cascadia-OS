@@ -5,7 +5,30 @@
 
 ---
 
-## 2026.5 (May 2026)
+## 2026.5 (May 2026) — depot-wiring-sprint
+
+### DEPOT Wiring
+
+- **Fix 1 — LICENSE_GATE tier enforcement:**
+  - Added `POST /api/license/check_tier` endpoint; returns `{ok, current_tier, tier_required, reason}`.
+  - Added `_TIER_RANK` mapping (`lite < pro < business < enterprise`) for ordered tier comparison.
+  - Added `_pulse_loop()` thread + `--config`/`--name` argparse so FLINT can supervise LICENSE_GATE and resolve its pulse file.
+  - LICENSE_GATE added as **tier 0** component in `config.example.json` — boots before CREW.
+  - CREW `_check_tier` is now **fail-closed**: `license_gate_unavailable` returns `(False, ...)` instead of `(True, '')`.
+
+- **Fix 2 — DEPOT API on dedicated port 6212:**
+  - DEPOT API moved from port 6208 → **6212** (VANTAGE now has exclusive ownership of 6208).
+  - Added `ok: True` to `/health` response so FLINT's `_check_health()` correctly marks DEPOT API ready.
+  - `depot_api` (port 6212, tier 2, `depends_on: [crew]`) added to `config.example.json`.
+  - PRISM `depot_operators()` routing priority: local DEPOT API at `127.0.0.1:6212` (1s timeout) → `depot.zyrcon.ai` (2s) → `DEPOTClient` fallback.
+  - `DEPOTClient` fallback now reads from `OPERATORS_REGISTRY_PATH` env var when set.
+
+- **Fix 3 — NATS→WebSocket bridge in PRISM:**
+  - `PrismService.__init__` registers `/ws/prism` as a WebSocket endpoint (was missing — iOS mobile app could not connect).
+  - `_start_nats_bridge()` subscribes to `cascadia.sync.operators.*` and `cascadia.sync.catalog.snapshot`; each NATS message is forwarded to all connected WS clients via `broadcast_event()`. Bridge runs in a daemon thread with its own asyncio event loop.
+  - Bridge degrades gracefully when `nats-py` is not installed (logs warning, no crash).
+  - `sync_publisher.py` gains a minimal health HTTP server on port **6213** so FLINT can poll readiness; `_ready` flag is set `True` even without NATS so FLINT doesn't block boot.
+  - `sync_publisher` (port 6213, tier 2) and `purchase_webhook` (port 6209, tier 3) added to `config.example.json`.
 
 ### Changed
 - Renamed internal liveness signal from `heartbeat` to `pulse` throughout the codebase.
