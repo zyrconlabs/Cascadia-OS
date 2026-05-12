@@ -358,7 +358,7 @@ def file_sha256(content: bytes, is_text: bool) -> str:
 Hello, {name}!\r\n
 ```
 
-(14 bytes with CRLF)
+(16 bytes: 14 text chars + \r + \n)
 
 **Canonical bytes** (after CRLF → LF):
 
@@ -366,24 +366,22 @@ Hello, {name}!\r\n
 Hello, {name}!\n
 ```
 
-(13 bytes)
+(15 bytes: 14 text chars + \n)
 
 **SHA-256 of canonical bytes:**
 
 ```
-e1b849f9631ffc4e3e8b4d1d178ecf6b17b8a8a7d0f4c3b2a1d6e5f4c3b2a1d
+1e86d5b60d7dc623fef1b8cf2b847c6e4c9b47fbcd00a3b0eadcce51c54df492
 ```
-
-*(Replace with actual computed value in final spec — this is a placeholder.)*
 
 ### Vector 2 — Package digest with two files
 
 **Files (after canonicalization):**
 
-| Path | Canonical bytes | SHA-256 |
-|------|----------------|---------|
-| `templates/quote.md` | `Hello, {name}!\n` (13 bytes) | `<sha256_1>` |
-| `workflows/main.json` | `{"steps":[]}\n` (15 bytes) | `<sha256_2>` |
+| Path | Canonical bytes | Length | SHA-256 |
+|------|----------------|--------|---------|
+| `templates/quote.md` | `Hello, {name}!\n` | 15 bytes | `1e86d5b60d7dc623fef1b8cf2b847c6e4c9b47fbcd00a3b0eadcce51c54df492` |
+| `workflows/main.json` | `{"steps":[]}\n` | 13 bytes | `4dfdf4c2e8f3f3c86a3ca3c75648d3ce52c2f43b9cda2a72ff2fc563c3825886` |
 
 **Sorted paths** (lexicographic): `templates/quote.md`, `workflows/main.json`
 
@@ -393,15 +391,16 @@ e1b849f9631ffc4e3e8b4d1d178ecf6b17b8a8a7d0f4c3b2a1d6e5f4c3b2a1d
 h = SHA-256()
 # First file: templates/quote.md
 h.update(b'templates/quote.md\x00')       # path + null
-h.update((13).to_bytes(8, 'big'))         # 8-byte length
+h.update((15).to_bytes(8, 'big'))         # 8-byte length (15 bytes)
 h.update(b'Hello, {name}!\n')             # canonical content
 
 # Second file: workflows/main.json
 h.update(b'workflows/main.json\x00')      # path + null
-h.update((15).to_bytes(8, 'big'))         # 8-byte length
+h.update((13).to_bytes(8, 'big'))         # 8-byte length (13 bytes)
 h.update(b'{"steps":[]}\n')              # canonical content
 
 package_digest = 'sha256:' + h.hexdigest()
+# Result: sha256:7084c017325aee7e0ef448a47413a9f2066795ef6955fab1c97f4c6b21aa6924
 ```
 
 ### Vector 3 — Canonical manifest bytes
