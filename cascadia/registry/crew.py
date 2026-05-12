@@ -103,7 +103,7 @@ def _poll_health(port: int, path: str = '/api/health', timeout_s: int = 10) -> b
 
 
 def _check_tier(config: dict, tier_required: str) -> tuple[bool, str]:
-    """Check license tier via LICENSE_GATE. Returns (ok, reason)."""
+    """Check license tier via LICENSE_GATE. Returns (ok, reason). Fails closed."""
     try:
         body = json.dumps({'tier_required': tier_required}).encode()
         req = _urllib_request.Request(
@@ -113,9 +113,9 @@ def _check_tier(config: dict, tier_required: str) -> tuple[bool, str]:
         )
         with _urllib_request.urlopen(req, timeout=3) as r:
             data = json.loads(r.read().decode())
-            return data.get('ok', True), data.get('reason', '')
+            return data.get('ok', False), data.get('reason', '')
     except Exception:
-        return True, ''  # fail-open if license_gate unavailable
+        return False, 'license_gate_unavailable'
 
 
 def _start_removed_cleanup_daemon(operators_dir: Path) -> None:

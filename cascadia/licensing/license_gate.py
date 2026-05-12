@@ -11,9 +11,11 @@ Runs on 127.0.0.1:6100. Registers with CREW on startup.
 # MATURITY: PRODUCTION
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
+import threading
 import time
 from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,6 +43,13 @@ OPERATOR_LIMITS: Dict[str, int] = {
     'pro':        6,
     'business':   12,
     'enterprise': 999,
+}
+
+_TIER_RANK: Dict[str, int] = {
+    'lite': 1,
+    'pro': 2,
+    'business': 3,
+    'enterprise': 4,
 }
 
 CACHE_TTL = 60  # seconds
@@ -186,6 +195,48 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._send_json(404, {'error': f'unknown route: {path}'})
 
+    def do_POST(self) -> None:  # noqa: N802
+        path = self.path.split('?')[0]
+        if path == '/api/license/check_tier':
+            length = int(self.headers.get('Content-Length', 0))
+            body: Dict[str, Any] = {}
+            if length:
+                try:
+                    body = json.loads(self.rfile.read(length).decode('utf-8'))
+                except Exception:
+                    self._send_json(400, {'error': 'invalid JSON'})
+                    return
+
+            tier_required = body.get('tier_required', '')
+            if tier_required not in _TIER_RANK:
+                self._send_json(400, {
+                    'error': 'invalid tier_required',
+                    'valid_tiers': list(_TIER_RANK),
+                })
+                return
+
+            status = _get_status()
+            current_tier = status['tier']
+
+            # Expired license degrades to lite with a clear reason
+            reason = ''
+            if not status['valid'] and status.get('expires') is not None:
+                reason = 'license_expired'
+                current_tier = 'lite'
+
+            ok = _TIER_RANK[current_tier] >= _TIER_RANK[tier_required]
+            if not ok and not reason:
+                reason = f'tier_insufficient: {current_tier} < {tier_required}'
+
+            self._send_json(200, {
+                'ok':           ok,
+                'current_tier': current_tier,
+                'tier_required': tier_required,
+                'reason':       reason,
+            })
+        else:
+            self._send_json(404, {'error': f'unknown route: {path}'})
+
     def log_message(self, fmt: str, *args: Any) -> None:
         logger.info(fmt, *args)
 
@@ -199,13 +250,48 @@ class _ReusableServer(ThreadingHTTPServer):
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _pulse_loop(pulse_file: Path) -> None:
+    """Write timestamp to pulse_file every 5 s so FLINT knows we're alive."""
+    while True:
+        try:
+            pulse_file.parent.mkdir(parents=True, exist_ok=True)
+            pulse_file.write_text(str(time.time()))
+        except Exception:
+            pass
+        time.sleep(5)
+
+
 def main() -> None:
+    p = argparse.ArgumentParser(description='LICENSE_GATE — Cascadia OS tier enforcement')
+    p.add_argument('--config', default='')
+    p.add_argument('--name', default='license_gate')
+    args = p.parse_args()
+
+    # Resolve pulse_file from config.json if provided
+    pulse_file: Optional[Path] = None
+    if args.config:
+        try:
+            cfg = json.loads(Path(args.config).read_text())
+            for comp in cfg.get('components', []):
+                if comp.get('name') == args.name:
+                    pf = comp.get('pulse_file', '')
+                    if pf:
+                        pulse_file = Path(pf)
+                    break
+        except Exception:
+            pass
+    if pulse_file is None:
+        pulse_file = Path(f'./data/runtime/{args.name}.pulse')
+
     # Pre-warm cache so first request is instant
     status = _get_status()
     logger.info(
         'starting — tier=%s valid=%s port=%d',
         status['tier'], status['valid'], PORT,
     )
+
+    threading.Thread(target=_pulse_loop, args=(pulse_file,), daemon=True,
+                     name='license-gate-pulse').start()
 
     # Register with CREW (non-blocking — failure is logged, not fatal)
     _register_with_crew()
