@@ -131,6 +131,23 @@
       "depends_on": ["crew", "sentinel"]
     },
     {
+      "name": "sync_publisher",
+      "module": "cascadia.depot.sync_publisher",
+      "port": 6213,
+      "tier": 2,
+      "pulse_file": "./data/runtime/sync_publisher.pulse",
+      "depends_on": ["crew"]
+    },
+    {
+      "name": "purchase_webhook",
+      "module": "cascadia.depot.purchase_webhook",
+      "port": 6209,
+      "tier": 3,
+      "pulse_file": "./data/runtime/purchase_webhook.pulse",
+      "depends_on": ["crew", "depot_api"],
+      "_note": "Requires STRIPE_WEBHOOK_SECRET env var for Stripe event verification"
+    },
+    {
       "name": "prism",
       "module": "cascadia.dashboard.prism",
       "port": 6300,

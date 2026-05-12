@@ -35,6 +35,8 @@ def crew(tmp_path, monkeypatch):
     # Patch _OPERATORS_DIR so extraction goes to tmp
     import cascadia.registry.crew as crew_module
     monkeypatch.setattr(crew_module, "_OPERATORS_DIR", tmp_path / "operators")
+    # Bypass LICENSE_GATE tier check — gate is not running in unit tests
+    monkeypatch.setattr(crew_module, "_check_tier", lambda config, tier: (True, ''))
     # Build a minimal fake config so CrewService doesn't blow up
     from unittest.mock import MagicMock
     mock_runtime = MagicMock()
