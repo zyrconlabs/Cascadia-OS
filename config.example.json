@@ -115,6 +115,14 @@
       "pulse_file": "./data/runtime/almanac.pulse"
     },
     {
+      "name": "depot_api",
+      "module": "cascadia.depot.api",
+      "port": 6212,
+      "tier": 2,
+      "pulse_file": "./data/runtime/depot_api.pulse",
+      "depends_on": ["crew"]
+    },
+    {
       "name": "vantage",
       "module": "cascadia.gateway.vantage",
       "port": 6208,
