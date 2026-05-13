@@ -7,6 +7,43 @@
 
 ## 2026.5 (May 2026)
 
+### Added — Sprint 2B: Mission Package Signing & Installation (Phases 5–7)
+- **`POST /api/crew/install_mission`** — 10-step Section H verification flow:
+  zip parse, schema validation, Ed25519 signature check, kill switch, package
+  digest + per-file hash, tier check (fail closed vs. LICENSE_GATE), version
+  compatibility, required-operator dependency check, extraction, registry write.
+  Returns `stitch_pending: true` when STITCH registration is deferred.
+- **`POST /api/crew/uninstall_mission`** — two-phase removal (dry_run returns
+  affected_workflows; confirmed: true removes files and registry entry).
+- **`POST /api/workflows/register_mission`** (STITCH) — reads workflow JSON
+  files from an installed mission, builds `WorkflowDefinition` objects, and
+  registers them in memory as `<mission_id>.<workflow_id>`.
+- `CrewService.__init__` accepts `kill_switch_provider` and `verifier` kwargs
+  for test injection without affecting production defaults.
+- `MissionRegistry.register_install`, `update_stitch_registered`, and
+  `get_pending_stitch_registration` support the new dict-format install record.
+- `MissionRegistry.list_installed` handles mixed legacy-string / new-dict
+  entries safely; `register_install` preserves legacy entries on upsert.
+
+### Added — Sprint 2B: Mission Package Signing & Installation (Phases 3–4)
+- `cascadia/depot/canonicalization.py` — deterministic byte serialization:
+  `normalize_path`, `canonical_file_bytes` (CRLF→LF for text), `file_sha256`,
+  `compute_package_digest` (null-terminated path + 8-byte length prefix),
+  `canonical_manifest_bytes`.
+- `cascadia/depot/signing.py` — Ed25519 signing: `LocalSigner`, `Verifier`
+  (`from_bundle` classmethod), `sign_manifest`, `verify_manifest`.
+- `cascadia/depot/kill_switch.py` — `KillSwitchProvider` protocol,
+  `NoopKillSwitchProvider` (production default), `InMemoryKillSwitchProvider`
+  (wildcard `revoke_all_versions` for tests).
+- `scripts/generate_signing_key.py` — CLI to generate an Ed25519 keypair,
+  write raw seed to `~/.config/zyrcon/signing.key` (chmod 0o600), and print
+  the base64url public key for adding to the key bundle.
+- `cascadia/depot/zyrcon_signing_keys.json` — dev public key bundle.
+- Extended `MissionManifest` validation (Rules 22–31, package-mode only):
+  capabilities, requires_approval, risk_level rank, runtime, author,
+  signed_by, signature_algorithm, key_id format, package_digest format,
+  files list integrity.
+
 ### Fixed
 - `VALID_RISK_LEVELS` in `cascadia/depot/manifest_validator.py` now includes
   `'critical'` — operators declaring critical risk level no longer fail DEPOT
