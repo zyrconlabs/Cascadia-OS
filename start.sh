@@ -123,7 +123,7 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     sleep 10
     FLINT_READY=false
     FLINT_STATE="unknown"
-    for _i in $(seq 1 20); do
+    for _i in $(seq 1 80); do
         FLINT_STATE=$(curl -s http://127.0.0.1:4011/health 2>/dev/null | python3 -c \
           "import json,sys; d=json.load(sys.stdin); print(d.get('state','unknown'))" 2>/dev/null)
         if [ "$FLINT_STATE" = "ready" ]; then
