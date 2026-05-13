@@ -43,6 +43,7 @@ operators/social/data/scheduled_posts.db
 
 # Environment variables (secrets)
 .env
+.env.*
 .env.local
 .env.*.local
 
@@ -50,6 +51,7 @@ operators/social/data/scheduled_posts.db
 *.key
 *.pem
 signing_secret.txt
+new_license_secret.txt
 
 # Stripe test data
 stripe_test_*.json

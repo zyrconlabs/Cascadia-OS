@@ -39,6 +39,9 @@ PORT = int(os.environ.get('PURCHASE_WEBHOOK_PORT', '6209'))
 # Stripe webhook signing secret — set via environment
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 
+# Environment mode — 'development' or 'test' allow unsigned webhooks
+_CASCADIA_ENV = os.environ.get('CASCADIA_ENV', 'development').lower()
+
 # Tolerance for Stripe timestamp (5 minutes)
 _STRIPE_TIMESTAMP_TOLERANCE = 300
 
@@ -61,10 +64,14 @@ def verify_stripe_signature(payload: bytes, sig_header: str, secret: str,
     """
     Verify a Stripe webhook signature.
     sig_header format: t=<timestamp>,v1=<sig>[,v1=<sig>...]
-    Returns False if secret is empty (soft-mode: accept all).
+    Fails closed in production when secret is empty.
     """
     if not secret:
-        return True  # no secret configured — accept in dev/test
+        if _CASCADIA_ENV in ('development', 'test'):
+            log.warning('STRIPE_WEBHOOK_SECRET not set — accepting all requests (dev/test mode)')
+            return True
+        log.critical('STRIPE_WEBHOOK_SECRET not set in production — rejecting unsigned request')
+        return False
 
     try:
         parts = dict(p.split('=', 1) for p in sig_header.split(','))
@@ -297,6 +304,8 @@ def start(port: int = PORT,
     server = create_server(port, catalog_lookup, stripe_secret)
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
+    if not stripe_secret and _CASCADIA_ENV not in ('development', 'test'):
+        log.critical('STARTUP: STRIPE_WEBHOOK_SECRET is not set — all Stripe webhooks will be rejected in production mode')
     log.info('%s v%s running on port %s', NAME, VERSION, port)
     if block:
         try:
