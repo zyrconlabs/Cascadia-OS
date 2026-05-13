@@ -26,6 +26,16 @@ from typing import Any, Dict, List
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.core.watchdog import OperatorWatchdog
+from cascadia.depot.canonicalization import canonical_file_bytes, compute_package_digest
+from cascadia.depot.signing import Verifier, verify_manifest
+from cascadia.depot.kill_switch import KillSwitchProvider, NoopKillSwitchProvider
+from cascadia.missions.manifest import MissionManifest
+
+_MISSION_SIGNING_BUNDLE = Path(__file__).parent.parent / "depot" / "zyrcon_signing_keys.json"
+_RESERVED_PATH_PATTERNS = (
+    ".DS_Store", "__MACOSX/", "._", ".git/", ".svn/", ".hg/",
+    "__pycache__/", ".pyc", "~", ".swp", ".swo", ".orig", ".#",
+)
 
 _REQUIRED_MANIFEST_FIELDS = {'operator_id', 'name', 'version', 'capabilities'}
 _REQUIRED_DEPOT_MANIFEST_FIELDS = {'id', 'name', 'version', 'port', 'start_cmd',
@@ -146,7 +156,9 @@ class CrewService:
     Does not own workflow planning or durable run execution.
     """
 
-    def __init__(self, config_path: str, name: str) -> None:
+    def __init__(self, config_path: str, name: str, *,
+                 kill_switch_provider: KillSwitchProvider | None = None,
+                 verifier: Verifier | None = None) -> None:
         config = load_config(config_path)
         component = next(c for c in config['components'] if c['name'] == name)
         self.runtime = ServiceRuntime(
@@ -157,6 +169,8 @@ class CrewService:
         self._config = config
         self.registry: Dict[str, Dict[str, Any]] = {}
         self._watchdog = OperatorWatchdog(config, self.runtime.logger)
+        self._kill_switch = kill_switch_provider or NoopKillSwitchProvider()
+        self._verifier = verifier or Verifier()
         self.runtime.register_route('POST', '/register',              self.register)
         self.runtime.register_route('POST', '/validate',              self.validate)
         self.runtime.register_route('GET',  '/crew',                  self.list_crew)
@@ -165,6 +179,7 @@ class CrewService:
         self.runtime.register_route('POST', '/remove_operator',       self.remove_operator)
         self.runtime.register_route('POST', '/restore_operator',      self.restore_operator)
         self.runtime.register_route('GET',  '/api/watchdog/status',   self.watchdog_status)
+        self.runtime.register_route('POST', '/api/crew/install_mission',   self.install_mission)
 
     def register(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Register an operator into the Crew."""
@@ -606,6 +621,324 @@ class CrewService:
         if not isinstance(manifest['capabilities'], list):
             return {}, 'capabilities must be a list'
         return manifest, ''
+
+    # ── Mission package install ────────────────────────────────────────────────
+
+    @staticmethod
+    def _is_reserved_path(name: str) -> bool:
+        """True if a zip entry name matches a reserved/excluded path pattern."""
+        for pat in _RESERVED_PATH_PATTERNS:
+            if pat in name:
+                return True
+        return False
+
+    @staticmethod
+    def _verify_mission_package(zip_bytes: bytes, manifest: dict) -> List[str]:
+        """Verify package digest and per-file hashes from zip_bytes against manifest.
+
+        Returns a list of error strings. Empty list means all checks passed.
+        """
+        errors: List[str] = []
+        declared_files = {
+            entry["path"]: entry
+            for entry in manifest.get("files", [])
+            if isinstance(entry, dict) and "path" in entry
+        }
+        declared_digest = manifest.get("package_digest", "")
+
+        try:
+            with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
+                # Build set of actual payload files (excluding reserved and mission.json)
+                actual_paths: set[str] = set()
+                file_map: dict[str, bytes] = {}
+                for info in zf.infolist():
+                    name = info.filename
+                    if name == "mission.json":
+                        continue
+                    if CrewService._is_reserved_path(name):
+                        continue
+                    if info.is_dir():
+                        continue
+                    actual_paths.add(name)
+                    raw = zf.read(name)
+                    file_map[name] = canonical_file_bytes(name, raw)
+        except zipfile.BadZipFile:
+            return ["not a valid zip file"]
+        except Exception as exc:
+            return [f"zip extraction error: {exc}"]
+
+        # Extra files in zip not declared in files[]
+        extra = actual_paths - set(declared_files.keys())
+        if extra:
+            errors.append(
+                f"extra_files_in_package: {sorted(extra)!r}"
+            )
+
+        # Missing files declared in files[] but absent from zip
+        missing = set(declared_files.keys()) - actual_paths
+        if missing:
+            errors.append(
+                f"missing_files: {sorted(missing)!r}"
+            )
+
+        # Per-file hash verification
+        import hashlib as _hashlib
+        for path, entry in declared_files.items():
+            if path not in file_map:
+                continue  # already reported as missing
+            canonical = file_map[path]  # already canonicalized above
+            actual_sha = _hashlib.sha256(canonical).hexdigest()
+            declared_sha = entry.get("sha256", "")
+            if actual_sha != declared_sha:
+                errors.append(
+                    f"file_hash_mismatch: {path!r} "
+                    f"(expected {declared_sha!r}, got {actual_sha!r})"
+                )
+            # size_bytes advisory check
+            size_bytes = entry.get("size_bytes")
+            if size_bytes is not None and size_bytes != len(canonical):
+                errors.append(
+                    f"size_bytes_mismatch: {path!r} "
+                    f"(declared {size_bytes}, actual {len(canonical)})"
+                )
+
+        # Package digest verification
+        computed_digest = compute_package_digest(file_map)
+        if computed_digest != declared_digest:
+            errors.insert(0,
+                f"package_digest_mismatch: "
+                f"expected {declared_digest!r}, computed {computed_digest!r}"
+            )
+
+        return errors
+
+    @staticmethod
+    def _verify_mission_signature(manifest: dict, verifier: Verifier) -> tuple[bool, str]:
+        """Verify the Ed25519 signature on a mission manifest.
+
+        Returns (True, "") on success.
+        Returns (False, error_code) on failure.
+        """
+        try:
+            result = verify_manifest(manifest, verifier)
+            if result:
+                return True, ""
+            return False, "invalid_signature"
+        except ValueError as exc:
+            if "unknown key_id" in str(exc):
+                return False, "unknown_key_id"
+            return False, f"signature_error: {exc}"
+
+    def install_mission(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/crew/install_mission — full Section H install verification flow.
+
+        Accepts: { zip_b64: str } or { zip_bytes: bytes (internal) }
+        Returns 201 on success, 4xx/5xx on verification failure.
+        """
+        import base64
+        from cascadia.missions.registry import MissionRegistry
+
+        # ── Step 1: Parse zip and extract mission.json ─────────────────────
+        zip_b64 = payload.get("zip_b64", "")
+        zip_bytes_direct = payload.get("_zip_bytes")  # internal test hook
+
+        if zip_b64:
+            try:
+                zip_bytes = base64.b64decode(zip_b64)
+            except Exception:
+                return 400, {"error": "invalid_base64", "message": "zip_b64 is not valid base64"}
+        elif zip_bytes_direct:
+            zip_bytes = zip_bytes_direct
+        else:
+            return 400, {"error": "bad_request", "message": "zip_b64 required"}
+
+        try:
+            with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
+                if "mission.json" not in zf.namelist():
+                    return 400, {"error": "bad_package", "message": "mission.json not found in zip"}
+                manifest = json.loads(zf.read("mission.json"))
+        except zipfile.BadZipFile:
+            return 400, {"error": "bad_package", "message": "not a valid zip file"}
+        except json.JSONDecodeError:
+            return 400, {"error": "bad_package", "message": "mission.json is not valid JSON"}
+
+        if not isinstance(manifest, dict) or manifest.get("type") != "mission":
+            return 400, {"error": "bad_package", "message": "mission.json type must be 'mission'"}
+
+        # ── Step 2: Schema validation ───────────────────────────────────────
+        schema_errors = MissionManifest().validate(manifest)
+        if schema_errors:
+            return 400, {
+                "error": "schema_invalid",
+                "message": "mission.json failed schema validation",
+                "details": {"errors": schema_errors},
+            }
+
+        mission_id = manifest.get("id", "")
+        version = manifest.get("version", "")
+
+        # ── Step 3: Signature verification ─────────────────────────────────
+        sig_ok, sig_error = self._verify_mission_signature(manifest, self._verifier)
+        if not sig_ok:
+            return 400, {
+                "error": sig_error,
+                "message": f"signature verification failed: {sig_error}",
+                "details": {},
+            }
+
+        # ── Step 4: Kill switch check ───────────────────────────────────────
+        if self._kill_switch.is_revoked(mission_id, version):
+            return 403, {
+                "error": "package_revoked",
+                "message": f"Mission {mission_id!r} v{version} has been revoked",
+                "details": {},
+            }
+
+        # ── Step 5 & 6: Package digest + per-file hash verification ─────────
+        pkg_errors = self._verify_mission_package(zip_bytes, manifest)
+        if pkg_errors:
+            # Determine the primary error code
+            primary = pkg_errors[0]
+            if primary.startswith("package_digest_mismatch"):
+                error_code = "package_digest_mismatch"
+            elif "file_hash_mismatch" in primary:
+                error_code = "file_hash_mismatch"
+            elif "extra_files" in primary:
+                error_code = "extra_files_in_package"
+            elif "missing_files" in primary:
+                error_code = "missing_files"
+            else:
+                error_code = "package_verification_failed"
+            return 400, {
+                "error": error_code,
+                "message": "package integrity check failed",
+                "details": {"errors": pkg_errors},
+            }
+
+        # ── Step 7: Tier verification ───────────────────────────────────────
+        tier_required = manifest.get("tier_required", "lite")
+        try:
+            body = json.dumps({"tier_required": tier_required}).encode()
+            req = _urllib_request.Request(
+                "http://127.0.0.1:6100/api/license/check_tier",
+                data=body, method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with _urllib_request.urlopen(req, timeout=3) as r:
+                tier_data = json.loads(r.read().decode())
+                if not tier_data.get("ok", True):
+                    return 403, {
+                        "error": "tier_insufficient",
+                        "message": f"License tier insufficient for {tier_required!r}",
+                        "details": {"reason": tier_data.get("reason", "")},
+                    }
+        except Exception:
+            # LICENSE_GATE unreachable — fail closed
+            return 503, {
+                "error": "license_gate_unavailable",
+                "message": "LICENSE_GATE is unavailable; install aborted (fail closed)",
+                "details": {},
+            }
+
+        # ── Step 8: Version compatibility ───────────────────────────────────
+        min_version = manifest.get("min_zyrcon_version")
+        if min_version:
+            try:
+                from cascadia import VERSION as _cv
+                def _parse(v: str) -> tuple:
+                    return tuple(int(x) for x in v.split(".")[:3])
+                if _parse(_cv) < _parse(min_version):
+                    return 422, {
+                        "error": "version_incompatible",
+                        "message": (
+                            f"Mission requires Zyrcon AI Server >= {min_version}, "
+                            f"installed: {_cv}"
+                        ),
+                        "details": {},
+                    }
+            except Exception:
+                pass  # version check is best-effort
+
+        # ── Step 9: Dependency check ────────────────────────────────────────
+        _cfg = getattr(self, "_config", {})
+        reg_path = _registry_path(_cfg)
+        reg = _load_registry(reg_path)
+        installed_operators = {op.get("id") for op in reg.get("operators", [])}
+        required_ops = manifest.get("operators", {}).get("required", [])
+        missing_ops = []
+        for dep in required_ops:
+            # dep may be "scout" or "scout@>=1.2.0" — extract bare ID
+            dep_id = dep.split("@")[0]
+            if dep_id not in installed_operators:
+                missing_ops.append(dep)
+        if missing_ops:
+            return 422, {
+                "error": "missing_operator",
+                "message": f"Required operators not installed: {missing_ops!r}",
+                "details": {"missing": missing_ops},
+            }
+
+        # ── Step 10: Extract, register, return ─────────────────────────────
+        # Determine install path
+        missions_cfg = _cfg.get("missions", {})
+        packages_root = missions_cfg.get("packages_root") if isinstance(missions_cfg, dict) else None
+        if not packages_root:
+            packages_root = str(Path(__file__).parent.parent.parent / "missions")
+        install_path = Path(packages_root) / mission_id
+
+        # Extract to temp first, then move (atomicity)
+        import tempfile
+        tmp_dir = Path(packages_root) / ".install_tmp" / mission_id
+        try:
+            tmp_dir.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
+                # Strip reserved paths on extraction
+                for info in zf.infolist():
+                    if self._is_reserved_path(info.filename):
+                        continue
+                    zf.extract(info, tmp_dir)
+            if install_path.exists():
+                shutil.rmtree(install_path)
+            shutil.move(str(tmp_dir), str(install_path))
+        except Exception as exc:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return 500, {"error": "extraction_failed", "message": str(exc), "details": {}}
+
+        # Write to MissionRegistry with stitch_registered: false
+        registry = MissionRegistry(packages_root=packages_root)
+        registry_entry = {
+            "id": mission_id,
+            "version": version,
+            "name": manifest.get("name", mission_id),
+            "tier_required": tier_required,
+            "runtime": manifest.get("runtime", "server"),
+            "author": manifest.get("author", ""),
+            "signed_by": manifest.get("signed_by", ""),
+            "key_id": manifest.get("key_id", ""),
+            "install_path": str(install_path),
+            "installed_at": _now_iso(),
+            "capabilities": manifest.get("capabilities", []),
+            "workflow_ids": list((manifest.get("workflows") or {}).keys()),
+            "stitch_registered": False,
+        }
+        registry.register_install(registry_entry)
+
+        _append_install_log(_cfg, {
+            "action": "install_mission",
+            "mission_id": mission_id,
+            "version": version,
+            "installed_at": _now_iso(),
+        })
+        self.runtime.logger.info(
+            "CREW installed mission: %s v%s", mission_id, version
+        )
+        return 201, {
+            "installed": mission_id,
+            "version": version,
+            "install_path": str(install_path),
+            "stitch_registered": False,
+            "stitch_pending": True,
+        }
 
     def watchdog_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """GET /api/watchdog/status — operator health and restart counts."""
