@@ -213,6 +213,7 @@ class _DepotHandler(http.server.BaseHTTPRequestHandler):
             with _catalog_lock:
                 count = len(_catalog)
             self._json(200, {
+                'ok': True,
                 'status': 'healthy', 'service': NAME, 'version': VERSION,
                 'port': PORT, 'catalog_entries': count,
                 'uptime_seconds': round(time.time() - _start_time),

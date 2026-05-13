@@ -16,6 +16,7 @@ Event subjects:
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import logging
@@ -23,6 +24,8 @@ import time
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
+
+from cascadia.shared.config import load_config
 
 try:
     import nats
@@ -214,9 +217,38 @@ async def handle_sync_request(nc, subject: str, raw: bytes,
         )
 
 
+# ── Health server ─────────────────────────────────────────────────────────────
+
+async def _serve_health(port: int) -> None:
+    async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.read(4096)
+        body = json.dumps({'ok': True, 'service': NAME, 'version': VERSION}).encode()
+        writer.write(
+            b'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: '
+            + str(len(body)).encode() + b'\r\n\r\n' + body
+        )
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+    try:
+        server = await asyncio.start_server(_handle, '127.0.0.1', port)
+    except OSError as exc:
+        log.error('%s health server failed to bind port %s: %s', NAME, port, exc)
+        return
+    log.info('%s health server on port %s', NAME, port)
+    async with server:
+        await server.serve_forever()
+
+
 # ── Entry point (standalone) ──────────────────────────────────────────────────
 
-async def main(catalog_fn: Optional[Callable[[], List[Dict[str, Any]]]] = None) -> None:
+async def main(config_path: str = 'config.json', name: str = 'sync_publisher',
+               catalog_fn: Optional[Callable[[], List[Dict[str, Any]]]] = None) -> None:
+    config = load_config(config_path)
+    comp = next((c for c in config['components'] if c['name'] == name), {})
+    port = comp.get('port', 6213)
+    asyncio.create_task(_serve_health(port))
+
     if not _NATS_AVAILABLE:
         log.warning('nats-py not installed — sync publisher in no-op mode')
         await asyncio.sleep(float('inf'))
@@ -238,6 +270,10 @@ async def main(catalog_fn: Optional[Callable[[], List[Dict[str, Any]]]] = None) 
 
 
 if __name__ == '__main__':
+    _ap = argparse.ArgumentParser()
+    _ap.add_argument('--config', default='config.json')
+    _ap.add_argument('--name', default='sync_publisher')
+    _args, _ = _ap.parse_known_args()
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s %(levelname)s [depot-sync] %(message)s')
-    asyncio.run(main())
+    asyncio.run(main(config_path=_args.config, name=_args.name))
