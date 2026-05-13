@@ -33,10 +33,26 @@ class TestMissionRegistry(unittest.TestCase):
     # ── Installed list ────────────────────────────────────────────────────────
 
     def test_registry_installed_returns_list(self):
-        installed = self.reg.list_installed()
-        self.assertIsInstance(installed, list)
-        # growth_desk is installed by default; list must contain at least that entry
-        self.assertIn("growth_desk", installed)
+        import json, tempfile, os
+        # Use a temp registry file with known entries so this test
+        # is self-contained and doesn't depend on global missions_registry.json.
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json',
+                                         delete=False) as tf:
+            json.dump({"installed": [
+                {"id": "test_growth_desk", "version": "1.0.0"},
+                "legacy_string_entry",
+            ]}, tf)
+            reg_path = tf.name
+        try:
+            reg = MissionRegistry(packages_root=str(FIXTURES_ROOT),
+                                  registry_file=reg_path)
+            installed = reg.list_installed()
+            self.assertIsInstance(installed, list)
+            # Both dict and string entries are returned
+            self.assertIn({"id": "test_growth_desk", "version": "1.0.0"}, installed)
+            self.assertIn("legacy_string_entry", installed)
+        finally:
+            os.unlink(reg_path)
 
     # ── get_mission / get_manifest ────────────────────────────────────────────
 

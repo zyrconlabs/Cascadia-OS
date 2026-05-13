@@ -171,7 +171,8 @@ class MissionRegistry:
             data["installed"] = []
         mission_id = entry.get("id", "")
         data["installed"] = [
-            r for r in data["installed"] if r.get("id") != mission_id
+            r for r in data["installed"]
+            if not (isinstance(r, dict) and r.get("id") == mission_id)
         ]
         data["installed"].append(entry)
         self._registry_file.write_text(
@@ -196,7 +197,7 @@ class MissionRegistry:
         """Return list of installed missions with stitch_registered: false."""
         return [
             m for m in self.list_installed()
-            if not m.get("stitch_registered", True)
+            if isinstance(m, dict) and not m.get("stitch_registered", True)
         ]
 
     # ── Internal ──────────────────────────────────────────────────────────────
