@@ -7,6 +7,14 @@
 
 ## 2026.5 (May 2026)
 
+### Fixed
+- `VALID_RISK_LEVELS` in `cascadia/depot/manifest_validator.py` now includes
+  `'critical'` — operators declaring critical risk level no longer fail DEPOT
+  manifest validation.
+- `MissionManifest` tier validation canonicalized to `'lite'` (was `'free'`).
+  `'free'` is still accepted but emits a `DeprecationWarning` pointing to `'lite'`.
+  Existing manifests continue to work without changes.
+
 ### Changed
 - Renamed internal liveness signal from `heartbeat` to `pulse` throughout the codebase.
   Config keys `heartbeat_file`, `heartbeat_interval_seconds`, `heartbeat_stale_after_seconds`
