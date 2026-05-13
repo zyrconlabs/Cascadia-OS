@@ -46,7 +46,7 @@ def _load_access_token() -> str:
     """Load WhatsApp access token. Load order: vault → WHATSAPP_ACCESS_TOKEN env → whatsapp.config.json."""
     try:
         from cascadia_sdk import vault_get  # type: ignore
-        val = vault_get("whatsapp.access_token")
+        val = vault_get("whatsapp:api_key", namespace="secrets")
         if val:
             return val
     except ImportError:

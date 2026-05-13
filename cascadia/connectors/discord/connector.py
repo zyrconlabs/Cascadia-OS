@@ -46,7 +46,7 @@ def _load_bot_token() -> str:
     """Load Discord bot token. Load order: vault → DISCORD_BOT_TOKEN env → discord.config.json."""
     try:
         from cascadia_sdk import vault_get  # type: ignore
-        val = vault_get("discord.bot_token")
+        val = vault_get("discord:bot_token", namespace="secrets")
         if val:
             return val
     except ImportError:

@@ -48,7 +48,7 @@ def _load_bot_token() -> str:
     """Load Slack bot token. Load order: vault → SLACK_BOT_TOKEN env → slack.config.json."""
     try:
         from cascadia_sdk import vault_get  # type: ignore
-        val = vault_get("slack.bot_token")
+        val = vault_get("slack:bot_token", namespace="secrets")
         if val:
             return val
     except ImportError:
