@@ -506,11 +506,15 @@ response.
    → Fail with "unknown_key_id" if key_id is not in key map.
 
 4. Kill switch check
-   → Query local kill switch table for this package id + version.
-     (Supabase-based revocation is deferred to Sprint 5+; Sprint 2B
-     uses local lookup only. Schema: NEEDS-ANDY-DECISION — see audit
-     finding SPEC-003 in docs/sprint-2a-rfc-audit-2026-05-12.md.)
-   → Fail with "package_revoked" if found.
+   → Call KillSwitchProvider.is_revoked(package_id, version).
+   → Fail with "package_revoked" if True.
+
+   Sprint 2B implementation:
+     KillSwitchProvider — abstract interface: is_revoked(id, version) -> bool
+     NoopKillSwitchProvider — default; always returns False (not revoked)
+     InMemoryKillSwitchProvider — for tests; allows simulating revoked packages
+   No SQLite table is created in Sprint 2B. No cloud or Supabase calls.
+   Cloud/Supabase-backed revocation deferred to Sprint 5/6.
 
 5. Package digest verification
    → Extract zip to a temporary directory.
@@ -528,40 +532,40 @@ response.
    → Verify no extra files exist beyond files[] + reserved paths.
    → Fail with full list of mismatched/extra files if any.
 
-7. Capability verification
-   → Retrieve approved capabilities record from catalog for this
-     package id + version.
-   → Verify manifest capabilities == approved capabilities (no set
-     difference allowed — post-approval escalation is rejected).
-   → Fail with "capability_escalation" if manifest claims capabilities
-     not in the approved record.
-
-8. Tier verification
+7. Tier verification
    → Call LICENSE_GATE POST /api/license/check_tier with tier_required.
    → Fail with "tier_insufficient" if ok=false.
    → Fail with "license_gate_unavailable" if gate is unreachable
      (fail closed — consistent with Sprint 1 fix).
 
-9. Version compatibility check
+8. Version compatibility check
    → If min_zyrcon_version is set, compare to running Zyrcon AI Server
      version.
    → Fail with "version_incompatible" if server version is below minimum.
 
-10. Dependency check
-    → For each operator in operators.required: verify installed and meets
-      version constraint. If missing, prompt user to co-install.
-      Install does not proceed unless all required operators are present.
-    → For each connector in connectors.required: same behavior.
-    → For optional dependencies: list missing ones in install summary,
-      continue without blocking.
+9. Dependency check
+   → For each operator in operators.required: verify installed and meets
+     version constraint. If missing, prompt user to co-install.
+     Install does not proceed unless all required operators are present.
+   → For each connector in connectors.required: same behavior.
+   → For optional dependencies: list missing ones in install summary,
+     continue without blocking.
 
-11. Register and install
+10. Register and install
     → Move extracted files from temp directory to mission install root.
     → Write entry to MissionRegistry (missions_registry.json).
-    → Register workflows with STITCH WorkflowStore (see Section I).
+    → Register workflows with STITCH via register_workflow() (see Section I).
     → Write audit log entry.
     → Return success response with installed mission ID and version.
 ```
+
+**Note on removed Step 7 (capability approval catalog):** A separate
+"approved capabilities record from catalog" check was considered during
+design but removed for Sprint 2B. The Zyrcon Ed25519 signature (Step 3)
+IS the approval record — Zyrcon would not sign a manifest whose
+capabilities had not been reviewed and approved. A separate catalog lookup
+would be redundant at install time. Future Sprint 5/6 review pipeline /
+cloud catalog approval runs BEFORE signing, not at install time.
 
 **Failure response format:**
 
@@ -582,21 +586,31 @@ can pattern-match without depending on HTTP semantics.
 
 ### Registration Architecture
 
-Mission packages have two separate registration targets:
+Mission packages have two registration targets:
 
-1. **`MissionRegistry`** (`cascadia/missions/registry.py`) — owns the
-   installed mission catalog. Tracks which missions are installed and
-   provides lookup by mission ID.
+1. **`MissionRegistry`** (`cascadia/missions/registry.py`) — the persisted
+   source of truth. Tracks which missions are installed, their capabilities,
+   workflow IDs, and STITCH registration status.
 
-2. **STITCH `WorkflowStore`** (`cascadia/automation/stitch.py`) — owns
-   workflow definitions. Each workflow declared in `mission.json` is
-   registered here so STITCH can execute it.
+2. **STITCH `register_workflow()`** (`cascadia/automation/stitch.py`) —
+   in-memory step-based workflow registration. Each workflow declared in
+   `mission.json` is registered here so STITCH can execute it.
+
+   **Sprint 2B uses `register_workflow()` (in-memory, step-based format).
+   Workflows are NOT stored in `workflow_definitions` (nodes/edges SQLite
+   table) and will NOT appear in the PRISM visual designer in Sprint 2B.**
+   MissionRegistry is the persisted source of truth; STITCH runtime state
+   can be rebuilt from MissionRegistry on restart.
+   Conversion to WorkflowStore/nodes-edges (for PRISM designer) is deferred
+   to Sprint 4+ (PRISM Store frontend track).
 
 MissionRegistry write is the commit point. STITCH registration is
 best-effort: if STITCH is unreachable, the install still succeeds and
-returns `stitch_pending: true`. The pending registration is retried on
-next STITCH startup via a pending-registration sidecar file
-(`data/runtime/stitch_pending.json`).
+returns `stitch_pending: true`. The `stitch_registered` flag in the
+MissionRegistry record is set to `false` and retried on next STITCH
+startup. Do NOT create a separate `data/runtime/stitch_pending.json`
+sidecar file — MissionRegistry is the single source of mission install
+state.
 
 ### What Gets Stored Where
 
@@ -617,11 +631,16 @@ next STITCH startup via a pending-registration sidecar file
       "install_path": "/path/to/missions/lead_qualification",
       "installed_at": "2026-05-12T10:00:00Z",
       "capabilities": ["crm.read", "crm.write", "email.send"],
-      "workflow_ids": ["main", "onboarding"]
+      "workflow_ids": ["main", "onboarding"],
+      "stitch_registered": true
     }
   ]
 }
 ```
+
+`stitch_registered: false` is written when STITCH is unreachable at install
+time. On next STITCH startup, STITCH queries MissionRegistry for any record
+with `stitch_registered: false` and re-attempts registration.
 
 **STITCH `WorkflowStore` stores** each workflow file content as a
 workflow definition row in the `workflow_definitions` SQLite table.
@@ -630,17 +649,25 @@ to avoid collisions with manually created workflows.
 
 ### CREW → STITCH Notification
 
-After writing to `MissionRegistry`, CREW calls STITCH via HTTP:
+After writing to `MissionRegistry` with `stitch_registered: false`, CREW
+calls STITCH via the new `register_mission` route:
 
 ```
 POST http://127.0.0.1:<STITCH_PORT>/api/workflows/register_mission
 Body: { "mission_id": "lead_qualification", "install_path": "..." }
 ```
 
-STITCH reads the workflow files from `install_path`, validates them,
-and upserts into `workflow_definitions`. If STITCH is unreachable,
-the install succeeds but STITCH registration is flagged as pending
-(retried on next STITCH startup via a pending-registration scan).
+STITCH reads workflow files from `install_path`, builds `WorkflowDefinition`
+objects from the step-based JSON format, and registers them via
+`register_workflow()` into STITCH's in-memory `self._workflows` dict.
+Workflow IDs are namespaced: `"mission:<mission_id>:<workflow_id>"`.
+On success, CREW updates the MissionRegistry record to `stitch_registered: true`.
+
+If STITCH is unreachable, the install still returns 201 with
+`stitch_pending: true`. The `stitch_registered: false` flag remains in
+MissionRegistry. On next STITCH startup, STITCH queries MissionRegistry
+for missions with `stitch_registered: false` and re-attempts registration.
+Do NOT create a separate `data/runtime/stitch_pending.json` sidecar.
 
 ### PRISM / Mobile Exposure
 
@@ -688,7 +715,7 @@ orphaned, and the user is prompted to confirm table deletion separately
 
 ## Section J — Open Questions
 
-### J1 — JSON vs YAML manifest format `OPEN — DECISION NEEDED`
+### J1 — JSON vs YAML manifest format `DECIDED — Use mission.json (not mission.yaml)`
 
 **Background:** The build plan specifies `mission.yaml`. The existing
 `MissionManifest` implementation loads `mission.json`. STITCH workflow
@@ -713,7 +740,7 @@ with `mission.json` in Sprint 2B unless Andy explicitly requests YAML.
 
 ---
 
-### J2 — Tier naming: `free` vs `lite` `OPEN — DECISION NEEDED`
+### J2 — Tier naming: `free` vs `lite` `DECIDED — Use "lite" as canonical tier name; "free" is deprecated alias`
 
 **Background:** `MissionManifest` accepts `"free"` as a tier value.
 `manifest_validator.py` uses `"lite"`. The build plan and LICENSE_GATE
@@ -734,7 +761,7 @@ everywhere).
 
 ---
 
-### J3 — `risk_level: critical` support in `manifest_validator.py` `OPEN — DECISION NEEDED`
+### J3 — `risk_level: critical` support in `manifest_validator.py` `DECIDED — Add "critical" to risk_level enum`
 
 **Background:** `entitlements.py` defines 4 risk levels: `low`, `medium`,
 `high`, `critical`. `manifest_validator.py` only validates 3: `low`,
@@ -752,7 +779,7 @@ everywhere).
 
 ---
 
-### J4 — Approval gate timeout: per-step or global `OPEN — DECISION NEEDED`
+### J4 — Approval gate timeout: per-step or global `DECIDED — Per-step approval timeout`
 
 **Background:** The spec defines per-step `timeout` on approval gates.
 An alternative is a global mission-level approval timeout.
@@ -770,7 +797,7 @@ An alternative is a global mission-level approval timeout.
 
 ---
 
-### J5 — Sub-missions (nested workflows) `OPEN — DECISION NEEDED`
+### J5 — Sub-missions (nested workflows) `DECIDED — Defer sub-missions/nested workflows to v2`
 
 **Background:** Should a mission workflow step be able to call another
 mission's workflow as a sub-workflow?
@@ -788,7 +815,7 @@ in v1).
 
 ---
 
-### J6 — Where does the public key bundle live? `OPEN — DECISION NEEDED`
+### J6 — Where does the public key bundle live? `DECIDED — Static bundle cascadia/depot/zyrcon_signing_keys.json for Sprint 2B; API fetch (api.zyrcon.store/v1/signing-keys) in Sprint 5`
 
 **Background:** Verifiers need a map of `key_id → public_key`. This
 bundle must be distributed with the Zyrcon AI Server software.
@@ -809,7 +836,7 @@ in repo, updated with releases).
 
 ---
 
-### J7 — Mission install root path `OPEN — DECISION NEEDED`
+### J7 — Mission install root path `DECIDED — Use existing missions.packages_root key in config.json`
 
 **Background:** Where do mission packages get extracted on disk?
 

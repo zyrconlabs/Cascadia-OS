@@ -327,17 +327,23 @@ restart).
 Complete the mission install path in `cascadia/registry/crew.py` to:
 
 1. Run all verification from Phase 4
-2. Check kill switch (query local kill switch table)
+2. Check kill switch via `KillSwitchProvider.is_revoked(package_id, version)`.
+   Inject `NoopKillSwitchProvider` (always returns False) as default.
+   Tests inject `InMemoryKillSwitchProvider` to simulate revoked packages.
+   Do NOT create a SQLite kill_switch table. Cloud/Supabase deferred to Sprint 5/6.
 3. Check tier via LICENSE_GATE (existing `_check_tier` pattern)
 4. Check `min_zyrcon_version` (compare to `cascadia.VERSION`)
 5. Check `operators.required` dependencies (query local CREW registry)
 6. Extract zip to `missions.packages_root / mission_id`
-7. Register in `MissionRegistry` (write to `missions_registry.json`)
-8. POST to STITCH `register_mission` endpoint (best-effort; if STITCH is
-   unreachable, write to a pending-registration queue in a JSON sidecar file;
-   STITCH reads and clears this queue on startup)
+7. Write entry to `MissionRegistry` with `stitch_registered: false`
+8. POST to STITCH `POST /api/workflows/register_mission` (best-effort).
+   On success: update MissionRegistry record to `stitch_registered: true`.
+   If STITCH is unreachable: leave `stitch_registered: false` in MissionRegistry;
+   return 201 with `stitch_pending: true`. Do NOT create a sidecar file.
+   On next STITCH startup, STITCH scans MissionRegistry for
+   `stitch_registered: false` records and re-attempts registration.
 9. Write audit log entry
-10. Return `201` with mission ID, version, and health status
+10. Return `201` with mission ID, version, and `stitch_pending` flag
 
 Add `POST /api/crew/install_mission` as a new route (separate from
 `install_operator`) to keep the two paths cleanly separated and avoid
@@ -349,22 +355,31 @@ Section I.
 **STITCH changes:** Add `POST /api/workflows/register_mission` route to
 `cascadia/automation/stitch.py` that:
 - Accepts `{ "mission_id": "...", "install_path": "..." }`
-- Reads workflow files from `install_path`
-- Upserts to `workflow_definitions` with namespaced IDs
-  (`"mission:<mission_id>:<workflow_id>"`)
+- Reads workflow JSON files from `install_path`
+- Builds `WorkflowDefinition` objects from the step-based JSON format
+- Registers each workflow via `register_workflow()` into `self._workflows`
+  (in-memory dict) with namespaced IDs: `"mission:<mission_id>:<workflow_id>"`
 - Returns `200 { "registered": ["mission:lead_qual:main", ...] }`
+
+**Do NOT use `WorkflowStore.save()` or the `workflow_definitions` SQLite
+table.** Mission workflows use the step-based in-memory path. They will NOT
+appear in the PRISM visual designer in Sprint 2B. MissionRegistry is the
+persisted source of truth; STITCH re-registers from MissionRegistry on startup.
+`workflow_definitions` / visual designer integration is deferred to Sprint 4+.
 
 **Operator/connector behavior:** Unchanged. New routes are additive.
 
 **Tests:** `cascadia/tests/test_crew_mission_install.py`
 
-- Full install flow: valid signed package → 201 success
+- Full install flow: valid signed package → 201 success, `stitch_registered: true`
 - Mission appears in `MissionRegistry.list_installed()` after install
-- Mission workflows appear in STITCH `workflow_definitions` after install
+- Mission workflows registered in STITCH `self._workflows` with namespaced IDs
+- `stitch_pending: true` in response when STITCH is unreachable;
+  MissionRegistry has `stitch_registered: false`
+- Kill switch hit (InMemoryKillSwitchProvider) → 403 with `package_revoked` error
 - Tier insufficient → 403 with `tier_insufficient` error
 - Missing required operator → 422 with `missing_operator` error
 - Version incompatible → 422 with `version_incompatible` error
-- Kill switch hit → 403 with `package_revoked` error
 - Dry-run uninstall → lists affected workflows and data tables
 - Confirmed uninstall → removes from registry and STITCH
 
@@ -418,6 +433,7 @@ real local components (no mocks for the happy path).
 |--------|---------|-----------------|
 | `cascadia/depot/canonicalization.py` | Canonical byte computation | 7 functions (see Phase 2) |
 | `cascadia/depot/signing.py` | Ed25519 signing and verification | `Signer`, `LocalSigner`, `Verifier`, `sign_manifest`, `verify_manifest` |
+| `cascadia/depot/kill_switch.py` | Package revocation abstraction | `KillSwitchProvider` protocol, `NoopKillSwitchProvider`, `InMemoryKillSwitchProvider` |
 | `scripts/generate_signing_key.py` | One-time dev key generation | CLI script, not imported |
 
 **Test files to create:**
@@ -427,6 +443,7 @@ real local components (no mocks for the happy path).
 | `cascadia/tests/test_mission_manifest_extended.py` | New MissionManifest rules (22–32) |
 | `cascadia/tests/test_canonicalization.py` | All canonicalization functions + worked example |
 | `cascadia/tests/test_signing.py` | Ed25519 sign/verify, key rotation |
+| `cascadia/tests/test_kill_switch.py` | `KillSwitchProvider` interface, `NoopKillSwitchProvider` (always False), `InMemoryKillSwitchProvider` (simulated revocation) |
 | `cascadia/tests/test_crew_mission_verify.py` | Hash and digest verification in CREW |
 | `cascadia/tests/test_crew_operator_install_regression.py` | Existing operator install unchanged |
 | `cascadia/tests/test_crew_mission_install.py` | Full mission install path |
@@ -559,11 +576,14 @@ Known affected file: `cascadia/missions/missions_registry.json`.
 registration fails and the mission appears installed but its workflows
 aren't executable.
 
-**Mitigation:** Mission install writes to a pending-registration sidecar
-file (`data/runtime/stitch_pending.json`) if STITCH is unreachable.
-STITCH reads and processes this file on startup. Install still returns 201
-but with `"stitch_pending": true` in the response. PRISM surfaces a
-warning to the user that the mission will be fully available after STITCH
+**Mitigation:** Mission install writes a `MissionRegistry` entry with
+`stitch_registered: false` immediately. If the `POST /api/workflows/register_mission`
+call to STITCH succeeds, the entry is updated to `stitch_registered: true`.
+If STITCH is unreachable, the entry remains `stitch_registered: false` and
+the install response includes `"stitch_pending": true`. No sidecar file is
+created. On next STITCH startup, STITCH scans `MissionRegistry` for records
+with `stitch_registered: false` and re-attempts registration. PRISM surfaces
+a warning to the user that the mission will be fully available after STITCH
 starts.
 
 ---

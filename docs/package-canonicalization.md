@@ -461,7 +461,8 @@ lead_qualification_1.0.0.zip
 **Is text:** Yes (`.json`)
 **Raw bytes:** `{\n  "steps": [\n    {"id": "step_scout", "type": "operator", "operator": "scout"}\n  ]\n}\n`
 **After LF normalization:** same (already LF)
-**SHA-256:** `<compute from actual bytes>`
+**Byte count:** 87
+**SHA-256:** `a0dbc5f4c21d1c208946c7dca485de5cff8ec1bcc8e2ce377b92e5f4816d7908`
 
 ### File: `templates/quote.md`
 
@@ -480,7 +481,8 @@ Dear {{contact_name}},\n
 Please find the proposal attached.\n
 ```
 
-**SHA-256:** `<compute from canonical bytes>`
+**Byte count:** 59
+**SHA-256:** `2e7bd21b199f1c1c852eb1b041a2b7cd4f22bfa702810c6a7cbfc3537fb30872`
 
 ### `files[]` Block
 
@@ -489,13 +491,13 @@ Please find the proposal attached.\n
   "files": [
     {
       "path": "templates/quote.md",
-      "sha256": "<sha256_of_quote_md>",
-      "size_bytes": 47
+      "sha256": "2e7bd21b199f1c1c852eb1b041a2b7cd4f22bfa702810c6a7cbfc3537fb30872",
+      "size_bytes": 59
     },
     {
       "path": "workflows/main.json",
-      "sha256": "<sha256_of_main_json>",
-      "size_bytes": 89
+      "sha256": "a0dbc5f4c21d1c208946c7dca485de5cff8ec1bcc8e2ce377b92e5f4816d7908",
+      "size_bytes": 87
     }
   ]
 }
@@ -507,12 +509,12 @@ Note: `mission.json` itself is NOT listed in `files[]`.
 
 Sorted paths: `templates/quote.md`, `workflows/main.json`
 
-```
+```python
 package_digest = compute_package_digest({
-    "templates/quote.md": <canonical bytes of quote.md>,
-    "workflows/main.json": <canonical bytes of main.json>
+    "templates/quote.md": b'Dear {{contact_name}},\n\nPlease find the proposal attached.\n',
+    "workflows/main.json": b'{\n  "steps": [\n    {"id": "step_scout", "type": "operator", "operator": "scout"}\n  ]\n}\n',
 })
-# Result: "sha256:<64-hex-chars>"
+# Result: "sha256:48144dde1a45c9bd553bdb855185608c263918f314913f0b070583ef7f7f3305"
 ```
 
 ### Canonical Manifest for Signing
@@ -532,10 +534,10 @@ package_digest = compute_package_digest({
   "signed_by": "zyrcon-labs",
   "signature_algorithm": "Ed25519",
   "key_id": "zyrcon-2026-q2",
-  "package_digest": "sha256:<computed above>",
+  "package_digest": "sha256:48144dde1a45c9bd553bdb855185608c263918f314913f0b070583ef7f7f3305",
   "files": [
-    {"path": "templates/quote.md", "sha256": "<hash>", "size_bytes": 47},
-    {"path": "workflows/main.json", "sha256": "<hash>", "size_bytes": 89}
+    {"path": "templates/quote.md", "sha256": "2e7bd21b199f1c1c852eb1b041a2b7cd4f22bfa702810c6a7cbfc3537fb30872", "size_bytes": 59},
+    {"path": "workflows/main.json", "sha256": "a0dbc5f4c21d1c208946c7dca485de5cff8ec1bcc8e2ce377b92e5f4816d7908", "size_bytes": 87}
   ],
   "capabilities": ["crm.read", "email.send"],
   "requires_approval": ["email.send"],
@@ -548,9 +550,11 @@ package_digest = compute_package_digest({
 
 **Canonical bytes for signing** (sorted keys, no spaces, UTF-8, no `signature` field):
 
-```json
-{"author":"zyrcon-labs","capabilities":["crm.read","email.send"],"connectors":{"optional":[],"required":[]},"description":"Qualifies inbound leads.","files":[{"path":"templates/quote.md","sha256":"<hash>","size_bytes":47},{"path":"workflows/main.json","sha256":"<hash>","size_bytes":89}],"id":"lead_qualification","key_id":"zyrcon-2026-q2","name":"Lead Qualification Pipeline","operators":{"optional":[],"required":["scout"]},"package_digest":"sha256:<computed>","requires_approval":["email.send"],"risk_level":"medium","runtime":"server","signature_algorithm":"Ed25519","signed_by":"zyrcon-labs","tier_required":"pro","type":"mission","version":"1.0.0","workflows":{"main":"workflows/main.json"}}
 ```
+{"author":"zyrcon-labs","capabilities":["crm.read","email.send"],"connectors":{"optional":[],"required":[]},"description":"Qualifies inbound leads.","files":[{"path":"templates/quote.md","sha256":"2e7bd21b199f1c1c852eb1b041a2b7cd4f22bfa702810c6a7cbfc3537fb30872","size_bytes":59},{"path":"workflows/main.json","sha256":"a0dbc5f4c21d1c208946c7dca485de5cff8ec1bcc8e2ce377b92e5f4816d7908","size_bytes":87}],"id":"lead_qualification","key_id":"zyrcon-2026-q2","name":"Lead Qualification Pipeline","operators":{"optional":[],"required":["scout"]},"package_digest":"sha256:48144dde1a45c9bd553bdb855185608c263918f314913f0b070583ef7f7f3305","requires_approval":["email.send"],"risk_level":"medium","runtime":"server","signature_algorithm":"Ed25519","signed_by":"zyrcon-labs","tier_required":"pro","type":"mission","version":"1.0.0","workflows":{"main":"workflows/main.json"}}
+```
+
+**SHA-256 of canonical manifest bytes:** `f754c2961ecff1388143bbbad941bdf398ea7985d7dae92d003b6d7ebaef3039`
 
 **Note:** The `files[]` list preserves its original order (not sorted) because
 list order is semantically preserved. Only dict keys are sorted.
@@ -585,6 +589,73 @@ def verify(manifest: dict, public_key: Ed25519PublicKey) -> bool:
         return True
     except InvalidSignature:
         return False
+```
+
+### End-to-End Verification Snippet
+
+The following script reproduces every value in this worked example from
+first principles and asserts correctness. Run it with `python3` to confirm
+your canonicalization implementation matches the spec.
+
+```python
+import hashlib, json
+
+def normalize_line_endings(content: bytes) -> bytes:
+    content = content.replace(b'\r\n', b'\n')
+    content = content.replace(b'\r', b'\n')
+    return content
+
+def compute_package_digest(file_map: dict) -> str:
+    h = hashlib.sha256()
+    for path in sorted(file_map.keys(), key=lambda p: p.encode('utf-8')):
+        content = file_map[path]
+        h.update(path.encode('utf-8') + b'\x00')
+        h.update(len(content).to_bytes(8, 'big'))
+        h.update(content)
+    return 'sha256:' + h.hexdigest()
+
+def canonical_manifest_bytes(manifest: dict) -> bytes:
+    m = {k: v for k, v in manifest.items() if k != 'signature'}
+    return json.dumps(m, sort_keys=True, separators=(',', ':'),
+                      ensure_ascii=False).encode('utf-8')
+
+# File contents
+quote_raw = b'Dear {{contact_name}},\r\n\r\nPlease find the proposal attached.\r\n'
+quote_canonical = normalize_line_endings(quote_raw)
+main_canonical = b'{\n  "steps": [\n    {"id": "step_scout", "type": "operator", "operator": "scout"}\n  ]\n}\n'
+
+assert len(quote_canonical) == 59
+assert len(main_canonical) == 87
+assert hashlib.sha256(quote_canonical).hexdigest() == \
+    '2e7bd21b199f1c1c852eb1b041a2b7cd4f22bfa702810c6a7cbfc3537fb30872'
+assert hashlib.sha256(main_canonical).hexdigest() == \
+    'a0dbc5f4c21d1c208946c7dca485de5cff8ec1bcc8e2ce377b92e5f4816d7908'
+
+file_map = {"templates/quote.md": quote_canonical, "workflows/main.json": main_canonical}
+pkg_digest = compute_package_digest(file_map)
+assert pkg_digest == \
+    'sha256:48144dde1a45c9bd553bdb855185608c263918f314913f0b070583ef7f7f3305'
+
+manifest = {
+    "type": "mission", "id": "lead_qualification", "version": "1.0.0",
+    "name": "Lead Qualification Pipeline", "description": "Qualifies inbound leads.",
+    "tier_required": "pro", "runtime": "server", "author": "zyrcon-labs",
+    "signed_by": "zyrcon-labs", "signature_algorithm": "Ed25519",
+    "key_id": "zyrcon-2026-q2", "package_digest": pkg_digest,
+    "files": [
+        {"path": "templates/quote.md", "sha256": hashlib.sha256(quote_canonical).hexdigest(), "size_bytes": 59},
+        {"path": "workflows/main.json", "sha256": hashlib.sha256(main_canonical).hexdigest(), "size_bytes": 87},
+    ],
+    "capabilities": ["crm.read", "email.send"], "requires_approval": ["email.send"],
+    "risk_level": "medium", "operators": {"required": ["scout"], "optional": []},
+    "connectors": {"required": [], "optional": []},
+    "workflows": {"main": "workflows/main.json"},
+}
+canon = canonical_manifest_bytes(manifest)
+assert hashlib.sha256(canon).hexdigest() == \
+    'f754c2961ecff1388143bbbad941bdf398ea7985d7dae92d003b6d7ebaef3039'
+
+print("All assertions passed.")
 ```
 
 ---
