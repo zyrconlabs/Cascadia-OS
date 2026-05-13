@@ -119,13 +119,13 @@ def vault_store(key: str, value: str) -> bool:
         return False
 
 
-def vault_get(key: str) -> Optional[str]:
+def vault_get(key: str, namespace: str = "default") -> Optional[str]:
     """
     Retrieve a value from VAULT by key.
     Returns the value string or None if not found or on error.
     """
     try:
-        result = _post(_PORTS['vault'], '/read', {'key': key})
+        result = _post(_PORTS['vault'], '/read', {'key': key, 'namespace': namespace})
         if result and 'value' in result:
             return result['value']
         return None

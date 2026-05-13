@@ -46,7 +46,7 @@ def _load_bot_token() -> str:
     """Load Telegram bot token. Load order: vault → TELEGRAM_BOT_TOKEN env → telegram.config.json."""
     try:
         from cascadia_sdk import vault_get  # type: ignore
-        val = vault_get("telegram.bot_token")
+        val = vault_get("telegram:bot_token", namespace="secrets")
         if val:
             return val
     except ImportError:
