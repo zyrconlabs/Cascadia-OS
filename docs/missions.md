@@ -77,7 +77,7 @@ Returns all available missions.
       "name": "Revenue Desk",
       "version": "1.0.0",
       "description": "Email scanning and revenue pipeline",
-      "tier_required": "free",
+      "tier_required": "lite",
       "installed": true,
       "status": "installed"
     }
@@ -99,7 +99,7 @@ GET /api/missions/{mission_id}
   "name": "Revenue Desk",
   "version": "1.0.0",
   "description": "Email scanning and revenue pipeline",
-  "tier_required": "free",
+  "tier_required": "lite",
   "installed": true,
   "status": "installed"
 }
