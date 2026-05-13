@@ -2229,6 +2229,12 @@ document.getElementById('key').addEventListener('keydown', function(e){
         # Re-serialize without injected runtime metadata for signature verification
         clean = {k: v for k, v in payload.items() if not k.startswith('__')}
         body = _json.dumps(clean, separators=(',', ':')).encode()
+        if not webhook_secret:
+            _cascadia_env = _os.environ.get('CASCADIA_ENV', 'development').lower()
+            if _cascadia_env not in ('development', 'test'):
+                self.runtime.logger.critical('STRIPE_WEBHOOK_SECRET not set in production — rejecting webhook')
+                return 403, {'error': 'webhook_secret not configured'}
+            self.runtime.logger.warning('STRIPE_WEBHOOK_SECRET not set — processing without verification (dev/test mode)')
         try:
             stripe_handler = StripeHandler(
                 webhook_secret=webhook_secret or 'placeholder',
@@ -3143,6 +3149,10 @@ document.getElementById('key').addEventListener('keydown', function(e){
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')
+        import os as _os
+        if not _os.environ.get('STRIPE_WEBHOOK_SECRET') and \
+                _os.environ.get('CASCADIA_ENV', 'development').lower() not in ('development', 'test'):
+            self.runtime.logger.critical('STARTUP: STRIPE_WEBHOOK_SECRET is not set — Stripe webhooks will be rejected in production mode')
         if self._watchdog is not None:
             self._watchdog.start()
         self._start_approval_timeout_daemon()

@@ -13,9 +13,11 @@ Auth: API key (bot token in payload)
 import asyncio
 import json
 import logging
+import os
 import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -34,6 +36,35 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 log = logging.getLogger(NAME)
+
+
+# ---------------------------------------------------------------------------
+# Token loading — vault → env → config file
+# ---------------------------------------------------------------------------
+
+def _load_bot_token() -> str:
+    """Load Telegram bot token. Load order: vault → TELEGRAM_BOT_TOKEN env → telegram.config.json."""
+    try:
+        from cascadia_sdk import vault_get  # type: ignore
+        val = vault_get("telegram.bot_token")
+        if val:
+            return val
+    except ImportError:
+        pass
+    val = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if val:
+        return val
+    cfg_path = Path(__file__).parent / "telegram.config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text())
+        return cfg.get("bot_token", "")
+    except Exception:
+        return ""
+
+
+_BOT_TOKEN: str = _load_bot_token()
+if not _BOT_TOKEN:
+    log.warning("TELEGRAM_BOT_TOKEN not set — set via vault, TELEGRAM_BOT_TOKEN env var, or telegram.config.json")
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +117,8 @@ def send_message(chat_id: str | int, text: str, bot_token: str) -> dict:
 def execute_call(payload: dict) -> dict:
     """Dispatch to the appropriate function based on payload['action']."""
     action = payload.get("action")
-    bot_token = payload.get("bot_token", "")
+    # Connector owns the token — loaded at startup from vault/env/config
+    bot_token = _BOT_TOKEN
 
     if action == "send_message":
         return send_message(
