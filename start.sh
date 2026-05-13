@@ -105,8 +105,7 @@ CASCADIA_RUNNING=false
 if curl -sf http://127.0.0.1:4011/health > /dev/null 2>&1; then
     # Verify it's running from THIS directory, not a stale/backup instance
     RUNNING_PID=$(pgrep -f "cascadia.kernel.watchdog" | head -1)
-    RUNNING_DIR=$(lsof -p "$RUNNING_PID" 2>/dev/null | grep cwd | awk '{print $NF}' || echo "")
-    if [[ "$RUNNING_DIR" == "$REPO" ]]; then
+    if ps -p "$RUNNING_PID" -o command= 2>/dev/null | grep -qF "$REPO"; then
         echo "✓ Cascadia OS already running"
         CASCADIA_RUNNING=true
     else
