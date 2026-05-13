@@ -387,9 +387,16 @@ def test_valid_risk_levels_pass():
 
 
 def test_invalid_risk_level_fails():
-    result = validate_depot_manifest(_with(VALID_OPERATOR, risk_level="critical"))
+    result = validate_depot_manifest(_with(VALID_OPERATOR, risk_level="extreme"))
     assert result.valid is False
     assert any("risk_level" in err for err in result.errors)
+
+
+def test_critical_risk_level_now_valid():
+    # "critical" was missing from VALID_RISK_LEVELS before Sprint 2B Phase 2.
+    # Verify it is now accepted.
+    result = validate_depot_manifest(_with(VALID_OPERATOR, risk_level="critical"))
+    assert result.valid is True
 
 
 def test_missing_risk_level_fails():

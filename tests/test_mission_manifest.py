@@ -137,5 +137,92 @@ class TestMissionManifest(unittest.TestCase):
         self.assertTrue(result.valid, f"Operator validation broke: {result.errors}")
 
 
+class TestPhase2TierAndRiskFixes(unittest.TestCase):
+    """Sprint 2B Phase 2 — Bug A (critical risk_level) + Bug B (free→lite alias)."""
+
+    def setUp(self):
+        self.mm = MissionManifest()
+        self.valid = _load_fixture()
+
+    # ── Bug B: free → lite alias ──────────────────────────────────────────────
+
+    def test_tier_lite_accepted_without_warning(self):
+        m = copy.deepcopy(self.valid)
+        m["tier_required"] = "lite"
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            errors = self.mm.validate(m)
+        self.assertEqual(errors, [])
+        deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+        self.assertEqual(len(deprecation_warnings), 0)
+
+    def test_tier_free_accepted_with_deprecation_warning(self):
+        m = copy.deepcopy(self.valid)
+        m["tier_required"] = "free"
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            errors = self.mm.validate(m)
+        self.assertEqual(errors, [], "free should be accepted as deprecated alias for lite")
+        deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+        self.assertEqual(len(deprecation_warnings), 1)
+        self.assertIn("free", str(deprecation_warnings[0].message))
+        self.assertIn("lite", str(deprecation_warnings[0].message))
+
+    def test_tier_pro_accepted(self):
+        m = copy.deepcopy(self.valid)
+        m["tier_required"] = "pro"
+        errors = self.mm.validate(m)
+        self.assertEqual(errors, [])
+
+    def test_tier_invalid_rejected(self):
+        m = copy.deepcopy(self.valid)
+        m["tier_required"] = "starter"
+        errors = self.mm.validate(m)
+        self.assertTrue(any("tier_required" in e for e in errors))
+
+    # ── Bug A: critical risk_level in VALID_RISK_LEVELS (depot validator) ─────
+
+    def test_depot_validator_accepts_critical_risk_level(self):
+        from cascadia.depot.manifest_validator import VALID_RISK_LEVELS
+        self.assertIn("critical", VALID_RISK_LEVELS, "critical must be in VALID_RISK_LEVELS after Phase 2")
+
+    def test_depot_validator_critical_passes_full_validation(self):
+        from cascadia.depot.manifest_validator import validate_depot_manifest
+        op = {
+            "id": "high-risk-op",
+            "name": "High Risk Operator",
+            "type": "operator",
+            "version": "1.0.0",
+            "description": "Operator with critical risk level.",
+            "author": "Zyrcon Labs",
+            "price": 0,
+            "tier_required": "enterprise",
+            "port": 8201,
+            "entry_point": "server.py",
+            "dependencies": [],
+            "install_hook": "install.sh",
+            "uninstall_hook": "uninstall.sh",
+            "category": "operations",
+            "industries": ["general"],
+            "installed_by_default": False,
+            "safe_to_uninstall": True,
+            "risk_level": "critical",
+            "permissions": [],
+            "requires_approval_for": [],
+            "data_access": [],
+            "writes_external_systems": True,
+            "network_access": True,
+        }
+        result = validate_depot_manifest(op)
+        self.assertTrue(result.valid, f"critical risk_level should be valid: {result.errors}")
+
+    def test_depot_validator_low_medium_high_still_pass(self):
+        from cascadia.depot.manifest_validator import validate_depot_manifest, VALID_RISK_LEVELS
+        for level in ("low", "medium", "high"):
+            self.assertIn(level, VALID_RISK_LEVELS)
+
+
 if __name__ == "__main__":
     unittest.main()

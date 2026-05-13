@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 
-_VALID_TIERS = {"free", "pro", "business", "enterprise"}
+_VALID_TIERS = {"lite", "pro", "business", "enterprise"}
+_DEPRECATED_TIER_ALIASES = {"free": "lite"}
 
 
 class MissionManifestError(Exception):
@@ -52,11 +54,20 @@ class MissionManifest:
         if not isinstance(manifest.get("description"), str) or not manifest.get("description", "").strip():
             errors.append("'description' must be a non-empty string")
 
-        # Rule 6: tier_required — one of: free, pro, business, enterprise
-        if manifest.get("tier_required") not in _VALID_TIERS:
+        # Rule 6: tier_required — one of: lite, pro, business, enterprise
+        # "free" is accepted as a deprecated alias for "lite".
+        tier = manifest.get("tier_required")
+        if tier in _DEPRECATED_TIER_ALIASES:
+            warnings.warn(
+                f"tier_required value {tier!r} is deprecated; "
+                f"use {_DEPRECATED_TIER_ALIASES[tier]!r} instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        elif tier not in _VALID_TIERS:
             errors.append(
                 f"'tier_required' must be one of {sorted(_VALID_TIERS)}, "
-                f"got: {manifest.get('tier_required')!r}"
+                f"got: {tier!r}"
             )
 
         # Rule 7: industries — list (may be empty)
