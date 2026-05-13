@@ -37,6 +37,8 @@ _RESERVED_PATH_PATTERNS = (
     "__pycache__/", ".pyc", "~", ".swp", ".swo", ".orig", ".#",
 )
 
+_STITCH_PORT = 6201
+
 _REQUIRED_MANIFEST_FIELDS = {'operator_id', 'name', 'version', 'capabilities'}
 _REQUIRED_DEPOT_MANIFEST_FIELDS = {'id', 'name', 'version', 'port', 'start_cmd',
                                     'autonomy_level', 'capabilities', 'tier_required'}
@@ -180,6 +182,7 @@ class CrewService:
         self.runtime.register_route('POST', '/restore_operator',      self.restore_operator)
         self.runtime.register_route('GET',  '/api/watchdog/status',   self.watchdog_status)
         self.runtime.register_route('POST', '/api/crew/install_mission',   self.install_mission)
+        self.runtime.register_route('POST', '/api/crew/uninstall_mission', self.uninstall_mission)
 
     def register(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Register an operator into the Crew."""
@@ -905,7 +908,8 @@ class CrewService:
             return 500, {"error": "extraction_failed", "message": str(exc), "details": {}}
 
         # Write to MissionRegistry with stitch_registered: false
-        registry = MissionRegistry(packages_root=packages_root)
+        _mission_registry_file = str(Path(packages_root) / "missions_registry.json")
+        registry = MissionRegistry(packages_root=packages_root, registry_file=_mission_registry_file)
         registry_entry = {
             "id": mission_id,
             "version": version,
@@ -923,21 +927,152 @@ class CrewService:
         }
         registry.register_install(registry_entry)
 
+        # ── STITCH registration (best-effort) ──────────────────────────────
+        stitch_registered = False
+        workflows_map = manifest.get("workflows") or {}
+        if workflows_map:
+            try:
+                stitch_payload = json.dumps({
+                    "mission_id": mission_id,
+                    "install_path": str(install_path),
+                    "workflows": workflows_map,
+                    "manifest": {k: v for k, v in manifest.items() if k not in ("signature",)},
+                }).encode()
+                stitch_req = _urllib_request.Request(
+                    f"http://127.0.0.1:{_STITCH_PORT}/api/workflows/register_mission",
+                    data=stitch_payload, method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with _urllib_request.urlopen(stitch_req, timeout=5) as r:
+                    if r.status in (200, 201):
+                        stitch_registered = True
+                        registry.update_stitch_registered(mission_id, True)
+            except Exception:
+                pass  # best-effort; stitch_pending remains True in response
+        else:
+            # No workflows to register; mark as done immediately
+            stitch_registered = True
+            registry.update_stitch_registered(mission_id, True)
+
         _append_install_log(_cfg, {
             "action": "install_mission",
             "mission_id": mission_id,
             "version": version,
+            "stitch_registered": stitch_registered,
             "installed_at": _now_iso(),
         })
         self.runtime.logger.info(
-            "CREW installed mission: %s v%s", mission_id, version
+            "CREW installed mission: %s v%s stitch=%s", mission_id, version, stitch_registered
         )
         return 201, {
             "installed": mission_id,
             "version": version,
             "install_path": str(install_path),
-            "stitch_registered": False,
-            "stitch_pending": True,
+            "stitch_registered": stitch_registered,
+            "stitch_pending": not stitch_registered,
+        }
+
+    def uninstall_mission(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/crew/uninstall_mission — two-phase mission removal.
+
+        Phase 1 (dry_run: true): returns affected_workflows, keeps files.
+        Phase 2 (dry_run: false, confirmed: true): removes files, updates registry.
+        """
+        from cascadia.missions.registry import MissionRegistry
+
+        mission_id = payload.get("mission_id", "")
+        dry_run = payload.get("dry_run", True)
+        confirmed = payload.get("confirmed", False)
+
+        if not mission_id:
+            return 400, {"error": "bad_request", "message": "mission_id required"}
+
+        _cfg = getattr(self, "_config", {})
+        missions_cfg = _cfg.get("missions", {})
+        packages_root = missions_cfg.get("packages_root") if isinstance(missions_cfg, dict) else None
+        if not packages_root:
+            packages_root = str(Path(__file__).parent.parent.parent / "missions")
+
+        _mission_registry_file2 = str(Path(packages_root) / "missions_registry.json")
+        registry = MissionRegistry(packages_root=packages_root, registry_file=_mission_registry_file2)
+        entry = next(
+            (m for m in registry.list_installed() if m.get("id") == mission_id),
+            None,
+        )
+        if entry is None:
+            return 404, {"error": "not_found", "message": f"Mission {mission_id!r} not installed"}
+
+        # Find workflows that reference this mission
+        affected_workflows: List[str] = []
+        try:
+            db_path = _cfg.get("database_path", "./data/runtime/cascadia.db")
+            import sqlite3
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT id, name, nodes FROM workflow_definitions WHERE deleted_at IS NULL"
+                ).fetchall()
+            for row in rows:
+                try:
+                    nodes = json.loads(row["nodes"] or "[]")
+                except Exception:
+                    nodes = []
+                if isinstance(nodes, list):
+                    for node in nodes:
+                        if isinstance(node, dict) and mission_id in str(node):
+                            affected_workflows.append(row["name"] or row["id"])
+                            break
+        except Exception:
+            pass
+
+        if dry_run:
+            install_path = entry.get("install_path", str(Path(packages_root) / mission_id))
+            return 200, {
+                "dry_run": True,
+                "mission_id": mission_id,
+                "version": entry.get("version", ""),
+                "install_path": install_path,
+                "affected_workflows": affected_workflows,
+                "message": "Pass dry_run: false and confirmed: true to proceed.",
+            }
+
+        if not confirmed:
+            return 400, {
+                "error": "confirmation_required",
+                "message": "Pass confirmed: true to confirm uninstall.",
+            }
+
+        # Remove files
+        install_path = Path(entry.get("install_path", str(Path(packages_root) / mission_id)))
+        if install_path.exists():
+            try:
+                shutil.rmtree(install_path)
+            except Exception as exc:
+                return 500, {"error": "removal_failed", "message": str(exc)}
+
+        # Remove from registry
+        try:
+            _rfile = Path(packages_root) / "missions_registry.json"
+            if _rfile.exists():
+                data = json.loads(_rfile.read_text(encoding="utf-8"))
+                data["installed"] = [
+                    m for m in data.get("installed", [])
+                    if not (isinstance(m, dict) and m.get("id") == mission_id)
+                ]
+                _rfile.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+        _append_install_log(_cfg, {
+            "action": "uninstall_mission",
+            "mission_id": mission_id,
+            "uninstalled_at": _now_iso(),
+            "affected_workflows": affected_workflows,
+        })
+        self.runtime.logger.info("CREW uninstalled mission: %s", mission_id)
+        return 200, {
+            "uninstalled": mission_id,
+            "affected_workflows": affected_workflows,
         }
 
     def watchdog_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
