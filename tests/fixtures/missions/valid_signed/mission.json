@@ -1,0 +1,71 @@
+{
+  "type": "mission",
+  "id": "lead_qualification",
+  "version": "1.0.0",
+  "name": "Lead Qualification Pipeline",
+  "description": "Qualifies inbound leads, researches companies, and generates proposals.",
+  "tier_required": "pro",
+  "runtime": "server",
+  "author": "zyrcon-labs",
+  "signed_by": "zyrcon-labs",
+  "signature_algorithm": "Ed25519",
+  "key_id": "zyrcon-2026-q2",
+  "package_digest": "sha256:48144dde1a45c9bd553bdb855185608c263918f314913f0b070583ef7f7f3305",
+  "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "files": [
+    {
+      "path": "templates/quote.md",
+      "sha256": "2e7bd21b199f1c1c852eb1b041a2b7cd4f22bfa702810c6a7cbfc3537fb30872",
+      "size_bytes": 59
+    },
+    {
+      "path": "workflows/main.json",
+      "sha256": "a0dbc5f4c21d1c208946c7dca485de5cff8ec1bcc8e2ce377b92e5f4816d7908",
+      "size_bytes": 87
+    }
+  ],
+  "capabilities": ["crm.read", "email.send"],
+  "requires_approval": ["email.send"],
+  "risk_level": "medium",
+  "industries": ["saas", "professional_services"],
+  "operators": {
+    "required": ["scout"],
+    "optional": []
+  },
+  "connectors": {
+    "required": [],
+    "optional": []
+  },
+  "schedules": [],
+  "approval_flows": [],
+  "database": {
+    "schema_file": "data/schema.sql",
+    "owned_tables": ["leads"]
+  },
+  "workflows": {
+    "main": "workflows/main.json"
+  },
+  "events": {
+    "produces": ["lead.qualified"],
+    "consumes": ["lead.received"]
+  },
+  "billing": {
+    "included_in": ["pro", "business", "enterprise"],
+    "available_as_addon": false,
+    "addon_price_monthly": null
+  },
+  "limits": {
+    "pro": {
+      "enabled": true,
+      "mode": "full",
+      "max_runs_per_month": 1000
+    }
+  },
+  "prism": {
+    "nav_label": "Leads",
+    "schema": "ui/prism_schema.json"
+  },
+  "mobile": {
+    "schema": "ui/mobile_schema.json"
+  }
+}
