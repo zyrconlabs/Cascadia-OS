@@ -4,7 +4,7 @@
   "name": "Test Growth Desk",
   "version": "0.1.0",
   "description": "Fixture mission for testing only.",
-  "tier_required": "free",
+  "tier_required": "lite",
   "industries": ["construction"],
   "operators": {
     "required": ["brief", "social", "chief"],

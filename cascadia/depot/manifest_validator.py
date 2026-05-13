@@ -30,7 +30,7 @@ VALID_AUTH_TYPES = {
     'iam', 'service_account', 'signed_token', 'none',
 }
 
-VALID_RISK_LEVELS = {'low', 'medium', 'high'}
+VALID_RISK_LEVELS = {'low', 'medium', 'high', 'critical'}
 
 # Fields every DEPOT manifest must have
 REQUIRED_FIELDS = {
