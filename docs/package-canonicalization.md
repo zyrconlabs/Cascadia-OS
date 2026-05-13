@@ -280,6 +280,14 @@ Where:
   content is concatenated
 - The null terminator on the path prevents path/content boundary ambiguity
 
+**Package digest scope:** `mission.json` is NOT included in `package_digest`.
+The package digest covers only the payload files listed in `files[]`.
+`mission.json` is protected separately by the Ed25519 signature over the
+canonical manifest bytes (excluding the `signature` field itself). Including
+`mission.json` in the package digest would create a circular signing problem:
+the manifest contains `package_digest`, so hashing the manifest as part of
+`package_digest` would require the digest to contain itself.
+
 **Python reference implementation:**
 
 ```python
