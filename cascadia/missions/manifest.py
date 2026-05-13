@@ -2,11 +2,22 @@
 from __future__ import annotations
 
 import json
+import re
 import warnings
 from pathlib import Path
 
 _VALID_TIERS = {"lite", "pro", "business", "enterprise"}
 _DEPRECATED_TIER_ALIASES = {"free": "lite"}
+
+_VALID_RUNTIMES = {"server", "mobile", "both"}
+_VALID_RISK_LEVELS = {"low", "medium", "high", "critical"}
+_RISK_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+# Pattern for operator/connector IDs with optional version pinning:
+# "scout", "scout@1.2.0", "scout@>=1.2.0"
+_DEPENDENCY_ID_RE = re.compile(
+    r'^[a-z][a-z0-9_-]+(@(>=)?[0-9]+\.[0-9]+\.[0-9]+)?$'
+)
 
 
 class MissionManifestError(Exception):
@@ -149,6 +160,144 @@ class MissionManifest:
         else:
             if not isinstance(mobile.get("schema"), str) or not mobile.get("schema", "").strip():
                 errors.append("'mobile.schema' must be a non-empty string")
+
+        # Rule 33: operator/connector dependency format (always applied)
+        dep_lists: list[tuple[str, object]] = []
+        if isinstance(operators, dict):
+            dep_lists += [
+                ("operators.required", operators.get("required")),
+                ("operators.optional", operators.get("optional")),
+            ]
+        if isinstance(connectors, dict):
+            dep_lists += [
+                ("connectors.required", connectors.get("required")),
+                ("connectors.optional", connectors.get("optional")),
+            ]
+        for field_name, dep_list in dep_lists:
+            if isinstance(dep_list, list):
+                for entry in dep_list:
+                    if isinstance(entry, str) and not _DEPENDENCY_ID_RE.match(entry):
+                        errors.append(
+                            f"'{field_name}' contains invalid dependency format: {entry!r}"
+                        )
+
+        # Package-mode rules (Rules 22–31) — activated when 'signature' or
+        # 'package_digest' is present, indicating a signed mission package.
+        _is_package = ('signature' in manifest or 'package_digest' in manifest)
+        if _is_package:
+            from cascadia.shared.entitlements import CAPABILITY_REGISTRY
+
+            # Rule 22: capabilities — list, each a key in CAPABILITY_REGISTRY
+            caps = manifest.get('capabilities')
+            if not isinstance(caps, list):
+                errors.append("'capabilities' must be a list")
+            else:
+                for c in caps:
+                    if not isinstance(c, str) or c not in CAPABILITY_REGISTRY:
+                        errors.append(
+                            f"'capabilities' contains unknown capability: {c!r}"
+                        )
+
+            # Rule 23: requires_approval — list, subset of capabilities
+            req_approval = manifest.get('requires_approval')
+            if not isinstance(req_approval, list):
+                errors.append("'requires_approval' must be a list")
+            elif isinstance(caps, list):
+                for c in req_approval:
+                    if c not in caps:
+                        errors.append(
+                            f"'requires_approval' entry {c!r} not in 'capabilities'"
+                        )
+
+            # Rule 24: risk_level — enum, must be ≥ highest capability risk level
+            risk = manifest.get('risk_level')
+            if not isinstance(risk, str) or risk not in _VALID_RISK_LEVELS:
+                errors.append(
+                    f"'risk_level' must be one of {sorted(_VALID_RISK_LEVELS)}, got: {risk!r}"
+                )
+            elif isinstance(caps, list):
+                cap_levels = [
+                    CAPABILITY_REGISTRY.get(c, "medium")
+                    for c in caps
+                    if isinstance(c, str) and c in CAPABILITY_REGISTRY
+                ]
+                if cap_levels:
+                    max_cap_rank = max(_RISK_RANK[lvl] for lvl in cap_levels)
+                    declared_rank = _RISK_RANK.get(risk, 0)
+                    if declared_rank < max_cap_rank:
+                        max_level = [k for k, v in _RISK_RANK.items() if v == max_cap_rank][0]
+                        errors.append(
+                            f"'risk_level' is {risk!r} but capabilities require "
+                            f"at least {max_level!r}"
+                        )
+
+            # Rule 25: runtime — required, one of server/mobile/both
+            if manifest.get('runtime') not in _VALID_RUNTIMES:
+                errors.append(
+                    f"'runtime' must be one of {sorted(_VALID_RUNTIMES)}, "
+                    f"got: {manifest.get('runtime')!r}"
+                )
+
+            # Rule 26: author — required non-empty string
+            if not isinstance(manifest.get('author'), str) or not manifest.get('author', '').strip():
+                errors.append("'author' must be a non-empty string")
+
+            # Rule 27: signed_by — required non-empty string
+            if not isinstance(manifest.get('signed_by'), str) or not manifest.get('signed_by', '').strip():
+                errors.append("'signed_by' must be a non-empty string")
+
+            # Rule 28: signature_algorithm — must be "Ed25519"
+            if manifest.get('signature_algorithm') != 'Ed25519':
+                errors.append(
+                    f"'signature_algorithm' must be 'Ed25519', "
+                    f"got: {manifest.get('signature_algorithm')!r}"
+                )
+
+            # Rule 29: key_id — non-empty string matching ^[a-z][a-z0-9-]+$
+            key_id = manifest.get('key_id')
+            if not isinstance(key_id, str) or not re.match(r'^[a-z][a-z0-9-]+$', key_id):
+                errors.append(
+                    f"'key_id' must be a non-empty string matching ^[a-z][a-z0-9-]+$, "
+                    f"got: {key_id!r}"
+                )
+
+            # Rule 30: package_digest — must match ^sha256:[a-f0-9]{64}$
+            pkg_digest = manifest.get('package_digest')
+            if not isinstance(pkg_digest, str) or not re.match(
+                r'^sha256:[a-f0-9]{64}$', pkg_digest
+            ):
+                errors.append(
+                    f"'package_digest' must match sha256:<64 hex chars>, "
+                    f"got: {pkg_digest!r}"
+                )
+
+            # Rule 31: files — list of dicts with valid path and sha256
+            files = manifest.get('files')
+            if not isinstance(files, list):
+                errors.append("'files' must be a list")
+            else:
+                for i, entry in enumerate(files):
+                    if not isinstance(entry, dict):
+                        errors.append(f"'files[{i}]' must be a dict")
+                        continue
+                    path = entry.get('path')
+                    sha = entry.get('sha256')
+                    if not isinstance(path, str) or not path.strip():
+                        errors.append(f"'files[{i}].path' must be a non-empty string")
+                    elif '..' in path or path.startswith('/'):
+                        errors.append(
+                            f"'files[{i}].path' must be a relative POSIX path, got: {path!r}"
+                        )
+                    if not isinstance(sha, str) or not re.match(r'^[a-f0-9]{64}$', sha):
+                        errors.append(
+                            f"'files[{i}].sha256' must be 64-char lowercase hex, "
+                            f"got: {sha!r}"
+                        )
+                    size = entry.get('size_bytes')
+                    if size is not None and (not isinstance(size, int) or size < 0):
+                        errors.append(
+                            f"'files[{i}].size_bytes' must be a non-negative integer"
+                        )
 
         # File existence checks — only when base_path is provided
         if base_path is not None:
