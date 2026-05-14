@@ -30,7 +30,7 @@ from cascadia.chief.operator_selector import select_target
 _VERSION = "1.0.0"
 
 # Environment overrides — ports resolved from config at startup, not hardcoded
-CHIEF_PORT = int(os.environ.get("CHIEF_PORT", "6210"))
+CHIEF_PORT = int(os.environ.get("CHIEF_PORT", "6211"))
 CREW_URL   = os.environ.get("CREW_URL", "http://127.0.0.1:5100")
 BEACON_URL = os.environ.get("BEACON_URL", "http://127.0.0.1:6200")
 MISSION_MANAGER_URL = os.environ.get("MISSION_MANAGER_URL", "http://127.0.0.1:6207")
