@@ -312,7 +312,7 @@ Returns live run counts and required operator/connector status.
   "failed_runs_24h": 0,
   "required_operators": { "email": "unknown", "scout": "unknown" },
   "required_connectors": {},
-  "tier_required": "free"
+  "tier_required": "lite"
 }
 ```
 

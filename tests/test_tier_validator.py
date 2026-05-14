@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import time
 import unittest
 
@@ -15,7 +16,7 @@ from cascadia.licensing.tier_validator import (
     get_max_users,
 )
 
-SECRET_V2 = 'e4806882a41883d35af2aa4ecfa20e89939b3cc53adf103e342f45e1e9661e4d'
+SECRET_V2 = os.environ.get('TEST_LICENSE_SECRET', 'test-fixture-not-real-aaaa1111bbbb2222cccc3333dddd4444eeff0011223344556677889900aabbcc')
 SECRET_OLD = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 FUTURE = int(time.time()) + 86400 * 365
 

@@ -195,6 +195,64 @@ class TestFeatureFlagOn:
         assert code == 200
         assert "resources" in body
 
+    # ── GET /api/prism/connector/{id}/settings alias ─────────────────────────
+
+    def test_connector_settings_get_returns_fields_and_values(self):
+        """Happy path — manifest present, engine returns values."""
+        from cascadia.settings.engine import SettingsEngine
+        from cascadia.shared.manifest_schema import validate_manifest
+        m = validate_manifest({
+            "id": "telegram_connector", "name": "Telegram", "version": "1.0.0",
+            "type": "skill", "capabilities": [], "required_dependencies": [],
+            "requested_permissions": [], "autonomy_level": "manual_only",
+            "health_hook": "/health", "description": "",
+            "setup_fields": [
+                {"name": "bot_token", "label": "Bot Token", "type": "secret",
+                 "secret": True, "vault_key": "telegram:bot_token"},
+            ],
+        })
+        eng = SettingsEngine(
+            settings_db=str(self.tmp / "s.db"),
+            vault_db=str(self.tmp / "v.db"),
+        )
+        eng._vault.write("telegram:bot_token", "tok", created_by="test", namespace="secrets")
+        self._patch_engine(eng)
+        self.svc._load_setup_manifest = lambda *_: m
+        code, body = self.svc.connector_settings_get({"id": "telegram_connector"})
+        assert code == 200
+        assert body["connector_id"] == "telegram_connector"
+        assert len(body["fields"]) == 1
+        assert body["fields"][0]["name"] == "bot_token"
+        assert "values" in body
+
+    def test_connector_settings_get_missing_values_returns_empty_dict(self):
+        """Manifest present but engine raises — values defaults to {}."""
+        from cascadia.shared.manifest_schema import validate_manifest
+        m = validate_manifest({
+            "id": "telegram_connector", "name": "Telegram", "version": "1.0.0",
+            "type": "skill", "capabilities": [], "required_dependencies": [],
+            "requested_permissions": [], "autonomy_level": "manual_only",
+            "health_hook": "/health", "description": "",
+            "setup_fields": [
+                {"name": "bot_token", "label": "Bot Token", "type": "secret",
+                 "secret": True, "vault_key": "telegram:bot_token"},
+            ],
+        })
+        self.svc._load_setup_manifest = lambda *_: m
+        broken_eng = MagicMock()
+        broken_eng.get_settings.side_effect = RuntimeError("db error")
+        self._patch_engine(broken_eng)
+        code, body = self.svc.connector_settings_get({"id": "telegram_connector"})
+        assert code == 200
+        assert body["values"] == {}
+
+    def test_connector_settings_get_missing_manifest_returns_404(self):
+        """Missing manifest → 404, same shape as cfg_schema."""
+        self.svc._load_setup_manifest = lambda *_: None
+        code, body = self.svc.connector_settings_get({"id": "no-such-connector"})
+        assert code == 404
+        assert "error" in body
+
     def test_secret_field_not_exposed_in_cfg_get(self):
         from cascadia.settings.engine import SettingsEngine
         from cascadia.shared.manifest_schema import validate_manifest

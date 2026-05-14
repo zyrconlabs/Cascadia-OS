@@ -6,6 +6,9 @@
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 
+# Load environment variables (VAULT_ENCRYPTION_KEY, etc.) so all child processes inherit them.
+[[ -f "$REPO/.env" ]] && set -a && source "$REPO/.env" && set +a
+
 # Clear intentional-stop flag so LaunchAgent resumes normal KeepAlive
 rm -f "$REPO/data/runtime/cascadia.stopped"
 
@@ -105,8 +108,7 @@ CASCADIA_RUNNING=false
 if curl -sf http://127.0.0.1:4011/health > /dev/null 2>&1; then
     # Verify it's running from THIS directory, not a stale/backup instance
     RUNNING_PID=$(pgrep -f "cascadia.kernel.watchdog" | head -1)
-    RUNNING_DIR=$(lsof -p "$RUNNING_PID" 2>/dev/null | grep cwd | awk '{print $NF}' || echo "")
-    if [[ "$RUNNING_DIR" == "$REPO" ]]; then
+    if ps -p "$RUNNING_PID" -o command= 2>/dev/null | grep -qF "$REPO"; then
         echo "✓ Cascadia OS already running"
         CASCADIA_RUNNING=true
     else
@@ -124,7 +126,7 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     sleep 10
     FLINT_READY=false
     FLINT_STATE="unknown"
-    for _i in $(seq 1 20); do
+    for _i in $(seq 1 80); do
         FLINT_STATE=$(curl -s http://127.0.0.1:4011/health 2>/dev/null | python3 -c \
           "import json,sys; d=json.load(sys.stdin); print(d.get('state','unknown'))" 2>/dev/null)
         if [ "$FLINT_STATE" = "ready" ]; then
@@ -194,7 +196,31 @@ else
         || echo "⚠ RECON started but health check failed — check recon.log"
 fi
 
-# CHIEF (on_demand) — started by Mission Manager via OM API: POST /operators/chief/wake
+# ── QUOTE_BRIEF operator ────────────────────────────
+QUOTE_BRIEF_DIR="/Users/andy/Zyrcon/operators/cascadia-os-operators/quote_brief"
+echo "▸ Starting QUOTE_BRIEF..."
+if curl -sf http://127.0.0.1:8006/api/health > /dev/null 2>&1; then
+    echo "✓ QUOTE_BRIEF already running"
+else
+    cd "$QUOTE_BRIEF_DIR"
+    python3 server.py >> "$REPO/data/logs/quote_brief.log" 2>&1 &
+    QUOTE_BRIEF_PID=$!
+    echo $QUOTE_BRIEF_PID > "$REPO/data/runtime/pids/quote_brief.pid"
+    cd "$REPO"
+    sleep 3
+    curl -sf http://127.0.0.1:8006/api/health > /dev/null \
+        && echo "✓ QUOTE_BRIEF ready (PID $QUOTE_BRIEF_PID)" \
+        || echo "⚠ QUOTE_BRIEF started but health check failed — check quote_brief.log"
+fi
+# Re-register with CREW every start — covers the case where FLINT restarted
+# after quote_brief was already running and wiped the in-memory registry.
+curl -sf -X POST http://127.0.0.1:5100/register \
+    -H "Content-Type: application/json" \
+    -d '{"operator_id":"quote_brief","type":"operator","autonomy_level":"autonomous","capabilities":["brief.generate","quote.generate","proposal.draft","business.brief","orchestration.probe","synthesis.generate","calendar_scheduling"],"health_hook":"/api/health","port":8006,"task_hook":"/api/task"}' \
+    > /dev/null \
+    && echo "✓ QUOTE_BRIEF registered with CREW" \
+    || echo "⚠ QUOTE_BRIEF CREW registration failed"
+
 # SOCIAL (activity_driven) — started by OM boot check if active sessions exist
 
 # ── 7. Register operators with CREW ──────────────────────────────────────
@@ -204,6 +230,10 @@ fi
 
 
 # ── 8. Health Monitor (with auto-restart) ───────────────────────────────
+# Kill any existing health_monitor loops before starting a new one.
+# This prevents multiple loops accumulating across start.sh restarts,
+# which would cause port 6209 conflicts with FLINT's purchase_webhook.
+pkill -f "cascadia.monitoring.health_alert" 2>/dev/null; sleep 1
 echo "▸ Starting Health Monitor..."
 (
     while true; do

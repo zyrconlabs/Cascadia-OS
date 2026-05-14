@@ -154,6 +154,52 @@ class MissionRegistry:
         """Delegate to MissionManifest.validate()."""
         return MissionManifest().validate(manifest, base_path)
 
+    def register_install(self, entry: dict) -> None:
+        """Write an install record to missions_registry.json.
+
+        Creates or updates the entry for entry['id'].
+        """
+        self._registry_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if self._registry_file.exists():
+                data = json.loads(self._registry_file.read_text(encoding="utf-8"))
+            else:
+                data = {"installed": []}
+        except Exception:
+            data = {"installed": []}
+        if not isinstance(data.get("installed"), list):
+            data["installed"] = []
+        mission_id = entry.get("id", "")
+        data["installed"] = [
+            r for r in data["installed"]
+            if not (isinstance(r, dict) and r.get("id") == mission_id)
+        ]
+        data["installed"].append(entry)
+        self._registry_file.write_text(
+            json.dumps(data, indent=2), encoding="utf-8"
+        )
+
+    def update_stitch_registered(self, mission_id: str, registered: bool) -> None:
+        """Update the stitch_registered flag for a mission in the registry."""
+        try:
+            if not self._registry_file.exists():
+                return
+            data = json.loads(self._registry_file.read_text(encoding="utf-8"))
+            for entry in data.get("installed", []):
+                if entry.get("id") == mission_id:
+                    entry["stitch_registered"] = registered
+                    break
+            self._registry_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def get_pending_stitch_registration(self) -> list:
+        """Return list of installed missions with stitch_registered: false."""
+        return [
+            m for m in self.list_installed()
+            if isinstance(m, dict) and not m.get("stitch_registered", True)
+        ]
+
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _resolve_root(self, packages_root) -> str | None:

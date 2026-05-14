@@ -228,6 +228,7 @@ class PrismService:
         self.runtime.register_route('POST', '/api/config/chat',                          self.config_chat)
         self.runtime.register_route('GET',  '/api/prism/operator/{id}/settings',         self.operator_settings_get)
         self.runtime.register_route('POST', '/api/prism/operator/{id}/settings',         self.operator_settings_post)
+        self.runtime.register_route('GET',  '/api/prism/connector/{id}/settings',        self.connector_settings_get)
         # Guided Configuration — settings engine API (feature-flagged)
         self.runtime.register_route('GET',  '/api/config/resources',                                self.cfg_resources)
         self.runtime.register_route('GET',  '/api/config/{target_type}/{target_id}',                self.cfg_get)
@@ -2229,6 +2230,12 @@ document.getElementById('key').addEventListener('keydown', function(e){
         # Re-serialize without injected runtime metadata for signature verification
         clean = {k: v for k, v in payload.items() if not k.startswith('__')}
         body = _json.dumps(clean, separators=(',', ':')).encode()
+        if not webhook_secret:
+            _cascadia_env = _os.environ.get('CASCADIA_ENV', 'development').lower()
+            if _cascadia_env not in ('development', 'test'):
+                self.runtime.logger.critical('STRIPE_WEBHOOK_SECRET not set in production — rejecting webhook')
+                return 403, {'error': 'webhook_secret not configured'}
+            self.runtime.logger.warning('STRIPE_WEBHOOK_SECRET not set — processing without verification (dev/test mode)')
         try:
             stripe_handler = StripeHandler(
                 webhook_secret=webhook_secret or 'placeholder',
@@ -2850,12 +2857,22 @@ document.getElementById('key').addEventListener('keydown', function(e){
             return 200, {'__html__': html_path.read_bytes()}
         return 404, {'error': 'config-wizard.html not found'}
 
+    # Button strings the frontend sends when the connector config dialog opens
+    _CONNECTOR_CONFIG_BUTTONS = frozenset({
+        'walk me through', 'change one setting',
+        'reset to recommended defaults', 'advanced settings',
+        'configure another setting',
+    })
+
     def config_chat(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """POST /api/config/chat — settings chat assistant entry point."""
         message = payload.get('message', '').strip()
         context = payload.get('context', {})
         if not message:
             return 400, {'error': 'message required'}
+        # Connector config flows are handled here (needs _cfg_engine access)
+        if self._is_connector_config_context(context, message):
+            return 200, self._connector_config_chat(message, context)
         # Route /settings commands to SettingsChatAssistant
         if message.startswith('/settings') or not message.startswith('/'):
             try:
@@ -2873,6 +2890,226 @@ document.getElementById('key').addEventListener('keydown', function(e){
             'options': [],
             'preview': None,
         }
+
+    def _is_connector_config_context(self, context: Dict[str, Any], message: str) -> bool:
+        """Return True when this message belongs to a connector configuration flow."""
+        return (
+            context.get('target_type') == 'connector'
+            or context.get('flow') == 'connector_config'
+            or bool(context.get('connector_id'))
+            or message.strip().lower() in self._CONNECTOR_CONFIG_BUTTONS
+        )
+
+    def _connector_config_chat(self, message: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Drive the multi-step connector configuration conversation."""
+        msg = message.strip()
+        msg_lower = msg.lower()
+
+        target_id: str = (
+            context.get('target_id')
+            or context.get('connector_id')
+            or context.get('operator', '')
+        )
+
+        # Step: user has been prompted for a specific field value and is now submitting it
+        if context.get('step') == 'awaiting_value':
+            return self._connector_save_value(msg, context, target_id)
+
+        # Reset confirmed
+        if msg_lower in ('yes, reset', 'confirm reset'):
+            return self._connector_do_reset(target_id)
+
+        # Initial dialog buttons and re-entry
+        if msg_lower in ('walk me through', 'change one setting', 'advanced settings',
+                         'configure another setting'):
+            return self._connector_field_list(target_id)
+
+        if msg_lower == 'reset to recommended defaults':
+            return self._connector_reset_preview(target_id)
+
+        if msg_lower in ('done', 'cancel'):
+            return {'response': 'Configuration closed.', 'options': [], 'preview': None}
+
+        # Check if message matches a field label or name exactly → prompt for that field
+        manifest = self._load_setup_manifest('connector', target_id)
+        if manifest:
+            for field in manifest.setup_fields:
+                if msg_lower in (field.name.lower(), field.label.lower()):
+                    return self._connector_prompt_for_field(field, target_id)
+
+            # Parse "fieldname: value" or "fieldname=value" inline format
+            for sep in (':', '='):
+                if sep in msg:
+                    fname, _, fval = msg.partition(sep)
+                    fname = fname.strip()
+                    fval = fval.strip()
+                    if fname and fval:
+                        for field in manifest.setup_fields:
+                            if fname.lower() in (field.name.lower(), field.label.lower()):
+                                return self._connector_save_field(field, fval, target_id, manifest)
+
+            # Fallback: show field list
+            return self._connector_field_list(target_id)
+
+        return {
+            'response': f"Connector '{target_id}' not found or has no configurable settings.",
+            'options': [],
+            'preview': None,
+        }
+
+    def _connector_field_list(self, target_id: str) -> Dict[str, Any]:
+        manifest = self._load_setup_manifest('connector', target_id)
+        if not manifest:
+            return {
+                'response': f"No configuration found for '{target_id}'.",
+                'options': [],
+                'preview': None,
+            }
+        fields = manifest.setup_fields
+        if not fields:
+            return {
+                'response': f"{manifest.name} has no configurable settings.",
+                'options': [],
+                'preview': None,
+            }
+        lines = []
+        options = []
+        for f in fields:
+            kind = "Secret" if f.secret else f.type.title()
+            lines.append(f"  • {f.label} ({kind})")
+            options.append(f.label)
+        return {
+            'response': (
+                f"Configuring: {manifest.name}\n\n"
+                + "\n".join(lines)
+                + "\n\nSelect a field to configure:"
+            ),
+            'options': options + ['Done'],
+            'preview': {
+                'type': 'connector_field_select',
+                'target_type': 'connector',
+                'target_id': target_id,
+                'flow': 'connector_config',
+            },
+        }
+
+    def _connector_prompt_for_field(self, field: Any, target_id: str) -> Dict[str, Any]:
+        if field.secret:
+            prompt = f"Enter your {field.label}:\n(Stored securely in VAULT — never logged)"
+        else:
+            prompt = f"Enter a value for {field.label}:"
+        if getattr(field, 'help_text', None):
+            prompt += f"\n\nHint: {field.help_text}"
+        return {
+            'response': prompt,
+            'options': ['Cancel'],
+            'preview': {
+                'type': 'awaiting_connector_field',
+                'target_type': 'connector',
+                'target_id': target_id,
+                'field': field.name,
+                'field_label': field.label,
+                'secret': bool(field.secret),
+                'step': 'awaiting_value',
+                'flow': 'connector_config',
+            },
+        }
+
+    def _connector_save_value(self, value: str, context: Dict[str, Any], target_id: str) -> Dict[str, Any]:
+        field_name = context.get('field', '')
+        field_label = context.get('field_label', field_name)
+        if not field_name or not value:
+            return {'response': 'No value received. Please try again.', 'options': [], 'preview': None}
+        manifest = self._load_setup_manifest('connector', target_id)
+        try:
+            self._cfg_engine().save_patch(
+                'connector', target_id,
+                {field_name: value},
+                True,
+                'prism_chat',
+                manifest,
+            )
+            return {
+                'response': f"{field_label} saved successfully.",
+                'options': ['Configure Another Setting', 'Done'],
+                'preview': {
+                    'type': 'connector_saved',
+                    'target_type': 'connector',
+                    'target_id': target_id,
+                    'field': field_name,
+                    'flow': 'connector_config',
+                },
+            }
+        except Exception as exc:
+            return {
+                'response': f"Failed to save {field_label}: {exc}",
+                'options': ['Try Again', 'Cancel'],
+                'preview': None,
+            }
+
+    def _connector_save_field(
+        self,
+        field: Any,
+        value: str,
+        target_id: str,
+        manifest: Any,
+    ) -> Dict[str, Any]:
+        try:
+            self._cfg_engine().save_patch(
+                'connector', target_id,
+                {field.name: value},
+                True,
+                'prism_chat',
+                manifest,
+            )
+            return {
+                'response': f"{field.label} saved successfully.",
+                'options': ['Configure Another Setting', 'Done'],
+                'preview': {
+                    'type': 'connector_saved',
+                    'target_type': 'connector',
+                    'target_id': target_id,
+                    'field': field.name,
+                    'flow': 'connector_config',
+                },
+            }
+        except Exception as exc:
+            return {
+                'response': f"Failed to save {field.label}: {exc}",
+                'options': [],
+                'preview': None,
+            }
+
+    def _connector_reset_preview(self, target_id: str) -> Dict[str, Any]:
+        manifest = self._load_setup_manifest('connector', target_id)
+        name = manifest.name if manifest else target_id
+        return {
+            'response': f"Reset {name} to recommended defaults? This will clear all saved settings.",
+            'options': ['Yes, Reset', 'Cancel'],
+            'preview': {
+                'type': 'connector_reset_confirm',
+                'target_type': 'connector',
+                'target_id': target_id,
+                'flow': 'connector_config',
+            },
+        }
+
+    def _connector_do_reset(self, target_id: str) -> Dict[str, Any]:
+        manifest = self._load_setup_manifest('connector', target_id)
+        try:
+            self._cfg_engine().reset_settings('connector', target_id, manifest)
+            name = manifest.name if manifest else target_id
+            return {
+                'response': f"{name} has been reset to defaults.",
+                'options': [],
+                'preview': None,
+            }
+        except Exception as exc:
+            return {
+                'response': f"Reset failed: {exc}",
+                'options': [],
+                'preview': None,
+            }
 
     def operator_settings_get(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """GET /api/prism/operator/{id}/settings — return setup_fields from manifest."""
@@ -2939,6 +3176,30 @@ document.getElementById('key').addEventListener('keydown', function(e){
         except Exception as exc:
             return 500, {'error': str(exc), 'saved': False}
 
+    def connector_settings_get(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/connector/{id}/settings — setup_fields and current values."""
+        conn_id = payload.get('id', '')
+        manifest = self._load_setup_manifest('connector', conn_id)
+        if manifest is None:
+            return 404, {'error': f'No manifest found for connector/{conn_id}'}
+        fields = [
+            {
+                'name': f.name, 'label': f.label, 'type': f.type,
+                'required': f.required, 'default': f.default,
+                'help_text': f.help_text, 'placeholder': f.placeholder,
+                'simple_mode': f.simple_mode, 'advanced_mode': f.advanced_mode,
+                'developer_mode': f.developer_mode, 'options': f.options,
+                'min': f.min, 'max': f.max, 'secret': f.secret,
+                'vault_key': f.vault_key,
+            }
+            for f in manifest.setup_fields
+        ]
+        try:
+            values = self._cfg_engine().get_settings('connector', conn_id, manifest)
+        except Exception:
+            values = {}
+        return 200, {'connector_id': conn_id, 'fields': fields, 'values': values or {}}
+
     # ------------------------------------------------------------------
     # Guided Configuration API (feature-flagged)
     # ------------------------------------------------------------------
@@ -2947,11 +3208,17 @@ document.getElementById('key').addEventListener('keydown', function(e){
         return bool(self.config.get("guided_configuration_enabled", True))
 
     def _cfg_engine(self):
-        from cascadia.settings.engine import SettingsEngine
-        db_path = self.config.get("database_path", "data/runtime/cascadia.db")
-        settings_db = db_path.replace("cascadia.db", "settings.db")
-        vault_db    = db_path.replace(".db", "_vault.db")
-        return SettingsEngine(settings_db=settings_db, vault_db=vault_db)
+        # Cached — a new VaultStore per call uses a different ephemeral key each time,
+        # making write→read pairs fail when VAULT_ENCRYPTION_KEY is not set.
+        try:
+            return self._cfg_engine_cache
+        except AttributeError:
+            from cascadia.settings.engine import SettingsEngine
+            db_path = self.config.get("database_path", "data/runtime/cascadia.db")
+            settings_db = db_path.replace("cascadia.db", "settings.db")
+            vault_db    = db_path.replace(".db", "_vault.db")
+            self._cfg_engine_cache = SettingsEngine(settings_db=settings_db, vault_db=vault_db)
+            return self._cfg_engine_cache
 
     def _load_setup_manifest(self, target_type: str, target_id: str):
         """Load manifest for target and return Manifest or None.
@@ -3143,6 +3410,10 @@ document.getElementById('key').addEventListener('keydown', function(e){
 
     def start(self) -> None:
         self.runtime.logger.info('PRISM dashboard active')
+        import os as _os
+        if not _os.environ.get('STRIPE_WEBHOOK_SECRET') and \
+                _os.environ.get('CASCADIA_ENV', 'development').lower() not in ('development', 'test'):
+            self.runtime.logger.critical('STARTUP: STRIPE_WEBHOOK_SECRET is not set — Stripe webhooks will be rejected in production mode')
         if self._watchdog is not None:
             self._watchdog.start()
         self._start_approval_timeout_daemon()

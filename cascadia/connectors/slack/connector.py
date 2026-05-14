@@ -14,10 +14,12 @@ Auth: Bearer bot token
 import asyncio
 import json
 import logging
+import os
 import threading
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -36,6 +38,35 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 log = logging.getLogger(NAME)
+
+
+# ---------------------------------------------------------------------------
+# Token loading — vault → env → config file
+# ---------------------------------------------------------------------------
+
+def _load_bot_token() -> str:
+    """Load Slack bot token. Load order: vault → SLACK_BOT_TOKEN env → slack.config.json."""
+    try:
+        from cascadia_sdk import vault_get  # type: ignore
+        val = vault_get("slack:bot_token", namespace="secrets")
+        if val:
+            return val
+    except ImportError:
+        pass
+    val = os.environ.get("SLACK_BOT_TOKEN", "")
+    if val:
+        return val
+    cfg_path = Path(__file__).parent / "slack.config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text())
+        return cfg.get("token", "")
+    except Exception:
+        return ""
+
+
+_BOT_TOKEN: str = _load_bot_token()
+if not _BOT_TOKEN:
+    log.warning("SLACK_BOT_TOKEN not set — set via vault, SLACK_BOT_TOKEN env var, or slack.config.json")
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +165,8 @@ def get_user(user_id: str, token: str) -> dict:
 def execute_call(payload: dict) -> dict:
     """Dispatch to the appropriate function based on payload['action']."""
     action = payload.get("action")
-    token = payload.get("token", "")
+    # Connector owns the token — loaded at startup from vault/env/config
+    token = _BOT_TOKEN
 
     if action == "send_message":
         return send_message(
