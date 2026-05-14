@@ -4419,7 +4419,7 @@ function gcfgShowOperatorConfigModal(opId, opName) {
     body: '',
     actions: [
       {label: 'Walk Me Through',              primary: true, fn: () => { gcfgCloseModal(); gcfgOpenWizard(opId, opName); }},
-      {label: 'Change One Setting',           fn: () => { gcfgCloseModal(); gcfgOpenSettingsPanel(opId, opName); }},
+      {label: 'Settings',                      fn: () => { gcfgCloseModal(); gcfgOpenSettingsPanel(opId, opName); }},
       {label: 'Reset to Recommended Defaults',fn: () => { gcfgCloseModal(); if(confirm(`Reset ${opName} to recommended defaults?`)) { /* POST handled in Phase 4 */ } }},
       {label: 'Advanced Settings',            fn: () => { gcfgCloseModal(); gcfgOpenSettingsPanel(opId, opName, 'advanced'); }},
     ],
@@ -4429,7 +4429,12 @@ function gcfgShowOperatorConfigModal(opId, opName) {
 
 function gcfgOpenWizard(opId, opName, e) {
   e && e.stopPropagation && e.stopPropagation();
-  gcfgLaunchWizard(opId, opName);
+  const op = (S.operators || []).find(x => x.id === opId);
+  if (op && ['connector', 'channel'].includes(op.category)) {
+    gcfgOpenSettingsPanel(opId, opName);
+  } else {
+    gcfgLaunchWizard(opId, opName);
+  }
 }
 
 /* ── Shared Modal Renderer ── */
@@ -4669,6 +4674,9 @@ function _gspSave() {
 
 async function _gspConfirmSave() {
   // Only fires after user clicks [Confirm Changes] in the preview — never auto-confirmed
+  const _op = (S.operators || []).find(x => x.id === _gspState.opId);
+  const _isConn = _op && ['connector', 'channel'].includes(_op.category);
+
   const secretFields = _gspState.fields.filter(f => f.type === 'secret' || f.secret === true).map(f => f.key);
   const changes = {};
   Object.keys(_gspState.values).forEach(k => {
@@ -4677,21 +4685,24 @@ async function _gspConfirmSave() {
     }
   });
 
-  // Secret fields must not be written directly — reject and instruct user
-  const secretChanges = secretFields.filter(k => k in changes);
-  if (secretChanges.length > 0) {
-    const body = document.getElementById('gsp-body');
-    if (body) {
-      const note = document.createElement('div');
-      note.style.cssText = 'background:rgba(239,68,68,.10);color:#dc2626;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;font-weight:500';
-      note.textContent = 'Secret fields cannot be saved here — use /api/vault/set for secrets: ' + secretChanges.join(', ');
-      body.insertBefore(note, body.firstChild);
-      setTimeout(() => note.remove(), 4000);
+  // For operators: block secret changes (existing behavior unchanged).
+  // For connectors: cfg_save routes secrets to vault via save_patch — allow through.
+  if (!_isConn) {
+    const secretChanges = secretFields.filter(k => k in changes);
+    if (secretChanges.length > 0) {
+      const body = document.getElementById('gsp-body');
+      if (body) {
+        const note = document.createElement('div');
+        note.style.cssText = 'background:rgba(239,68,68,.10);color:#dc2626;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;font-weight:500';
+        note.textContent = 'Secret fields cannot be saved here — use /api/vault/set for secrets: ' + secretChanges.join(', ');
+        body.insertBefore(note, body.firstChild);
+        setTimeout(() => note.remove(), 4000);
+      }
+      return;
     }
-    return;
   }
 
-  const targetType = 'operator';
+  const targetType = _isConn ? 'connector' : 'operator';
   const targetId = _gspState.opId;
   let ok = false;
   let errorMsg = '';
