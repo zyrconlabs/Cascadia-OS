@@ -27,6 +27,12 @@ from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.chief.models import TaskRequest, TaskResponse
 from cascadia.chief.operator_selector import select_target
 from cascadia.chief.fallback import intelligent_fallback
+from cascadia.chief.intent_router import (
+    classify_intent,
+    validate_routing_decision,
+    CONFIDENCE_DISPATCH,
+    CONFIDENCE_CLARIFY,
+)
 
 _VERSION = "1.0.0"
 
@@ -116,53 +122,125 @@ class ChiefService:
             task_id, req.sender, req.source_channel,
         )
 
-        # Operator / status selection
+        # ── A. Status commands — always fast-path ─────────────────────────────
         selection = select_target(req.task, CREW_URL)
-        self.runtime.logger.info(
-            "CHIEF selector: type=%s target=%s confidence=%.2f reason=%s",
-            selection["selected_type"],
-            selection.get("target"),
-            selection.get("confidence", 0.0),
-            selection.get("reason"),
-        )
-
-        # Status commands
         if selection["selected_type"] == "status":
             reply_text = self._handle_status_command(selection["target"])
             resp = TaskResponse(
-                ok=True,
-                task_id=task_id,
-                selected_type="status",
-                selected_target=selection["target"],
+                ok=True, task_id=task_id,
+                selected_type="status", selected_target=selection["target"],
                 reply_text=reply_text,
             )
             return 200, resp.to_dict()
 
-        # No operator found — intelligent 3-tier fallback
-        if not selection["ok"]:
-            reply_text = intelligent_fallback(req.task, req.source_channel)
+        # ── B. Keyword fast-path (confidence >= 0.90, no LLM needed) ─────────
+        kw_confidence = selection.get("confidence", 0.0)
+        if selection["ok"] and kw_confidence >= 0.90:
+            self.runtime.logger.info(
+                "CHIEF keyword fast-path: target=%s confidence=%.2f",
+                selection["target"], kw_confidence,
+            )
+            target = selection["target"]
+            raw_result = self._dispatch_via_beacon(req, target, task_id)
+            reply_text = self._format_reply(target, raw_result)
+            ok = "error" not in raw_result
             resp = TaskResponse(
-                ok=True,
-                task_id=task_id,
-                selected_type="none",
-                reply_text=reply_text,
-                raw_result={"selector_reason": selection.get("reason", "")},
+                ok=ok, task_id=task_id,
+                selected_type="operator", selected_target=target,
+                reply_text=reply_text, raw_result=raw_result,
             )
             return 200, resp.to_dict()
 
-        # Dispatch to operator via BEACON
-        target = selection["target"]
-        raw_result = self._dispatch_via_beacon(req, target, task_id)
-        reply_text = self._format_reply(target, raw_result)
+        # ── C. LLM intent classifier ──────────────────────────────────────────
+        history = list(req.metadata.get("conversation_history", []))
+        decision = classify_intent(req.task, history)
 
-        ok = "error" not in raw_result
+        # ── D. Validate against catalog + policy ──────────────────────────────
+        decision = validate_routing_decision(decision)
+        validated = decision.action not in ("conversation",) or decision.confidence > 0
+
+        # ── E. Apply confidence thresholds ────────────────────────────────────
+        if decision.action == "dispatch_operator":
+            if decision.confidence < CONFIDENCE_DISPATCH:
+                # Not confident enough — ask for clarification
+                decision.action = "ask_clarification"
+                if not decision.question:
+                    decision.question = (
+                        "I think I know what you need but I'm not sure — "
+                        "could you give me a bit more detail?"
+                    )
+            elif CONFIDENCE_CLARIFY <= decision.confidence < CONFIDENCE_DISPATCH:
+                decision.action = "ask_clarification"
+
+        # ── Audit log ─────────────────────────────────────────────────────────
+        self.runtime.logger.info(
+            'INTENT_ROUTER | msg="%s" | action=%s | target=%s | '
+            'confidence=%.2f | reason="%s" | validated=%s | final_action=%s',
+            req.task[:50],
+            decision.action,
+            decision.target,
+            decision.confidence,
+            decision.reason[:60],
+            "pass" if validated else "fail",
+            decision.action,
+        )
+
+        # ── F. Dispatch operator ──────────────────────────────────────────────
+        if decision.action == "dispatch_operator":
+            target = decision.target
+            raw_result = self._dispatch_via_beacon(req, target, task_id)
+            reply_text = self._format_reply(target, raw_result)
+            ok = "error" not in raw_result
+            resp = TaskResponse(
+                ok=ok, task_id=task_id,
+                selected_type="operator", selected_target=target,
+                reply_text=reply_text, raw_result=raw_result,
+            )
+            return 200, resp.to_dict()
+
+        # ── G. Ask clarification ──────────────────────────────────────────────
+        if decision.action == "ask_clarification":
+            question = decision.question or "Could you give me a bit more detail?"
+            resp = TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="none",
+                reply_text=question,
+                raw_result={"reason": decision.reason, "missing": decision.missing_inputs},
+            )
+            return 200, resp.to_dict()
+
+        # ── H. Multi-step plan ────────────────────────────────────────────────
+        if decision.action == "multi_step_plan":
+            targets = decision.targets or []
+            plan_lines = [f"Here's my plan:"]
+            for i, t in enumerate(targets, 1):
+                plan_lines.append(f"  {i}. {t}")
+            plan_lines.append("\nStarting with the first step now...")
+            plan_summary = "\n".join(plan_lines)
+
+            if targets:
+                first_target = targets[0]
+                raw_result = self._dispatch_via_beacon(req, first_target, task_id)
+                first_reply = self._format_reply(first_target, raw_result)
+                reply_text = plan_summary + "\n\n" + first_reply
+            else:
+                reply_text = plan_summary
+
+            resp = TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="operator",
+                selected_target=targets[0] if targets else None,
+                reply_text=reply_text,
+            )
+            return 200, resp.to_dict()
+
+        # ── I. Conversation / fallback ────────────────────────────────────────
+        reply_text = intelligent_fallback(req.task, req.source_channel)
         resp = TaskResponse(
-            ok=ok,
-            task_id=task_id,
-            selected_type="operator",
-            selected_target=target,
+            ok=True, task_id=task_id,
+            selected_type="none",
             reply_text=reply_text,
-            raw_result=raw_result,
+            raw_result={"intent_reason": decision.reason},
         )
         return 200, resp.to_dict()
 
