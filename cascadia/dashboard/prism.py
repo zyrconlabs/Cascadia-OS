@@ -228,6 +228,7 @@ class PrismService:
         self.runtime.register_route('POST', '/api/config/chat',                          self.config_chat)
         self.runtime.register_route('GET',  '/api/prism/operator/{id}/settings',         self.operator_settings_get)
         self.runtime.register_route('POST', '/api/prism/operator/{id}/settings',         self.operator_settings_post)
+        self.runtime.register_route('GET',  '/api/prism/connector/{id}/settings',        self.connector_settings_get)
         # Guided Configuration — settings engine API (feature-flagged)
         self.runtime.register_route('GET',  '/api/config/resources',                                self.cfg_resources)
         self.runtime.register_route('GET',  '/api/config/{target_type}/{target_id}',                self.cfg_get)
@@ -3174,6 +3175,30 @@ document.getElementById('key').addEventListener('keydown', function(e){
             return 200, {'operator_id': op_id, **result}
         except Exception as exc:
             return 500, {'error': str(exc), 'saved': False}
+
+    def connector_settings_get(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/prism/connector/{id}/settings — setup_fields and current values."""
+        conn_id = payload.get('id', '')
+        manifest = self._load_setup_manifest('connector', conn_id)
+        if manifest is None:
+            return 404, {'error': f'No manifest found for connector/{conn_id}'}
+        fields = [
+            {
+                'name': f.name, 'label': f.label, 'type': f.type,
+                'required': f.required, 'default': f.default,
+                'help_text': f.help_text, 'placeholder': f.placeholder,
+                'simple_mode': f.simple_mode, 'advanced_mode': f.advanced_mode,
+                'developer_mode': f.developer_mode, 'options': f.options,
+                'min': f.min, 'max': f.max, 'secret': f.secret,
+                'vault_key': f.vault_key,
+            }
+            for f in manifest.setup_fields
+        ]
+        try:
+            values = self._cfg_engine().get_settings('connector', conn_id, manifest)
+        except Exception:
+            values = {}
+        return 200, {'connector_id': conn_id, 'fields': fields, 'values': values or {}}
 
     # ------------------------------------------------------------------
     # Guided Configuration API (feature-flagged)
