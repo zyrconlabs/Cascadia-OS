@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Growth Campaigns — Cascadia OS</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+    .container { width: 100%; max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 2rem; }
+    .card {
+      background: #1e2430;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #93c5fd; }
+    label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.3rem; }
+    input[type="text"], input[type="number"], input[type="date"], select {
+      width: 100%;
+      padding: 0.6rem 0.85rem;
+      background: #131720;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 1rem;
+    }
+    input:focus, select:focus { border-color: #3b82f6; }
+    .row { display: flex; gap: 1rem; }
+    .row > div { flex: 1; }
+    .btn {
+      padding: 0.6rem 1.2rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-primary:disabled { background: #374151; cursor: not-allowed; }
+    .btn-success { background: #15803d; color: #fff; }
+    .btn-success:hover { background: #166534; }
+    .btn-danger  { background: #b91c1c; color: #fff; }
+    .btn-danger:hover  { background: #991b1b; }
+    .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; border-radius: 6px; }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid #374151;
+      color: #94a3b8;
+      padding: 0.3rem 0.7rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .btn-ghost:hover { border-color: #6b7280; color: #e2e8f0; }
+    #error-msg { color: #f87171; font-size: 0.85rem; margin-top: 0.5rem; display: none; }
+
+    /* Campaign list */
+    .campaign-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #2d3748;
+      cursor: pointer;
+    }
+    .campaign-item:last-child { border-bottom: none; }
+    .campaign-item:hover { background: rgba(255,255,255,0.02); border-radius: 6px; }
+    .campaign-topic { flex: 1; font-size: 0.95rem; font-weight: 500; }
+    .campaign-meta  { font-size: 0.8rem; color: #64748b; }
+    .status-badge {
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .status-draft            { background: #1e3a5f; color: #93c5fd; }
+    .status-pending_approval { background: #451a03; color: #fcd34d; }
+    .status-approved         { background: #14532d; color: #86efac; }
+    .status-published        { background: #1e3a5f; color: #6ee7b7; }
+    .status-failed           { background: #450a0a; color: #fca5a5; }
+
+    /* Posts table */
+    #posts-panel { display: none; }
+    .posts-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .posts-header h3 { font-size: 1rem; font-weight: 600; color: #e2e8f0; }
+    .post-row {
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+      background: #131720;
+    }
+    .post-row-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .post-platform {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      background: #1e3a5f;
+      color: #93c5fd;
+      text-transform: uppercase;
+    }
+    .post-scheduled { font-size: 0.8rem; color: #64748b; flex: 1; }
+    .post-score { font-size: 0.8rem; color: #94a3b8; }
+    .post-content {
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      margin-bottom: 0.75rem;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .post-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .edit-area {
+      display: none;
+      margin-bottom: 0.75rem;
+    }
+    .edit-area textarea {
+      width: 100%;
+      padding: 0.6rem;
+      background: #0f1117;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+    }
+    .edit-area textarea:focus { border-color: #3b82f6; }
+    .empty-state { text-align: center; color: #4b5563; padding: 2rem; font-size: 0.9rem; }
+    #gen-spinner { display: none; }
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #374151;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: #1e2430;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.875rem;
+      color: #e2e8f0;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      z-index: 999;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: #64748b;
+      font-size: 0.85rem;
+      cursor: pointer;
+      margin-bottom: 1.5rem;
+      text-decoration: none;
+    }
+    .back-link:hover { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Generate form -->
+    <div id="view-list">
+      <h1>Growth Campaigns</h1>
+      <p class="subtitle">Generate, review, and approve social posts before they publish.</p>
+
+      <div class="card" id="gen-card">
+        <h2>New Campaign</h2>
+        <div class="row">
+          <div>
+            <label for="topic">Topic <span style="color:#f87171">*</span></label>
+            <input type="text" id="topic" placeholder="e.g. Cascadia OS v0.49 launch">
+          </div>
+          <div>
+            <label for="platform">Platform</label>
+            <select id="platform">
+              <option value="x">X (Twitter)</option>
+              <option value="instagram">Instagram</option>
+              <option value="facebook">Facebook</option>
+              <option value="linkedin">LinkedIn</option>
+            </select>
+          </div>
+        </div>
+        <label for="business_context">Business Context</label>
+        <input type="text" id="business_context" placeholder="e.g. local AI OS for trades and service businesses">
+        <div class="row">
+          <div>
+            <label for="num_posts">Number of Posts</label>
+            <input type="number" id="num_posts" value="5" min="1" max="30">
+          </div>
+          <div>
+            <label for="start_date">Start Date</label>
+            <input type="date" id="start_date">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="gen-btn" onclick="generateCampaign()">
+          <span id="gen-spinner"><span class="spinner"></span></span>Generate Campaign →
+        </button>
+        <div id="error-msg"></div>
+      </div>
+
+      <!-- Campaign list -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <h2 style="margin:0">All Campaigns</h2>
+          <button class="btn-ghost" onclick="loadCampaigns()">↻ Refresh</button>
+        </div>
+        <div id="campaigns-list"><div class="empty-state">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- Posts review panel -->
+    <div id="view-posts" style="display:none">
+      <a class="back-link" onclick="showList()">← All Campaigns</a>
+      <div class="card">
+        <div class="posts-header">
+          <h3 id="posts-title">Campaign Posts</h3>
+          <div style="display:flex;gap:0.5rem">
+            <button class="btn btn-success btn-sm" onclick="approveAll()">Approve All</button>
+            <button class="btn btn-ghost btn-sm" onclick="loadPosts(_currentCampaignId)">↻ Refresh</button>
+          </div>
+        </div>
+        <div id="posts-list"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let _currentCampaignId = null;
+
+    // Set default start date to today
+    (function () {
+      const d = new Date();
+      const iso = d.toISOString().slice(0, 10);
+      document.getElementById('start_date').value = iso;
+    })();
+
+    function showToast(msg, ok = true) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.style.borderColor = ok ? '#2d3748' : '#7f1d1d';
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 3000);
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error-msg');
+      el.textContent = msg;
+      el.style.display = msg ? 'block' : 'none';
+    }
+
+    function statusBadge(status) {
+      return `<span class="status-badge status-${status}">${status.replace('_', ' ')}</span>`;
+    }
+
+    // ── Campaign list ────────────────────────────────────────────────────────
+
+    async function loadCampaigns() {
+      const el = document.getElementById('campaigns-list');
+      el.innerHTML = '<div class="empty-state">Loading…</div>';
+      try {
+        const resp = await fetch('/api/campaigns');
+        const data = await resp.json();
+        const campaigns = data.campaigns || data || [];
+        if (!campaigns.length) {
+          el.innerHTML = '<div class="empty-state">No campaigns yet. Generate one above.</div>';
+          return;
+        }
+        el.innerHTML = campaigns.map(c => `
+          <div class="campaign-item" onclick="openCampaign('${c.id}', '${escHtml(c.topic)}')">
+            <div>
+              <div class="campaign-topic">${escHtml(c.topic)}</div>
+              <div class="campaign-meta">${c.start_date || ''} · ${c.num_posts || 0} posts</div>
+            </div>
+            ${statusBadge(c.status || 'draft')}
+            <span style="color:#4b5563;font-size:1.1rem">›</span>
+          </div>`).join('');
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state" style="color:#f87171">Could not reach social operator.</div>`;
+      }
+    }
+
+    function openCampaign(id, topic) {
+      _currentCampaignId = id;
+      document.getElementById('posts-title').textContent = topic || 'Campaign Posts';
+      document.getElementById('view-list').style.display = 'none';
+      document.getElementById('view-posts').style.display = 'block';
+      loadPosts(id);
+    }
+
+    function showList() {
+      _currentCampaignId = null;
+      document.getElementById('view-posts').style.display = 'none';
+      document.getElementById('view-list').style.display = 'block';
+      loadCampaigns();
+    }
+
+    // ── Posts ────────────────────────────────────────────────────────────────
+
+    async function loadPosts(campaignId) {
+      const el = document.getElementById('posts-list');
+      el.innerHTML = '<div class="empty-state">Loading…</div>';
+      try {
+        const resp = await fetch(`/api/campaigns/${campaignId}/posts`);
+        const data = await resp.json();
+        const posts = data.posts || data || [];
+        if (!posts.length) {
+          el.innerHTML = '<div class="empty-state">No posts found.</div>';
+          return;
+        }
+        el.innerHTML = posts.map(p => renderPost(p)).join('');
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state" style="color:#f87171">Failed to load posts.</div>`;
+      }
+    }
+
+    function renderPost(p) {
+      const score = p.quality_score != null ? `Score: ${(p.quality_score * 100).toFixed(0)}%` : '';
+      const actionBtns = p.status === 'pending_approval' ? `
+        <button class="btn btn-success btn-sm" onclick="approvePost('${p.id}')">Approve</button>
+        <button class="btn btn-danger btn-sm" onclick="rejectPost('${p.id}')">Reject</button>
+        <button class="btn-ghost" onclick="toggleEdit('${p.id}')">Edit</button>` :
+        `<span class="status-badge status-${p.status}">${p.status.replace('_', ' ')}</span>`;
+
+      return `
+        <div class="post-row" id="post-${p.id}">
+          <div class="post-row-header">
+            <span class="post-platform">${escHtml(p.platform || 'x')}</span>
+            <span class="post-scheduled">${p.scheduled_at ? p.scheduled_at.replace('T', ' ').slice(0, 16) : ''}</span>
+            <span class="post-score">${score}</span>
+          </div>
+          <div class="post-content" id="content-${p.id}">${escHtml(p.content || '')}</div>
+          <div class="edit-area" id="edit-${p.id}">
+            <textarea id="textarea-${p.id}">${escHtml(p.content || '')}</textarea>
+            <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+              <button class="btn btn-success btn-sm" onclick="approveWithEdit('${p.id}')">Save &amp; Approve</button>
+              <button class="btn-ghost" onclick="toggleEdit('${p.id}')">Cancel</button>
+            </div>
+          </div>
+          <div class="post-actions">${actionBtns}</div>
+        </div>`;
+    }
+
+    function toggleEdit(postId) {
+      const ea = document.getElementById(`edit-${postId}`);
+      const content = document.getElementById(`content-${postId}`);
+      const visible = ea.style.display === 'block';
+      ea.style.display = visible ? 'none' : 'block';
+      content.style.display = visible ? 'block' : 'none';
+    }
+
+    // ── Actions ──────────────────────────────────────────────────────────────
+
+    async function approvePost(postId) {
+      const resp = await fetch(`/api/campaigns/${_currentCampaignId}/posts/${postId}/approve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved_by: 'prism' }),
+      });
+      const data = await resp.json();
+      if (resp.ok) { showToast('Post approved.'); loadPosts(_currentCampaignId); }
+      else showToast(data.error || 'Approve failed.', false);
+    }
+
+    async function approveWithEdit(postId) {
+      const content = document.getElementById(`textarea-${postId}`).value.trim();
+      const resp = await fetch(`/api/campaigns/${_currentCampaignId}/posts/${postId}/approve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved_by: 'prism', edit_content: content }),
+      });
+      const data = await resp.json();
+      if (resp.ok) { showToast('Post saved and approved.'); loadPosts(_currentCampaignId); }
+      else showToast(data.error || 'Approve failed.', false);
+    }
+
+    async function rejectPost(postId) {
+      const resp = await fetch(`/api/campaigns/${_currentCampaignId}/posts/${postId}/reject`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const data = await resp.json();
+      if (resp.ok) { showToast('Post rejected.'); loadPosts(_currentCampaignId); }
+      else showToast(data.error || 'Reject failed.', false);
+    }
+
+    async function approveAll() {
+      const resp = await fetch(`/api/campaigns/${_currentCampaignId}/approve_all`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved_by: 'prism' }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        showToast(`${data.approved_count || 0} posts approved.`);
+        loadPosts(_currentCampaignId);
+      } else showToast(data.error || 'Approve all failed.', false);
+    }
+
+    async function generateCampaign() {
+      const topic = document.getElementById('topic').value.trim();
+      if (!topic) { showError('Topic is required.'); return; }
+      showError('');
+
+      const btn = document.getElementById('gen-btn');
+      const spinner = document.getElementById('gen-spinner');
+      btn.disabled = true;
+      spinner.style.display = 'inline';
+
+      try {
+        const resp = await fetch('/api/campaigns/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic,
+            business_context: document.getElementById('business_context').value.trim(),
+            num_posts:        parseInt(document.getElementById('num_posts').value, 10) || 5,
+            start_date:       document.getElementById('start_date').value,
+            platform:         document.getElementById('platform').value,
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { showError(data.error || 'Generation failed.'); return; }
+        showToast('Campaign generated! Scroll down to review.');
+        document.getElementById('topic').value = '';
+        loadCampaigns();
+      } catch (e) {
+        showError('Network error: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+      }
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Initial load
+    loadCampaigns();
+  </script>
+</body>
+</html>
