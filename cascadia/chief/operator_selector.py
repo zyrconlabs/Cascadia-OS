@@ -19,7 +19,7 @@ _STATUS_TRIGGERS = ("/status", "/missions", "/help", "/operators")
 _KEYWORD_MAP = [
     {
         "keywords": [
-            "quote", "proposal", "estimate", "bid", "pricing",
+            "quote", "proposal", "draft a proposal", "estimate", "bid", "pricing",
             "mezzanine", "installation", "warehouse", "brief",
             "draft proposal", "service agreement",
         ],
@@ -27,6 +27,17 @@ _KEYWORD_MAP = [
         "capabilities": [
             "quote.generate", "proposal.draft",
             "brief.generate", "business.brief",
+        ],
+    },
+    {
+        "keywords": [
+            "run recon", "recon", "lead scan", "scan leads",
+            "contractor lead", "outbound scan", "lead generation",
+            "find contractors", "find hvac", "find leads",
+        ],
+        "preferred_operators": ["recon"],
+        "capabilities": [
+            "research.outbound", "lead.scan", "report.csv",
         ],
     },
     {
