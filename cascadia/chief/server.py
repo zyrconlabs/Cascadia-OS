@@ -30,6 +30,8 @@ from cascadia.chief.fallback import intelligent_fallback
 from cascadia.chief.intent_router import (
     classify_intent,
     validate_routing_decision,
+    append_history,
+    get_history,
     CONFIDENCE_DISPATCH,
     CONFIDENCE_CLARIFY,
 )
@@ -114,15 +116,16 @@ class ChiefService:
     # ------------------------------------------------------------------
 
     def handle_task(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        task_id = uuid.uuid4().hex
-        req = TaskRequest.from_dict(payload)
+        task_id  = uuid.uuid4().hex
+        req      = TaskRequest.from_dict(payload)
+        chat_id  = str(req.metadata.get("chat_id") or "")
 
         self.runtime.logger.info(
             "CHIEF received task [%s] from %s via %s",
             task_id, req.sender, req.source_channel,
         )
 
-        # ── A. Status commands — always fast-path ─────────────────────────────
+        # ── A. Status commands — fast-path, not recorded in history ──────────
         selection = select_target(req.task, CREW_URL)
         if selection["selected_type"] == "status":
             reply_text = self._handle_status_command(selection["target"])
@@ -133,6 +136,9 @@ class ChiefService:
             )
             return 200, resp.to_dict()
 
+        # Record user message now (after status gate — we don't track /status etc.)
+        append_history(chat_id, "user", req.task)
+
         # ── B. Keyword fast-path (confidence >= 0.90, no LLM needed) ─────────
         kw_confidence = selection.get("confidence", 0.0)
         if selection["ok"] and kw_confidence >= 0.90:
@@ -140,10 +146,11 @@ class ChiefService:
                 "CHIEF keyword fast-path: target=%s confidence=%.2f",
                 selection["target"], kw_confidence,
             )
-            target = selection["target"]
+            target     = selection["target"]
             raw_result = self._dispatch_via_beacon(req, target, task_id)
             reply_text = self._format_reply(target, raw_result)
-            ok = "error" not in raw_result
+            append_history(chat_id, "assistant", reply_text[:500])
+            ok   = "error" not in raw_result
             resp = TaskResponse(
                 ok=ok, task_id=task_id,
                 selected_type="operator", selected_target=target,
@@ -151,18 +158,17 @@ class ChiefService:
             )
             return 200, resp.to_dict()
 
-        # ── C. LLM intent classifier ──────────────────────────────────────────
-        history = list(req.metadata.get("conversation_history", []))
+        # ── C. LLM intent classifier ── pass stored history ───────────────────
+        history  = get_history(chat_id)
         decision = classify_intent(req.task, history)
 
         # ── D. Validate against catalog + policy ──────────────────────────────
-        decision = validate_routing_decision(decision)
+        decision  = validate_routing_decision(decision)
         validated = decision.action not in ("conversation",) or decision.confidence > 0
 
         # ── E. Apply confidence thresholds ────────────────────────────────────
         if decision.action == "dispatch_operator":
             if decision.confidence < CONFIDENCE_DISPATCH:
-                # Not confident enough — ask for clarification
                 decision.action = "ask_clarification"
                 if not decision.question:
                     decision.question = (
@@ -187,10 +193,11 @@ class ChiefService:
 
         # ── F. Dispatch operator ──────────────────────────────────────────────
         if decision.action == "dispatch_operator":
-            target = decision.target
+            target     = decision.target
             raw_result = self._dispatch_via_beacon(req, target, task_id)
             reply_text = self._format_reply(target, raw_result)
-            ok = "error" not in raw_result
+            append_history(chat_id, "assistant", reply_text[:500])
+            ok   = "error" not in raw_result
             resp = TaskResponse(
                 ok=ok, task_id=task_id,
                 selected_type="operator", selected_target=target,
@@ -201,6 +208,7 @@ class ChiefService:
         # ── G. Ask clarification ──────────────────────────────────────────────
         if decision.action == "ask_clarification":
             question = decision.question or "Could you give me a bit more detail?"
+            append_history(chat_id, "assistant", question)
             resp = TaskResponse(
                 ok=True, task_id=task_id,
                 selected_type="none",
@@ -211,8 +219,8 @@ class ChiefService:
 
         # ── H. Multi-step plan ────────────────────────────────────────────────
         if decision.action == "multi_step_plan":
-            targets = decision.targets or []
-            plan_lines = [f"Here's my plan:"]
+            targets    = decision.targets or []
+            plan_lines = ["Here's my plan:"]
             for i, t in enumerate(targets, 1):
                 plan_lines.append(f"  {i}. {t}")
             plan_lines.append("\nStarting with the first step now...")
@@ -220,12 +228,13 @@ class ChiefService:
 
             if targets:
                 first_target = targets[0]
-                raw_result = self._dispatch_via_beacon(req, first_target, task_id)
-                first_reply = self._format_reply(first_target, raw_result)
-                reply_text = plan_summary + "\n\n" + first_reply
+                raw_result   = self._dispatch_via_beacon(req, first_target, task_id)
+                first_reply  = self._format_reply(first_target, raw_result)
+                reply_text   = plan_summary + "\n\n" + first_reply
             else:
                 reply_text = plan_summary
 
+            append_history(chat_id, "assistant", reply_text[:500])
             resp = TaskResponse(
                 ok=True, task_id=task_id,
                 selected_type="operator",
@@ -236,6 +245,7 @@ class ChiefService:
 
         # ── I. Conversation / fallback ────────────────────────────────────────
         reply_text = intelligent_fallback(req.task, req.source_channel)
+        append_history(chat_id, "assistant", reply_text[:500])
         resp = TaskResponse(
             ok=True, task_id=task_id,
             selected_type="none",
