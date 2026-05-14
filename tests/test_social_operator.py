@@ -26,10 +26,10 @@ OPS_ROOT = Path(__file__).parent.parent.parent / 'operators' / 'cascadia-os-oper
 sys.path.insert(0, str(OPS_ROOT))
 
 sdk_stub = types.ModuleType('cascadia_sdk')
-sdk_stub.vault_get         = lambda k: None
-sdk_stub.vault_store       = lambda k, v: False
-sdk_stub.sentinel_check    = lambda a, c=None: {'allowed': True}
-sdk_stub.crew_register     = lambda m: False
+sdk_stub.vault_get      = lambda k: None
+sdk_stub.vault_store    = lambda k, v: False
+sdk_stub.sentinel_check = lambda a, c=None: {'allowed': True}
+sdk_stub.crew_register  = lambda m: False
 sys.modules.setdefault('cascadia_sdk', sdk_stub)
 
 
@@ -39,7 +39,7 @@ sys.modules.setdefault('cascadia_sdk', sdk_stub)
 
 @pytest.fixture()
 def db(tmp_path, monkeypatch):
-    import operators.social.campaign_db as cdb
+    import social.campaign_db as cdb
     monkeypatch.setattr(cdb, 'DB_PATH', tmp_path / 'social.db')
     monkeypatch.setattr(cdb, '_DB_DIR', tmp_path)
     cdb.init_db()
@@ -69,15 +69,15 @@ class TestCampaignDB:
         cid = db.create_campaign('Test', {}, 2, '2026-01-01')
         pid_past   = db.insert_post(cid, 'x', 'Past post',   '2020-01-01T08:00:00')
         pid_future = db.insert_post(cid, 'x', 'Future post', '2099-12-31T08:00:00')
-        pid_pending = db.insert_post(cid, 'x', 'Pending',     '2020-06-01T08:00:00')
+        pid_pend   = db.insert_post(cid, 'x', 'Pending',     '2020-06-01T08:00:00')
         db.approve_post(pid_past, 'admin')
         db.approve_post(pid_future, 'admin')
-        # pid_pending stays pending_approval
+        # pid_pend stays pending_approval
         due = db.get_due_posts()
         due_ids = {p['id'] for p in due}
         assert pid_past in due_ids
         assert pid_future not in due_ids
-        assert pid_pending not in due_ids
+        assert pid_pend not in due_ids
 
     def test_approve_post_sets_status_and_approved_at(self, db):
         cid = db.create_campaign('HVAC', {}, 1, '2026-05-16')
@@ -92,7 +92,7 @@ class TestCampaignDB:
     def test_approve_all_returns_correct_count(self, db):
         cid = db.create_campaign('Plumbing', {}, 4, '2026-05-16')
         for i in range(4):
-            db.insert_post(cid, 'x', f'Post {i}', f'2026-05-1{6+i}T08:00:00')
+            db.insert_post(cid, 'x', f'Post {i}', f'2026-05-1{6 + i}T08:00:00')
         n = db.approve_all(cid, 'admin')
         assert n == 4
         assert len(db.get_campaign_posts(cid, 'approved')) == 4
@@ -114,66 +114,81 @@ class TestCampaignDB:
 
     def test_get_campaign_posts_filter_by_status(self, db):
         cid = db.create_campaign('Test', {}, 3, '2026-05-16')
-        p1 = db.insert_post(cid, 'x', 'A', '2026-05-16T08:00:00')
-        p2 = db.insert_post(cid, 'x', 'B', '2026-05-17T08:00:00')
+        p1  = db.insert_post(cid, 'x', 'A', '2026-05-16T08:00:00')
+        p2  = db.insert_post(cid, 'x', 'B', '2026-05-17T08:00:00')
         db.insert_post(cid, 'x', 'C', '2026-05-18T08:00:00')
         db.approve_post(p1, 'admin')
         db.reject_post(p2)
-        assert len(db.get_campaign_posts(cid, 'approved'))          == 1
-        assert len(db.get_campaign_posts(cid, 'rejected'))          == 1
-        assert len(db.get_campaign_posts(cid, 'pending_approval'))  == 1
+        assert len(db.get_campaign_posts(cid, 'approved'))         == 1
+        assert len(db.get_campaign_posts(cid, 'rejected'))         == 1
+        assert len(db.get_campaign_posts(cid, 'pending_approval')) == 1
 
     def test_init_db_is_idempotent(self, db):
         db.init_db()
-        db.init_db()  # must not raise
+        db.init_db()
         cid = db.create_campaign('Safe', {}, 1, '2026-05-16')
         assert cid
 
 
 # ============================================================================
-# quality_check
+# quality_check  (score_post returns Dict; total_score is a float 0–1)
 # ============================================================================
 
 class TestQualityCheck:
 
-    def _qc(self):
-        from operators.social.quality_check import score_post
-        return score_post
+    def _qc(self, text, platform='x', hashtags=None, tone='direct', forbidden=None):
+        from social.pipeline.quality_check import score_post
+        return score_post(text, platform, hashtags or [], tone, forbidden or [])
 
-    def test_returns_float_in_range(self):
-        score = self._qc()('Good content here', 'x')
-        assert isinstance(score, float)
-        assert 0.0 <= score <= 1.0
+    def test_returns_dict_with_total_score_in_range(self):
+        report = self._qc('Good content here. Call us today!')
+        assert isinstance(report, dict)
+        assert isinstance(report['total_score'], float)
+        assert 0.0 <= report['total_score'] <= 1.0
 
-    def test_excessive_hashtags_lower_score(self):
-        low  = self._qc()('Normal post text here. Call us today! #one #two #three #four #five', 'x')
-        high = self._qc()('Normal post text here. Call us today!', 'x')
-        assert low < high
+    def test_excessive_hashtags_lower_platform_fit_score(self):
+        many = [f'#tag{i}' for i in range(10)]
+        low  = self._qc('Normal post here. Call us!', platform='x', hashtags=many)
+        none = self._qc('Normal post here. Call us!', platform='x', hashtags=[])
+        assert low['signals']['platform_fit']['score'] < none['signals']['platform_fit']['score']
 
-    def test_all_caps_lowers_score(self):
-        low  = self._qc()('THIS IS GREAT STUFF BUY NOW TODAY DEALS', 'x')
-        high = self._qc()('This is great. Buy now for deals today.', 'x')
-        assert low < high
+    def test_over_length_post_hard_fails_platform_fit(self):
+        long_text = 'word ' * 60  # well over 280 chars
+        report = self._qc(long_text, platform='x')
+        assert report['signals']['platform_fit']['score'] == 0.0
 
-    def test_correct_length_for_x_raises_score(self):
-        short   = self._qc()('Hi.', 'x')
-        optimal = self._qc()('We fix HVAC systems fast. 20 years serving local homeowners. Call us today for same-day service. 555-1234.', 'x')
-        assert optimal > short
+    def test_correct_length_raises_platform_fit_score(self):
+        good = self._qc(
+            'Fixed 47 AC units this summer alone. Zero callbacks. That is our standard.',
+            platform='x'
+        )
+        assert good['signals']['platform_fit']['score'] > 0.5
 
-    def test_ai_phrases_lower_score(self):
-        ai_text  = self._qc()('In conclusion, it is worth noting that our services are comprehensive.', 'x')
-        normal   = self._qc()('We fix your heating system same day. Call 555-1234.', 'x')
-        assert normal > ai_text
+    def test_ai_filler_phrases_lower_no_generic_filler_score(self):
+        filler = self._qc('We are excited to share our game-changing, cutting-edge platform.')
+        clean  = self._qc('We cut HVAC failure rates by 30% this season. Here is how.')
+        assert filler['signals']['no_generic_filler']['score'] < clean['signals']['no_generic_filler']['score']
 
-    def test_hook_raises_score(self):
-        with_hook    = self._qc()('Did you know most HVAC systems fail in summer? Call us before it happens.', 'x')
-        without_hook = self._qc()('We have been serving customers for twenty years in this area.', 'x')
-        assert with_hook >= without_hook
+    def test_strong_hook_detected(self):
+        report = self._qc('3 reasons your AC fails in summer.', platform='x')
+        assert report['signals']['hook_strength']['score'] >= 1.0
 
-    def test_cta_raises_score(self):
-        with_cta    = self._qc()('HVAC tune-up season is here. Call 555-1234 for a free quote.', 'x')
-        without_cta = self._qc()('HVAC tune-up season is here. Systems need maintenance in summer.', 'x')
-        assert with_cta >= without_cta
+    def test_weak_hook_scores_lower(self):
+        report = self._qc('We are announcing a new service today.', platform='x')
+        assert report['signals']['hook_strength']['score'] <= 0.5
+
+    def test_clear_cta_raises_score(self):
+        report = self._qc('HVAC failure rates dropped 40%. Reply if you want details.', platform='x')
+        assert report['signals']['cta_clarity']['score'] >= 1.0
+
+    def test_specificity_with_number(self):
+        specific = self._qc('We reduced downtime by 40% in 3 months.', platform='x')
+        vague    = self._qc('We reduced downtime significantly.', platform='x')
+        assert specific['signals']['specificity']['score'] > vague['signals']['specificity']['score']
+
+    def test_forbidden_claim_zero_brand_consistency(self):
+        report = self._qc('This product is the best AI solution.', platform='x', forbidden=['best AI'])
+        assert report['signals']['brand_consistency']['score'] == 0.0
 
 
 # ============================================================================
@@ -188,41 +203,46 @@ class TestGenerator:
 
     @pytest.fixture(autouse=True)
     def patch_llm(self):
-        import operators.social.generator as gen
+        import social.generator as gen
         with patch.object(gen, '_call_llm', side_effect=_fake_llm):
             yield
 
     def test_generate_campaign_returns_correct_count(self):
-        from operators.social.generator import generate_campaign
+        from social.generator import generate_campaign
         posts = generate_campaign('HVAC', {}, 5, '2026-05-16')
         assert len(posts) == 5
 
     def test_posts_spaced_one_day_apart(self):
-        from operators.social.generator import generate_campaign
+        from social.generator import generate_campaign
         posts = generate_campaign('Roofing', {}, 4, '2026-06-01')
         dates = [p['scheduled_at'][:10] for p in posts]
         assert dates == ['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04']
 
-    def test_scheduled_at_starts_at_start_date_0800(self):
-        from operators.social.generator import generate_campaign
+    def test_scheduled_at_starts_at_0800(self):
+        from social.generator import generate_campaign
         posts = generate_campaign('Plumbing', {}, 3, '2026-05-20')
         for p in posts:
             assert 'T08:00:00' in p['scheduled_at']
 
     def test_each_post_has_required_keys(self):
-        from operators.social.generator import generate_campaign
+        from social.generator import generate_campaign
         posts = generate_campaign('Electrical', {}, 2, '2026-05-16')
         for p in posts:
-            assert 'content'      in p
-            assert 'scheduled_at' in p
+            assert 'content'       in p
+            assert 'scheduled_at'  in p
             assert 'quality_score' in p
 
     def test_quality_score_is_float_in_range(self):
-        from operators.social.generator import generate_campaign
+        from social.generator import generate_campaign
         posts = generate_campaign('Construction', {}, 3, '2026-05-16')
         for p in posts:
             assert isinstance(p['quality_score'], float)
             assert 0.0 <= p['quality_score'] <= 1.0
+
+    def test_max_posts_capped_at_90(self):
+        from social.generator import generate_campaign
+        posts = generate_campaign('Test', {}, 999, '2026-05-16')
+        assert len(posts) == 90
 
 
 # ============================================================================
@@ -231,87 +251,169 @@ class TestGenerator:
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    import operators.social.campaign_db as cdb
+    import social.campaign_db as cdb
     monkeypatch.setattr(cdb, 'DB_PATH', tmp_path / 'social.db')
     monkeypatch.setattr(cdb, '_DB_DIR', tmp_path)
     cdb.init_db()
 
-    import operators.social.generator as gen
-    def _fake_generate(topic, business_context, num_posts, start_date, platform='x'):
-        base = date.fromisoformat(start_date)
-        return [
-            {
-                'content':      f'Post {i} about {topic}',
-                'scheduled_at': f'{(base + timedelta(days=i)).isoformat()}T08:00:00',
-                'quality_score': 0.82,
-            }
-            for i in range(num_posts)
-        ]
-    monkeypatch.setattr(gen, 'generate_campaign', _fake_generate)
+    import social.server as srv
+    # point session store to tmp dir too
+    from pathlib import Path as P
+    monkeypatch.setattr(srv, 'DATA_DIR',    P(str(tmp_path)))
+    monkeypatch.setattr(srv, 'SESSIONS_DB', P(str(tmp_path)) / 'sessions.db')
+    srv._init_db()
 
-    import operators.social.server as srv
+    # wire campaign_db helpers in server to the monkeypatched cdb
+    monkeypatch.setattr(srv, 'create_campaign',    cdb.create_campaign)
+    monkeypatch.setattr(srv, '_db_insert_post',    cdb.insert_post)
+    monkeypatch.setattr(srv, 'get_campaign_posts', cdb.get_campaign_posts)
+    monkeypatch.setattr(srv, 'get_due_posts',      cdb.get_due_posts)
+    monkeypatch.setattr(srv, '_db_approve_post',   cdb.approve_post)
+    monkeypatch.setattr(srv, '_db_approve_all',    cdb.approve_all)
+    monkeypatch.setattr(srv, 'update_post_status', cdb.update_post_status)
+
     srv.app.config['TESTING'] = True
     with srv.app.test_client() as c:
-        yield c
+        yield c, cdb
 
 
 class TestServerEndpoints:
 
-    def test_healthz_returns_200(self, client):
-        r = client.get('/healthz')
+    def test_healthz_returns_200_online(self, client):
+        c, _ = client
+        r = c.get('/healthz')
         assert r.status_code == 200
-        assert json.loads(r.data)['status'] == 'ok'
+        assert json.loads(r.data)['status'] == 'online'
 
-    def test_generate_returns_campaign_id_and_num_posts(self, client):
-        r = client.post('/generate', json={'topic': 'HVAC', 'num_posts': 3, 'start_date': '2026-06-01'})
+    def test_api_health_alias_returns_200(self, client):
+        c, _ = client
+        r = c.get('/api/health')
+        assert r.status_code == 200
+
+    def test_generate_returns_campaign_id_and_session_id(self, client):
+        c, _ = client
+        r = c.post('/generate', json={'topic': 'HVAC summer prep', 'platforms': ['x']})
         assert r.status_code == 200
         data = json.loads(r.data)
         assert 'campaign_id' in data
-        assert data['num_posts'] == 3
-        assert data['status'] == 'pending_approval'
+        assert 'session_id'  in data
+        assert data['status'] == 'generating'
 
-    def test_generate_missing_topic_returns_400(self, client):
-        r = client.post('/generate', json={'num_posts': 3})
-        assert r.status_code == 400
+    def test_start_returns_session_id(self, client):
+        c, _ = client
+        r = c.post('/start', json={'topic': 'test', 'platforms': ['x']})
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert 'session_id' in data
 
-    def test_approve_all_returns_approved_count(self, client):
-        r = client.post('/generate', json={'topic': 'Roofing', 'num_posts': 4, 'start_date': '2026-06-01'})
-        cid = json.loads(r.data)['campaign_id']
-        r2  = client.post(f'/campaigns/{cid}/approve_all', json={'approved_by': 'owner'})
-        assert r2.status_code == 200
-        assert json.loads(r2.data)['approved'] == 4
+    def test_get_campaign_posts_returns_list(self, client):
+        c, cdb = client
+        cid = cdb.create_campaign('test topic', {}, 2, date.today().isoformat())
+        cdb.insert_post(cid, 'x',        'post body x',  date.today().isoformat() + 'T08:00:00')
+        cdb.insert_post(cid, 'linkedin', 'post body li', date.today().isoformat() + 'T08:00:00')
+        r = c.get(f'/campaigns/{cid}/posts')
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data['count'] == 2
+        assert isinstance(data['posts'], list)
 
-    def test_list_posts_returns_all(self, client):
-        r   = client.post('/generate', json={'topic': 'Plumbing', 'num_posts': 3, 'start_date': '2026-06-01'})
-        cid = json.loads(r.data)['campaign_id']
-        r2  = client.get(f'/campaigns/{cid}/posts')
-        data = json.loads(r2.data)
-        assert data['count'] == 3
+    def test_get_campaign_posts_filtered_by_status(self, client):
+        c, cdb = client
+        cid = cdb.create_campaign('filter test', {}, 3, date.today().isoformat())
+        p1  = cdb.insert_post(cid, 'x', 'A', date.today().isoformat() + 'T08:00:00')
+        cdb.insert_post(cid, 'x', 'B', date.today().isoformat() + 'T08:00:00')
+        cdb.insert_post(cid, 'x', 'C', date.today().isoformat() + 'T08:00:00')
+        cdb.approve_post(p1, 'admin')
+        r = c.get(f'/campaigns/{cid}/posts?status=approved')
+        assert json.loads(r.data)['count'] == 1
 
-    def test_list_posts_filtered_by_status(self, client):
-        r   = client.post('/generate', json={'topic': 'HVAC', 'num_posts': 4, 'start_date': '2026-06-01'})
-        cid = json.loads(r.data)['campaign_id']
-        r2  = client.get(f'/campaigns/{cid}/posts?status=pending_approval')
-        assert json.loads(r2.data)['count'] == 4
+    def test_campaigns_approve_all_returns_count(self, client):
+        c, cdb = client
+        cid = cdb.create_campaign('test', {}, 3, date.today().isoformat())
+        for i in range(3):
+            cdb.insert_post(cid, 'x', f'post {i}', date.today().isoformat() + 'T08:00:00')
+        r = c.post(f'/campaigns/{cid}/approve_all', json={'approved_by': 'owner'})
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data['approved'] == 3
+        assert data['campaign_id'] == cid
+
+    def test_campaigns_approve_all_idempotent(self, client):
+        c, cdb = client
+        cid = cdb.create_campaign('test', {}, 2, date.today().isoformat())
+        for i in range(2):
+            cdb.insert_post(cid, 'x', f'post {i}', date.today().isoformat() + 'T08:00:00')
+        c.post(f'/campaigns/{cid}/approve_all', json={})
+        r2 = c.post(f'/campaigns/{cid}/approve_all', json={})
+        assert json.loads(r2.data)['approved'] == 0  # nothing left to approve
+
+    def test_reject_post_endpoint(self, client):
+        c, cdb = client
+        cid = cdb.create_campaign('test', {}, 1, date.today().isoformat())
+        pid = cdb.insert_post(cid, 'x', 'content', date.today().isoformat() + 'T08:00:00')
+        r   = c.post(f'/campaigns/{cid}/posts/{pid}/reject')
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data['status'] == 'rejected'
+        assert data['id'] == pid
+
+    def test_reject_nonexistent_post_returns_404(self, client):
+        c, _ = client
+        r = c.post('/campaigns/fake-cid/posts/fake-pid/reject')
+        assert r.status_code == 404
 
     def test_publish_due_returns_published_and_failed_counts(self, client):
-        r   = client.post('/generate', json={'topic': 'Electrical', 'num_posts': 2, 'start_date': '2020-01-01'})
-        cid = json.loads(r.data)['campaign_id']
-        client.post(f'/campaigns/{cid}/approve_all', json={'approved_by': 'admin'})
+        c, cdb = client
+        past = '2020-01-01T08:00:00'
+        cid  = cdb.create_campaign('test', {}, 1, '2020-01-01')
+        pid  = cdb.insert_post(cid, 'x', 'publish me', past)
+        cdb.approve_post(pid)
 
-        import operators.social.connectors.x_connector as xc
-        with patch.object(xc, 'post_tweet', return_value={'success': True, 'post_id': 'tw_123', 'url': 'https://x.com/x'}):
-            r2 = client.post(f'/campaigns/{cid}/publish_due')
-        data = json.loads(r2.data)
-        assert data['published'] == 2
+        mock_result = {'success': True, 'post_id': 'sim_abc', 'url': 'https://x.com/i/web/status/sim', 'simulated': True}
+        with patch('social.connectors.x_connector.post_tweet', return_value=mock_result):
+            r = c.post(f'/campaigns/{cid}/publish_due')
+
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data['published'] == 1
         assert data['failed']    == 0
 
-    def test_reject_post(self, client):
-        r   = client.post('/generate', json={'topic': 'Test', 'num_posts': 1, 'start_date': '2026-06-01'})
-        cid = json.loads(r.data)['campaign_id']
-        import operators.social.campaign_db as cdb
-        posts = cdb.get_campaign_posts(cid)
-        pid   = posts[0]['id']
-        r2    = client.post(f'/campaigns/{cid}/posts/{pid}/reject')
-        assert r2.status_code == 200
-        assert json.loads(r2.data)['status'] == 'rejected'
+    def test_publish_due_handles_x_connector_failure(self, client):
+        c, cdb = client
+        past = '2020-01-01T08:00:00'
+        cid  = cdb.create_campaign('test', {}, 1, '2020-01-01')
+        pid  = cdb.insert_post(cid, 'x', 'fail post', past)
+        cdb.approve_post(pid)
+
+        mock_fail = {'success': False, 'error': 'API rate limit exceeded'}
+        with patch('social.connectors.x_connector.post_tweet', return_value=mock_fail):
+            r = c.post(f'/campaigns/{cid}/publish_due')
+
+        data = json.loads(r.data)
+        assert data['published'] == 0
+        assert data['failed']    == 1
+
+    def test_approve_all_session_endpoint(self, client):
+        c, cdb = client
+        cid = cdb.create_campaign('test', {}, 2, date.today().isoformat())
+        for i in range(2):
+            cdb.insert_post(cid, 'x', f'post {i}', date.today().isoformat() + 'T08:00:00')
+
+        import social.server as srv
+        sid = 'soc_testapproveall'
+        srv.put_session(sid, {
+            'session_id':  sid,
+            'campaign_id': cid,
+            'state':       {'platforms': ['x'], 'platform_drafts': {}},
+            'status':      'pending_approval',
+            'revision':    1,
+            'history':     [],
+            'decisions':   {},
+            'created_at':  '2026-01-01T00:00:00',
+            'updated_at':  '2026-01-01T00:00:00',
+        })
+        r = c.post('/approve_all', json={'session_id': sid})
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data['approved_count'] == 2
+        assert data['status'] == 'approved'
