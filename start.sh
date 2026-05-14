@@ -6,6 +6,9 @@
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 
+# Load environment variables (VAULT_ENCRYPTION_KEY, etc.) so all child processes inherit them.
+[[ -f "$REPO/.env" ]] && set -a && source "$REPO/.env" && set +a
+
 # Clear intentional-stop flag so LaunchAgent resumes normal KeepAlive
 rm -f "$REPO/data/runtime/cascadia.stopped"
 

@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-CHIEF_URL             = os.environ.get("CHIEF_URL",             "http://127.0.0.1:6210")
+CHIEF_URL             = os.environ.get("CHIEF_URL",             "http://127.0.0.1:6211")
 TELEGRAM_CONNECTOR_URL = os.environ.get("TELEGRAM_CONNECTOR_URL", "http://127.0.0.1:9000")
 
 from cascadia.shared.config import load_config

@@ -27,9 +27,11 @@ VERSION = "1.0.0"
 PORT = 9000
 TELEGRAM_API_BASE = "https://api.telegram.org"
 NATS_URL = "nats://localhost:4222"
+VANGUARD_URL = "http://127.0.0.1:6202"
 APPROVAL_SUBJECT = "cascadia.approvals.request"
 RESPONSE_SUBJECT = f"cascadia.connectors.{NAME}.response"
 ACTIONS_REQUIRING_APPROVAL = {"send_message"}
+POLL_INTERVAL = 3
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,13 +45,22 @@ log = logging.getLogger(NAME)
 # ---------------------------------------------------------------------------
 
 def _load_bot_token() -> str:
-    """Load Telegram bot token. Load order: vault → TELEGRAM_BOT_TOKEN env → telegram.config.json."""
+    """Load Telegram bot token. Load order: vault (SDK) → vault (direct) → env → config file."""
     try:
         from cascadia_sdk import vault_get  # type: ignore
         val = vault_get("telegram:bot_token", namespace="secrets")
         if val:
             return val
     except ImportError:
+        pass
+    # Direct VaultStore read — works when VAULT_ENCRYPTION_KEY env var is shared across processes.
+    try:
+        from cascadia.memory.vault import VaultStore  # type: ignore
+        _db = Path(__file__).parent.parent.parent.parent / "data" / "runtime" / "cascadia_vault.db"
+        val = VaultStore(str(_db)).read("telegram:bot_token", namespace="secrets")
+        if val:
+            return val
+    except Exception:
         pass
     val = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     if val:
@@ -181,6 +192,91 @@ async def handle_event(nc, subject: str, raw: bytes) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Inbound polling — getUpdates every POLL_INTERVAL seconds → VANGUARD
+# ---------------------------------------------------------------------------
+
+_poll_stop = threading.Event()
+
+
+def _forward_to_vanguard(chat_id: int, text: str, update_id: int) -> None:
+    payload = json.dumps({
+        "channel": "telegram",
+        "sender": str(chat_id),
+        "content": text,
+        "chat_id": chat_id,
+        "metadata": {"update_id": update_id, "chat_id": chat_id},
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"{VANGUARD_URL}/inbound",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            log.info("Forwarded to VANGUARD chat_id=%s update_id=%s message_id=%s",
+                     chat_id, update_id, result.get("message_id"))
+    except Exception as exc:
+        log.warning("Forward to VANGUARD failed: %s", exc)
+
+
+def _poll_updates() -> None:
+    """Background thread: poll getUpdates, forward each message to VANGUARD."""
+    if not _BOT_TOKEN:
+        log.warning("Polling disabled — no bot token")
+        return
+
+    offset = 0
+    log.info("Telegram update polling started (interval=%ds)", POLL_INTERVAL)
+
+    while not _poll_stop.is_set():
+        try:
+            params = json.dumps({"offset": offset, "timeout": 2}).encode("utf-8")
+            req = urllib.request.Request(
+                f"{TELEGRAM_API_BASE}/bot{_BOT_TOKEN}/getUpdates",
+                data=params,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            if not data.get("ok"):
+                log.warning("getUpdates error: %s", data)
+                _poll_stop.wait(POLL_INTERVAL)
+                continue
+
+            for update in data.get("result", []):
+                update_id = update.get("update_id", 0)
+                offset = update_id + 1
+
+                msg = update.get("message") or update.get("edited_message")
+                if not msg:
+                    continue
+                text = msg.get("text", "")
+                chat_id = msg.get("chat", {}).get("id")
+                if not chat_id or not text:
+                    continue
+
+                log.info("Received message chat_id=%s update_id=%s", chat_id, update_id)
+                _forward_to_vanguard(chat_id, text, update_id)
+
+        except Exception as exc:
+            log.warning("Poll cycle error: %s", exc)
+
+        _poll_stop.wait(POLL_INTERVAL)
+
+    log.info("Telegram update polling stopped")
+
+
+def _start_polling() -> threading.Thread:
+    thread = threading.Thread(target=_poll_updates, daemon=True, name="telegram-poller")
+    thread.start()
+    return thread
+
+
+# ---------------------------------------------------------------------------
 # Health HTTP server
 # ---------------------------------------------------------------------------
 
@@ -243,6 +339,7 @@ async def _nats_main() -> None:
 
 def main() -> None:
     _start_health_server()
+    _start_polling()
     asyncio.run(_nats_main())
 
 
