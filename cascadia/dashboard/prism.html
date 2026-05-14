@@ -4413,15 +4413,16 @@ function gcfgOpenWizardForContext(ctx) {
 }
 
 function gcfgShowOperatorConfigModal(opId, opName) {
+  _gcfgCurrentOp = {id: opId, name: opName};
   gcfgShowModal({
     title: `Configure ${opName}`,
     sub: 'How would you like to proceed?',
     body: '',
     actions: [
-      {label: 'Walk Me Through',              primary: true, fn: () => { gcfgCloseModal(); gcfgOpenWizard(opId, opName); }},
-      {label: 'Settings',                      fn: () => { gcfgCloseModal(); gcfgOpenSettingsPanel(opId, opName); }},
-      {label: 'Reset to Recommended Defaults',fn: () => { gcfgCloseModal(); if(confirm(`Reset ${opName} to recommended defaults?`)) { /* POST handled in Phase 4 */ } }},
-      {label: 'Advanced Settings',            fn: () => { gcfgCloseModal(); gcfgOpenSettingsPanel(opId, opName, 'advanced'); }},
+      {label: 'Walk Me Through',              primary: true, fn: () => { gcfgCloseModal(); gcfgOpenWizard(_gcfgCurrentOp.id, _gcfgCurrentOp.name); }},
+      {label: 'Settings',                      fn: () => { gcfgCloseModal(); gcfgOpenSettingsPanel(_gcfgCurrentOp.id, _gcfgCurrentOp.name); }},
+      {label: 'Reset to Recommended Defaults',fn: () => { gcfgCloseModal(); if(confirm(`Reset ${_gcfgCurrentOp.name} to recommended defaults?`)) { /* POST handled in Phase 4 */ } }},
+      {label: 'Advanced Settings',            fn: () => { gcfgCloseModal(); gcfgOpenSettingsPanel(_gcfgCurrentOp.id, _gcfgCurrentOp.name, 'advanced'); }},
     ],
     showCancel: true,
   });
