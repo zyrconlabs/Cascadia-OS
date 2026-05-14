@@ -26,6 +26,7 @@ from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.chief.models import TaskRequest, TaskResponse
 from cascadia.chief.operator_selector import select_target
+from cascadia.chief.fallback import intelligent_fallback
 
 _VERSION = "1.0.0"
 
@@ -137,16 +138,11 @@ class ChiefService:
             )
             return 200, resp.to_dict()
 
-        # No operator found
+        # No operator found — intelligent 3-tier fallback
         if not selection["ok"]:
-            reply_text = (
-                "I received your task but could not find a registered "
-                "worker for it.\n\n"
-                "Use /operators to see available workers, or "
-                "be more specific about what you need."
-            )
+            reply_text = intelligent_fallback(req.task, req.source_channel)
             resp = TaskResponse(
-                ok=False,
+                ok=True,
                 task_id=task_id,
                 selected_type="none",
                 reply_text=reply_text,
