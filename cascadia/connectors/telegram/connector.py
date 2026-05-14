@@ -349,7 +349,44 @@ class _HealthHandler(BaseHTTPRequestHandler):
                 "port": PORT,
             }
         ).encode("utf-8")
-        self.send_response(200)
+        self._respond(200, body)
+
+    def do_POST(self):  # noqa: N802
+        if self.path != "/send":
+            self._respond(404, json.dumps({"error": "not found"}).encode("utf-8"))
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except Exception as exc:
+            self._respond(400, json.dumps({"success": False, "error": str(exc)}).encode("utf-8"))
+            return
+
+        chat_id = payload.get("chat_id")
+        text = payload.get("text", "")
+        if not chat_id or not text:
+            self._respond(400, json.dumps({"success": False, "error": "chat_id and text required"}).encode("utf-8"))
+            return
+
+        if not _BOT_TOKEN:
+            self._respond(503, json.dumps({"success": False, "error": "bot token not configured"}).encode("utf-8"))
+            return
+
+        try:
+            result = send_message(chat_id, text, _BOT_TOKEN)
+            if result.get("ok"):
+                body = json.dumps({"success": True, "chat_id": chat_id}).encode("utf-8")
+                self._respond(200, body)
+            else:
+                err = result.get("description", "sendMessage failed")
+                body = json.dumps({"success": False, "error": err}).encode("utf-8")
+                self._respond(502, body)
+        except Exception as exc:
+            body = json.dumps({"success": False, "error": str(exc)}).encode("utf-8")
+            self._respond(500, body)
+
+    def _respond(self, code: int, body: bytes) -> None:
+        self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()

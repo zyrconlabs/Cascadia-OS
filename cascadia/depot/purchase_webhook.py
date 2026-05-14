@@ -237,7 +237,7 @@ class _PurchaseWebhookHandler(http.server.BaseHTTPRequestHandler):
         path = self.path.split('?')[0].rstrip('/')
         if path == '/health':
             self._json(200, {
-                'status': 'healthy', 'service': NAME, 'version': VERSION,
+                'ok': True, 'status': 'healthy', 'service': NAME, 'version': VERSION,
                 'port': PORT,
                 'processed_events': len(_processed_events),
                 'uptime_seconds': round(time.time() - _start_time),
