@@ -15,6 +15,7 @@ world before anything else in Cascadia OS does.
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 import urllib.error
 
@@ -23,6 +24,9 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+CHIEF_URL             = os.environ.get("CHIEF_URL",             "http://127.0.0.1:6211")
+TELEGRAM_CONNECTOR_URL = os.environ.get("TELEGRAM_CONNECTOR_URL", "http://127.0.0.1:9000")
 
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
@@ -101,6 +105,15 @@ class VanguardService:
         hs_comp = next((c for c in self.config.get('components', []) if c['name'] == 'handshake'), None)
         self._handshake_port: int | None = hs_comp['port'] if hs_comp else None
 
+        # CHIEF orchestrator URL — resolved from config, env var overrides
+        global CHIEF_URL
+        if not os.environ.get("CHIEF_URL"):
+            chief_comp = next(
+                (c for c in self.config.get('components', []) if c['name'] == 'chief'), None
+            )
+            if chief_comp:
+                CHIEF_URL = f"http://127.0.0.1:{chief_comp['port']}"
+
         # Register built-in channels
         self._register_defaults()
 
@@ -165,7 +178,88 @@ class VanguardService:
                 self._inbox = self._inbox[-200:]
 
         self.runtime.logger.info('VANGUARD inbound: %s from %s via %s', msg.message_id, sender, channel)
+
+        # Telegram messages → fire dispatch to CHIEF in a background thread.
+        # Return immediately so Telegram's 5-second webhook timeout is not hit.
+        if channel == 'telegram':
+            envelope = msg.to_envelope()
+            threading.Thread(
+                target=self._handle_telegram_inbound,
+                args=(envelope,),
+                daemon=True,
+                name=f'vanguard-tg-{msg.message_id}',
+            ).start()
+
         return 202, {'message_id': msg.message_id, 'envelope': msg.to_envelope()}
+
+    def _telegram_post(self, url: str, payload: dict, timeout: int = 5) -> dict:
+        body = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            url, data=body, method='POST',
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode())
+
+    def _handle_telegram_inbound(self, envelope: dict) -> None:
+        """
+        Background handler: send ack → POST task to CHIEF → send result to Telegram.
+        Owns: Telegram reply dispatch. Does not own: operator selection (CHIEF owns that).
+        """
+        raw_meta = envelope.get('raw', {}).get('metadata', {})
+        chat_id = raw_meta.get('chat_id')
+        if not chat_id:
+            self.runtime.logger.warning('VANGUARD: telegram inbound missing chat_id — cannot reply')
+            return
+
+        task_text = envelope.get('content', '')
+        sender    = envelope.get('sender', 'unknown')
+        tenant_id = envelope.get('tenant_id', 'default')
+
+        # 1. Immediate ack
+        try:
+            self._telegram_post(
+                f'{TELEGRAM_CONNECTOR_URL}/send',
+                {'chat_id': chat_id, 'text': '⏳ Received. CHIEF is on it...'},
+            )
+        except Exception as exc:
+            self.runtime.logger.warning('VANGUARD: telegram ack failed: %s', exc)
+
+        # 2. Dispatch to CHIEF
+        reply_text = '✅ Task completed.'
+        try:
+            result = self._telegram_post(
+                f'{CHIEF_URL}/task',
+                {
+                    'task': task_text,
+                    'source_channel': 'telegram',
+                    'reply_channel': 'telegram',
+                    'sender': sender,
+                    'tenant_id': tenant_id,
+                    'metadata': raw_meta,
+                },
+                timeout=60,
+            )
+            reply_text = result.get('reply_text') or '✅ Task completed.'
+        except urllib.error.URLError:
+            self.runtime.logger.error('VANGUARD: CHIEF dispatch timed out for chat_id=%s', chat_id)
+            reply_text = (
+                '⏳ Still working on it — this task is taking longer than expected.'
+            )
+        except Exception as exc:
+            self.runtime.logger.error('VANGUARD: CHIEF dispatch error: %s', exc)
+            reply_text = '❌ Something went wrong. Please try again.'
+
+        # 3. Send final reply
+        try:
+            self._telegram_post(
+                f'{TELEGRAM_CONNECTOR_URL}/send',
+                {'chat_id': chat_id, 'text': reply_text},
+            )
+        except Exception as exc:
+            self.runtime.logger.error(
+                'VANGUARD: failed to send Telegram reply to chat_id=%s: %s', chat_id, exc
+            )
 
     def receive_webhook(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """

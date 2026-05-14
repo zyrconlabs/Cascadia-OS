@@ -79,7 +79,12 @@ def handle_installed(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
     missions = []
     for entry in raw:
         if isinstance(entry, dict):
-            missions.append(_mission_summary({**entry, "installed": True}))
+            # Prefer catalog data merged with install record; only include if in catalog
+            m = _registry.get_mission(entry.get("id", ""))
+            if m:
+                missions.append(_mission_summary({**m, **entry, "installed": True}))
+            else:
+                missions.append(_mission_summary({**entry, "installed": True}))
         elif isinstance(entry, str):
             m = _registry.get_mission(entry)
             if m:

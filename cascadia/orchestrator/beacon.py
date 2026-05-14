@@ -87,6 +87,23 @@ class BeaconService:
             return True  # CREW unreachable — fail open to avoid blocking runs
 
     # ------------------------------------------------------------------
+    # CREW operator lookup (for operators not in config port map)
+    # ------------------------------------------------------------------
+
+    def _crew_lookup(self, operator_id: str) -> Optional[dict]:
+        """Return the operator record from CREW registry, or None if not found."""
+        if not self.crew_port:
+            return None
+        try:
+            with urllib_request.urlopen(
+                f'http://127.0.0.1:{self.crew_port}/crew', timeout=2
+            ) as r:
+                data = json.loads(r.read().decode())
+            return data.get('operators', {}).get(operator_id)
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
     # Routing
     # ------------------------------------------------------------------
 
@@ -124,6 +141,14 @@ class BeaconService:
 
         # Forward to target operator port if known
         target_port = self._port_map.get(target)
+        if target_port is None:
+            crew_info = self._crew_lookup(target)
+            if crew_info and crew_info.get('port'):
+                target_port = crew_info['port']
+                # Use the task_hook registered by the operator, fall back to /api/task
+                if forward_path == '/message':
+                    forward_path = crew_info.get('task_hook', '/api/task')
+
         if target_port and message:
             forwarded_status, forwarded_body = self._forward_http(
                 target_port, forward_path, message, timeout

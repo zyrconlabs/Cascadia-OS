@@ -14,7 +14,7 @@ from cascadia.shared.entitlements import get_risk_level
 from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.system.audit_log import AuditLog
 
-VANTAGE_PORT = 6208
+VANTAGE_PORT = 6212
 CREW_PORT = 5100
 SENTINEL_PORT = 5102
 

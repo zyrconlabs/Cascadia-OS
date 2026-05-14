@@ -13,9 +13,11 @@ Auth: Bearer token (Meta system user access token)
 import asyncio
 import json
 import logging
+import os
 import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -34,6 +36,35 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 log = logging.getLogger(NAME)
+
+
+# ---------------------------------------------------------------------------
+# Token loading — vault → env → config file
+# ---------------------------------------------------------------------------
+
+def _load_access_token() -> str:
+    """Load WhatsApp access token. Load order: vault → WHATSAPP_ACCESS_TOKEN env → whatsapp.config.json."""
+    try:
+        from cascadia_sdk import vault_get  # type: ignore
+        val = vault_get("whatsapp:api_key", namespace="secrets")
+        if val:
+            return val
+    except ImportError:
+        pass
+    val = os.environ.get("WHATSAPP_ACCESS_TOKEN", "")
+    if val:
+        return val
+    cfg_path = Path(__file__).parent / "whatsapp.config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text())
+        return cfg.get("access_token", "")
+    except Exception:
+        return ""
+
+
+_ACCESS_TOKEN: str = _load_access_token()
+if not _ACCESS_TOKEN:
+    log.warning("WHATSAPP_ACCESS_TOKEN not set — set via vault, WHATSAPP_ACCESS_TOKEN env var, or whatsapp.config.json")
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +138,8 @@ def send_message(
 def execute_call(payload: dict) -> dict:
     """Dispatch to the appropriate function based on payload['action']."""
     action = payload.get("action")
-    token = payload.get("token", "")
+    # Connector owns the token — loaded at startup from vault/env/config
+    token = _ACCESS_TOKEN
 
     if action == "send_message":
         return send_message(

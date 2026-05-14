@@ -759,6 +759,9 @@ class StitchService:
         self.runtime.register_route('GET',  '/api/workflows/runs/{run_id}',         self.api_get_run)
         self.runtime.register_route('POST', '/api/workflows/runs/{run_id}/approve', self.api_approve_run)
 
+        # Mission workflow registration
+        self.runtime.register_route('POST', '/api/workflows/register_mission', self.register_mission)
+
         # Seed the Sales Funnel workflow
         _seed_sales_funnel(self._db_path)
 
@@ -801,6 +804,70 @@ class StitchService:
         with self._lock:
             self._workflows[wf_id] = wf
         return 201, {'workflow_id': wf_id, 'step_count': len(steps)}
+
+    def register_mission(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/workflows/register_mission — register all workflows from a mission package.
+
+        Payload: { mission_id: str, install_path: str, workflows: {wf_id: rel_path}, manifest: dict }
+        For each workflow file, reads the JSON, builds a WorkflowDefinition, and registers in memory.
+        Returns 200 with registered_workflow_ids list.
+        """
+        mission_id = payload.get("mission_id", "")
+        install_path = payload.get("install_path", "")
+        workflows_map: Dict[str, str] = payload.get("workflows", {})
+        manifest: Dict[str, Any] = payload.get("manifest", {})
+
+        if not mission_id:
+            return 400, {"error": "mission_id required"}
+
+        registered: List[str] = []
+        failed: List[str] = []
+
+        for wf_id, rel_path in workflows_map.items():
+            wf_file = Path(install_path) / rel_path if install_path else None
+            wf_def: Optional[Dict[str, Any]] = None
+
+            if wf_file and wf_file.exists():
+                try:
+                    wf_def = json.loads(wf_file.read_text(encoding="utf-8"))
+                except Exception:
+                    failed.append(wf_id)
+                    continue
+            elif "inline" in payload:
+                wf_def = payload["inline"].get(wf_id)
+
+            if not isinstance(wf_def, dict):
+                failed.append(wf_id)
+                continue
+
+            steps = [
+                WorkflowStep(
+                    name=s.get("id", s.get("name", "")),
+                    operator=s.get("operator", ""),
+                    action=s.get("action", s.get("endpoint", "")),
+                    on_failure=s.get("on_failure", "stop"),
+                )
+                for s in wf_def.get("steps", [])
+            ]
+            full_wf_id = f"{mission_id}.{wf_id}"
+            definition = WorkflowDefinition(
+                workflow_id=full_wf_id,
+                name=wf_def.get("name", wf_id),
+                steps=steps,
+                description=wf_def.get("description", manifest.get("description", "")),
+            )
+            with self._lock:
+                self._workflows[full_wf_id] = definition
+            registered.append(full_wf_id)
+
+        if failed and not registered:
+            return 422, {"error": "no_workflows_registered", "failed": failed}
+
+        return 200, {
+            "mission_id": mission_id,
+            "registered_workflow_ids": registered,
+            "failed": failed,
+        }
 
     def list_workflows(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         with self._lock:
