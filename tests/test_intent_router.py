@@ -44,6 +44,9 @@ from cascadia.chief.intent_router import (  # noqa: E402
     CONFIDENCE_CLARIFY,
     classify_intent,
     validate_routing_decision,
+    append_history,
+    get_history,
+    _chat_history,
     _parse_decision,
 )
 from cascadia.chief import operator_selector as sel  # noqa: E402
@@ -388,6 +391,127 @@ class TestInDevelopmentNoDispatch(unittest.TestCase):
         self.assertEqual(result.action, "ask_clarification")
         self.assertIsNone(result.target)
         self.assertIn("roadmap", result.question.lower())
+
+
+# ── 10. Follow-up resolves with history ──────────────────────────────────────
+
+class TestFollowupResolvesWithHistory(unittest.TestCase):
+    def test_followup_resolves_with_history(self):
+        """History containing RECON report → 'how many emails' dispatches recon."""
+        # Pre-seed history as if RECON already ran
+        history = [
+            {"role": "assistant",
+             "content": "📊 RECON Report. Total leads: 240. "
+                        "Top: Abacus Plumbing 713-812-7070. "
+                        "High confidence: 130, Medium: 110."},
+        ]
+
+        decision_dict = {
+            "action": "dispatch_operator",
+            "target": "recon",
+            "confidence": 0.82,
+            "reason": "Follow-up about contacts from prior RECON scan.",
+            "required_inputs": {"industry": "plumbing", "location": "Houston"},
+            "missing_inputs": [],
+            "question": None,
+        }
+
+        messages_sent = []
+
+        def fake_urlopen(req, timeout=None):
+            url = getattr(req, "full_url", str(req))
+            if "4011" in url:
+                body = json.loads(req.data.decode())
+                messages_sent.extend(body.get("messages", []))
+                return _llm_mock(decision_dict)
+            return _urlopen_mock({})
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = classify_intent(
+                "how many emails in those contacts?",
+                conversation_history=history,
+            )
+
+        self.assertEqual(result.action, "dispatch_operator")
+        self.assertEqual(result.target, "recon")
+
+        # History must be present in the messages array sent to LLM
+        sent_roles = [m["role"] for m in messages_sent]
+        self.assertIn("assistant", sent_roles,
+                      "Prior assistant context must be passed to LLM")
+        # The RECON report content must appear in what the LLM received
+        all_content = " ".join(m["content"] for m in messages_sent)
+        self.assertIn("RECON Report", all_content)
+
+
+# ── 11. Repeat request resolves with history ──────────────────────────────────
+
+class TestRepeatRequestWithHistory(unittest.TestCase):
+    def test_repeat_request_with_history(self):
+        """'do it again' with prior 'run recon' → dispatch recon."""
+        history = [
+            {"role": "user",      "content": "run recon"},
+            {"role": "assistant", "content": "🔍 RECON scan started. I'll message you when done."},
+        ]
+
+        decision_dict = {
+            "action": "dispatch_operator",
+            "target": "recon",
+            "confidence": 0.88,
+            "reason": "User wants to repeat prior RECON scan.",
+            "required_inputs": {"industry": "HVAC", "location": "Houston"},
+            "missing_inputs": [],
+            "question": None,
+        }
+
+        messages_sent = []
+
+        def fake_urlopen(req, timeout=None):
+            url = getattr(req, "full_url", str(req))
+            if "4011" in url:
+                body = json.loads(req.data.decode())
+                messages_sent.extend(body.get("messages", []))
+                return _llm_mock(decision_dict)
+            return _urlopen_mock({})
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = classify_intent("do it again", conversation_history=history)
+
+        self.assertEqual(result.action, "dispatch_operator")
+        self.assertEqual(result.target, "recon")
+
+        # Prior "run recon" must reach the LLM
+        all_content = " ".join(m["content"] for m in messages_sent)
+        self.assertIn("run recon", all_content)
+
+
+# ── 12. append_history / get_history round-trip ───────────────────────────────
+
+class TestHistoryStore(unittest.TestCase):
+    def setUp(self):
+        # Isolate by using a fresh chat_id per test
+        self.cid = "test_history_store_999"
+        _chat_history.pop(self.cid, None)
+
+    def test_append_and_get(self):
+        append_history(self.cid, "user", "hello")
+        append_history(self.cid, "assistant", "hi there")
+        h = get_history(self.cid)
+        self.assertEqual(len(h), 2)
+        self.assertEqual(h[0]["role"], "user")
+        self.assertEqual(h[1]["content"], "hi there")
+
+    def test_maxlen_eviction(self):
+        for i in range(8):
+            append_history(self.cid, "user", f"msg {i}")
+        h = get_history(self.cid)
+        self.assertEqual(len(h), 6, "Store must cap at HISTORY_LIMIT=6")
+        self.assertEqual(h[0]["content"], "msg 2",
+                         "Oldest messages must be evicted first")
+
+    def test_empty_chat_id_ignored(self):
+        append_history("", "user", "should not store")
+        self.assertEqual(get_history(""), [])
 
 
 if __name__ == "__main__":

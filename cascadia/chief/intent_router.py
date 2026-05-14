@@ -11,8 +11,10 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import urllib.request
 import urllib.error
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -23,6 +25,32 @@ LOCAL_LLM_MODEL = "zyrcon-3b"
 
 CONFIDENCE_DISPATCH = 0.80
 CONFIDENCE_CLARIFY  = 0.55
+
+# ── Conversation history store ────────────────────────────────────────────────
+# 3 exchanges = 6 messages per chat_id; evicted automatically via deque maxlen
+
+HISTORY_LIMIT = 6
+
+_history_lock: threading.Lock = threading.Lock()
+_chat_history: dict[str, deque] = {}
+
+
+def append_history(chat_id: str, role: str, content: str) -> None:
+    """Record one message turn for chat_id."""
+    if not chat_id:
+        return
+    with _history_lock:
+        if chat_id not in _chat_history:
+            _chat_history[chat_id] = deque(maxlen=HISTORY_LIMIT)
+        _chat_history[chat_id].append({"role": role, "content": content})
+
+
+def get_history(chat_id: str) -> list[dict]:
+    """Return the last HISTORY_LIMIT messages for chat_id (newest last)."""
+    if not chat_id:
+        return []
+    with _history_lock:
+        return list(_chat_history.get(chat_id, []))
 
 VALID_ACTIONS = frozenset({
     "dispatch_operator",
@@ -264,8 +292,13 @@ def classify_intent(
     """
     messages: list[dict] = [{"role": "system", "content": _SYSTEM_PROMPT}]
     if conversation_history:
-        messages.extend(conversation_history[-4:])  # last 2 turns max
+        messages.extend(conversation_history[-6:])  # last 3 exchanges
     messages.append({"role": "user", "content": user_message})
+
+    log.info(
+        "classify_intent: msg=%r history_turns=%d total_messages=%d",
+        user_message[:60], len(conversation_history or []), len(messages),
+    )
 
     raw = _call_llm(messages)
     if not raw:
