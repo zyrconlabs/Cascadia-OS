@@ -212,16 +212,24 @@ class CrewService:
 
     def list_crew(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Return all registered operators — PRISM displays this."""
+        def _op_record(op_id: str, rec: dict) -> dict:
+            r: dict = {
+                'operator_id': op_id,
+                'type': rec.get('type', 'unknown'),
+                'autonomy_level': rec.get('autonomy_level', 'assistive'),
+                'capabilities': rec.get('capabilities', []),
+                'health_hook': rec.get('health_hook', '/health'),
+            }
+            if rec.get('port'):
+                r['port'] = rec['port']
+            if rec.get('task_hook'):
+                r['task_hook'] = rec['task_hook']
+            return r
+
         return 200, {
             'crew_size': len(self.registry),
             'operators': {
-                op_id: {
-                    'operator_id': op_id,
-                    'type': rec.get('type', 'unknown'),
-                    'autonomy_level': rec.get('autonomy_level', 'assistive'),
-                    'capabilities': rec.get('capabilities', []),
-                    'health_hook': rec.get('health_hook', '/health'),
-                }
+                op_id: _op_record(op_id, rec)
                 for op_id, rec in self.registry.items()
             },
         }

@@ -32,6 +32,8 @@ APPROVAL_SUBJECT = "cascadia.approvals.request"
 RESPONSE_SUBJECT = f"cascadia.connectors.{NAME}.response"
 ACTIONS_REQUIRING_APPROVAL = {"send_message"}
 POLL_INTERVAL = 3
+PRISM_URL = "http://127.0.0.1:6300"
+OWNER_CHAT_ID_KEY = "telegram:owner_chat_id"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -221,6 +223,60 @@ def _forward_to_vanguard(chat_id: int, text: str, update_id: int) -> None:
         log.warning("Forward to VANGUARD failed: %s", exc)
 
 
+def _vault_store():
+    """Return a VaultStore instance for the runtime vault DB."""
+    from cascadia.memory.vault import VaultStore  # type: ignore
+    _db = Path(__file__).parent.parent.parent.parent / "data" / "runtime" / "cascadia_vault.db"
+    return VaultStore(str(_db))
+
+
+def _save_owner_chat_id(chat_id: int) -> None:
+    """Persist chat_id to vault + PRISM config on first /start. No-op if already set."""
+    try:
+        store = _vault_store()
+        if store.read(OWNER_CHAT_ID_KEY, namespace="secrets"):
+            log.info("/start received but owner_chat_id already configured — skipping")
+            return
+        store.write(OWNER_CHAT_ID_KEY, str(chat_id), created_by="telegram-connector", namespace="secrets")
+        log.info("Saved owner_chat_id=%s to vault", chat_id)
+    except Exception as exc:
+        log.warning("Failed to write owner_chat_id to vault: %s", exc)
+        return
+
+    # Mirror to PRISM config so the settings panel shows the value.
+    try:
+        body = json.dumps({
+            "target_type": "connector",
+            "target_id": "telegram",
+            "changes": {"owner_chat_id": str(chat_id)},
+            "confirmed": True,
+            "source": "telegram-connector:/start",
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            f"{PRISM_URL}/api/config/connector/telegram/save",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+        log.info("Saved owner_chat_id=%s to PRISM config", chat_id)
+    except Exception as exc:
+        log.warning("Failed to mirror owner_chat_id to PRISM: %s", exc)
+
+    # Confirm to the user on Telegram.
+    if _BOT_TOKEN:
+        try:
+            send_message(
+                chat_id,
+                "✅ Chief is connected. Your chat ID has been saved.\n"
+                "You can now send tasks and receive approvals here.",
+                _BOT_TOKEN,
+            )
+        except Exception as exc:
+            log.warning("Failed to send /start confirmation: %s", exc)
+
+
 def _poll_updates() -> None:
     """Background thread: poll getUpdates, forward each message to VANGUARD."""
     if not _BOT_TOKEN:
@@ -260,6 +316,9 @@ def _poll_updates() -> None:
                     continue
 
                 log.info("Received message chat_id=%s update_id=%s", chat_id, update_id)
+                if text.strip() == "/start":
+                    _save_owner_chat_id(chat_id)
+                    continue  # /start is handled locally — not forwarded to VANGUARD
                 _forward_to_vanguard(chat_id, text, update_id)
 
         except Exception as exc:
