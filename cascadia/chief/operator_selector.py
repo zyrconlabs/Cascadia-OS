@@ -34,6 +34,8 @@ _KEYWORD_MAP = [
             "run recon", "recon", "lead scan", "scan leads",
             "contractor lead", "outbound scan", "lead generation",
             "find contractors", "find hvac", "find leads",
+            "how many contacts", "how many leads", "how many found",
+            "contacts found", "emails found", "what did recon find",
         ],
         "preferred_operators": ["recon"],
         "capabilities": [
