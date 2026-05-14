@@ -183,6 +183,14 @@ class PrismService:
         # Social campaign integration (R11)
         self.runtime.register_route('POST', '/api/prism/campaign/notify',      self.campaign_notify)
         self.runtime.register_route('GET',  '/api/prism/campaign/states',      self.campaign_states)
+        # Growth Campaigns — social operator (port 8011)
+        self.runtime.register_route('GET',  '/campaigns',                                            self.serve_campaigns)
+        self.runtime.register_route('GET',  '/api/campaigns',                                       self.campaigns_list)
+        self.runtime.register_route('GET',  '/api/campaigns/{campaign_id}/posts',                   self.campaign_posts_list)
+        self.runtime.register_route('POST', '/api/campaigns/{campaign_id}/posts/{post_id}/approve', self.campaign_post_approve)
+        self.runtime.register_route('POST', '/api/campaigns/{campaign_id}/posts/{post_id}/reject',  self.campaign_post_reject)
+        self.runtime.register_route('POST', '/api/campaigns/{campaign_id}/approve_all',             self.campaign_approve_all)
+        self.runtime.register_route('POST', '/api/campaigns/generate',                              self.campaigns_generate)
         # Sprint 3 — SENTINEL alert ingestion
         self.runtime.register_route('POST', '/api/prism/alert',                self.receive_alert)
         self.runtime.register_route('GET',  '/api/prism/alerts',               self.list_alerts)
@@ -2173,6 +2181,84 @@ document.getElementById('key').addEventListener('keydown', function(e){
         """GET /sales-funnel — serve the Sales Funnel trigger UI."""
         html = (Path(__file__).parent / 'templates' / 'sales_funnel.html').read_bytes()
         return 200, {'__html__': html}
+
+    # ------------------------------------------------------------------
+    # Growth Campaigns — social operator proxy (port 8011)
+    # ------------------------------------------------------------------
+
+    _SOCIAL_PORT = 8011
+
+    def serve_campaigns(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /campaigns — serve the Growth Campaigns review UI."""
+        html = (Path(__file__).parent / 'templates' / 'campaigns.html').read_bytes()
+        return 200, {'__html__': html}
+
+    def campaigns_list(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/campaigns — proxy campaign list from social operator."""
+        result = _http_get(self._SOCIAL_PORT, '/campaigns', timeout=5.0)
+        if result is None:
+            return 502, {'error': 'social operator not reachable', 'campaigns': []}
+        return 200, result
+
+    def campaign_posts_list(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/campaigns/{campaign_id}/posts — proxy post list from social operator."""
+        campaign_id = payload.get('campaign_id', '')
+        if not campaign_id:
+            return 400, {'error': 'campaign_id required'}
+        result = _http_get(self._SOCIAL_PORT, f'/campaigns/{campaign_id}/posts', timeout=5.0)
+        if result is None:
+            return 502, {'error': 'social operator not reachable'}
+        return 200, result
+
+    def campaign_post_approve(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/campaigns/{campaign_id}/posts/{post_id}/approve — proxy approval."""
+        campaign_id = payload.get('campaign_id', '')
+        post_id     = payload.get('post_id', '')
+        if not campaign_id or not post_id:
+            return 400, {'error': 'campaign_id and post_id required'}
+        result = _http_post(self._SOCIAL_PORT, f'/campaigns/{campaign_id}/posts/{post_id}/approve', {
+            'approved_by': payload.get('approved_by', 'prism'),
+            'edit_content': payload.get('edit_content'),
+        }, timeout=10.0)
+        if result is None:
+            return 502, {'error': 'social operator not reachable'}
+        return 200, result
+
+    def campaign_post_reject(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/campaigns/{campaign_id}/posts/{post_id}/reject — proxy rejection."""
+        campaign_id = payload.get('campaign_id', '')
+        post_id     = payload.get('post_id', '')
+        if not campaign_id or not post_id:
+            return 400, {'error': 'campaign_id and post_id required'}
+        result = _http_post(self._SOCIAL_PORT, f'/campaigns/{campaign_id}/posts/{post_id}/reject', {}, timeout=10.0)
+        if result is None:
+            return 502, {'error': 'social operator not reachable'}
+        return 200, result
+
+    def campaign_approve_all(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/campaigns/{campaign_id}/approve_all — proxy bulk approval."""
+        campaign_id = payload.get('campaign_id', '')
+        if not campaign_id:
+            return 400, {'error': 'campaign_id required'}
+        result = _http_post(self._SOCIAL_PORT, f'/campaigns/{campaign_id}/approve_all', {
+            'approved_by': payload.get('approved_by', 'prism'),
+        }, timeout=10.0)
+        if result is None:
+            return 502, {'error': 'social operator not reachable'}
+        return 200, result
+
+    def campaigns_generate(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/campaigns/generate — proxy campaign generation to social operator."""
+        result = _http_post(self._SOCIAL_PORT, '/generate', {
+            'topic':            payload.get('topic', ''),
+            'business_context': payload.get('business_context', ''),
+            'num_posts':        payload.get('num_posts', 5),
+            'start_date':       payload.get('start_date', ''),
+            'platform':         payload.get('platform', 'x'),
+        }, timeout=60.0)
+        if result is None:
+            return 502, {'error': 'social operator not reachable'}
+        return 202, result
 
     # ------------------------------------------------------------------
     # Sprint 4 Task 7 — DEPOT install / remove
