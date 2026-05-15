@@ -509,13 +509,19 @@ class OperatorManager:
 
     def _prewarm_operators(self) -> None:
         """Wake operators with prewarm=true in their manifest.
-        Called 15s after boot check so CREW is settled before they register."""
+        Called 15s after boot check so CREW is settled before they register.
+        Skips any operator already answering on its health endpoint (e.g.
+        operators started externally by start.sh)."""
         warmed = 0
         for op in list(self.operators.values()):
             if not op.manifest.get("prewarm"):
                 continue
+            # Skip if already running — either OM-managed or externally started
             if op.proc is not None and op.proc.poll() is None:
-                self.logger.debug("Prewarm: %s already running — skip", op.id)
+                self.logger.debug("Prewarm: %s already running (OM) — skip", op.id)
+                continue
+            if op.is_healthy():
+                self.logger.debug("Prewarm: %s healthy on port %d — skip", op.id, op.port)
                 continue
             self.logger.info("OM: pre-warming %s", op.id)
             try:
