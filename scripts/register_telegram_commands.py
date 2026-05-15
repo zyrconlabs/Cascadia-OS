@@ -27,6 +27,8 @@ COMMANDS = [
     {"command": "leads",     "description": "Show lead report"},
     {"command": "quote",     "description": "Draft a proposal or quote"},
     {"command": "scout",     "description": "Qualify an inbound lead"},
+    {"command": "outreach",  "description": "Brief top uncontacted leads for outreach"},
+    {"command": "pipeline",  "description": "Show lead pipeline snapshot"},
     {"command": "status",    "description": "Show system status"},
     {"command": "operators", "description": "List available operators"},
     {"command": "help",      "description": "Show all commands"},

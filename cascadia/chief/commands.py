@@ -11,6 +11,8 @@ COMMANDS: dict[str, dict] = {
     "/leads":     {"operator": "recon",       "description": "Show lead report"},
     "/quote":     {"operator": "quote_brief", "description": "Draft a proposal or quote"},
     "/scout":     {"operator": "scout",       "description": "Qualify an inbound lead"},
+    "/outreach":  {"operator": None,          "description": "Brief top 5 uncontacted leads for outreach"},
+    "/pipeline":  {"operator": None,          "description": "Show lead pipeline snapshot"},
     "/status":    {"operator": None,          "description": "Show system status"},
     "/missions":  {"operator": None,          "description": "Recent mission runs"},
     "/operators": {"operator": None,          "description": "List available operators"},

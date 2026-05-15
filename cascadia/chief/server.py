@@ -166,6 +166,29 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._missions_summary(),
                 ).to_dict()
+            if cmd == "/pipeline":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._pipeline_snapshot(),
+                ).to_dict()
+            if cmd == "/outreach":
+                if not chat_id:
+                    return 200, TaskResponse(
+                        ok=False, task_id=task_id, selected_type="none",
+                        reply_text="❌ /outreach requires a Telegram chat_id.",
+                    ).to_dict()
+                threading.Thread(
+                    target=self._run_outreach_and_notify,
+                    args=(chat_id,),
+                    daemon=True,
+                    name=f"chief-outreach-{task_id[:8]}",
+                ).start()
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text="📋 Pulling top leads for outreach. Stand by...",
+                ).to_dict()
             if parsed_cmd["operator"]:
                 target = parsed_cmd["operator"]
                 self.runtime.logger.info(
@@ -551,6 +574,73 @@ class ChiefService:
             return summary[:3500]
         except Exception:
             return "CREW unreachable — cannot list operators."
+
+    # ------------------------------------------------------------------
+    # Pipeline snapshot + outreach dispatch
+    # ------------------------------------------------------------------
+
+    _CSV_PATH = "/Users/andy/Zyrcon/operators/cascadia-os-operators/recon/output/houston_contractors.csv"
+    _RECON_URL = "http://127.0.0.1:8002"
+
+    def _pipeline_snapshot(self) -> str:
+        """Read houston_contractors.csv and return a formatted pipeline snapshot."""
+        import csv
+        from pathlib import Path
+        csv_path = Path(self._CSV_PATH)
+        if not csv_path.exists():
+            return "📊 No lead data found — run /recon first."
+        try:
+            rows = list(csv.DictReader(csv_path.open(newline="", encoding="utf-8")))
+        except Exception as exc:
+            return f"📊 Could not read lead data: {exc}"
+
+        total    = len(rows)
+        high     = sum(1 for r in rows if r.get("confidence", "").lower() == "high")
+        medium   = sum(1 for r in rows if r.get("confidence", "").lower() == "medium")
+        contacted = sum(1 for r in rows if r.get("contacted", "").lower() in ("yes",))
+        pending  = sum(1 for r in rows if r.get("contacted", "").lower() == "pending")
+        top5 = [
+            r for r in rows
+            if r.get("confidence", "").lower() == "high"
+            and r.get("phone", "").strip()
+            and r.get("contacted", "").lower() not in ("yes", "pending")
+        ][:5]
+
+        lines = [
+            "📊 Lead Pipeline — Houston Contractors\n",
+            f"Total leads: {total}",
+            f"High confidence: {high}",
+            f"Medium confidence: {medium}",
+            f"Contacted: {contacted}",
+            f"Pending outreach: {pending}",
+        ]
+        if top5:
+            lines.append("\nTop uncontacted (high confidence):")
+            for i, r in enumerate(top5, 1):
+                lines.append(f"{i}. {r['business_name']} — {r.get('phone', 'no phone')}")
+        lines.append("\nRun /outreach to brief these leads.")
+        return "\n".join(lines)
+
+    def _run_outreach_and_notify(self, chat_id: str) -> None:
+        """Background: POST to RECON /api/outreach with chat_id."""
+        try:
+            result = _http_post(
+                f"{self._RECON_URL}/api/outreach",
+                {"chat_id": chat_id, "limit": 5},
+                timeout=10,
+            )
+            self.runtime.logger.info("CHIEF outreach started: %s", result)
+        except Exception as exc:
+            self.runtime.logger.error("CHIEF outreach dispatch failed: %s", exc)
+            # Send error message to user
+            try:
+                _http_post(
+                    f"{TELEGRAM_URL}/send",
+                    {"chat_id": chat_id, "text": f"❌ Could not start outreach: {exc}"},
+                    timeout=5,
+                )
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # CREW self-registration
