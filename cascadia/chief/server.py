@@ -388,7 +388,7 @@ class ChiefService:
             content = "\n".join(
                 f"{k}: {v}" for k, v in list(content.items())[:5]
             )
-        reply = f"Completed by {target}\n\n{str(content)}"
+        reply = str(content)
         return reply[:3500]
 
     # ------------------------------------------------------------------
