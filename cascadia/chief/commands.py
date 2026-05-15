@@ -4,6 +4,7 @@ Slash command parser for CHIEF.
 Commands bypass the LLM and keyword selector — 100% routing accuracy.
 """
 from __future__ import annotations
+import re as _re
 
 COMMANDS: dict[str, dict] = {
     "/recon":     {"operator": "recon",       "description": "Run a RECON lead scan"},
@@ -45,6 +46,19 @@ def parse_command(text: str) -> dict | None:
         "args":     args,
         "unknown":  False,
     }
+
+
+def parse_contact_command(text: str) -> dict | None:
+    """
+    Match /contact_N, /contact_N_yes, /contact_N_no, /contact_N_pending.
+    Returns {"row_id": "42", "status": "yes"} or None if no match.
+    """
+    m = _re.match(r'^/contact_(\d+)(?:_(yes|no|pending))?$', text.strip(), _re.IGNORECASE)
+    if not m:
+        return None
+    raw = (m.group(2) or "").lower()
+    status_map = {"": "yes", "yes": "yes", "no": "not_interested", "pending": "pending"}
+    return {"row_id": m.group(1), "status": status_map[raw]}
 
 
 def build_help_text() -> str:
