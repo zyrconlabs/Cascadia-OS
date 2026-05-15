@@ -221,14 +221,8 @@ else
         && echo "✓ QUOTE_BRIEF ready (PID $QUOTE_BRIEF_PID)" \
         || echo "⚠ QUOTE_BRIEF started but health check failed — check quote_brief.log"
 fi
-# Re-register with CREW every start — covers the case where FLINT restarted
-# after quote_brief was already running and wiped the in-memory registry.
-curl -sf -X POST http://127.0.0.1:5100/register \
-    -H "Content-Type: application/json" \
-    -d '{"operator_id":"quote_brief","type":"operator","autonomy_level":"autonomous","capabilities":["brief.generate","quote.generate","proposal.draft","business.brief","orchestration.probe","synthesis.generate","calendar_scheduling"],"health_hook":"/api/health","port":8006,"task_hook":"/api/task"}' \
-    > /dev/null \
-    && echo "✓ QUOTE_BRIEF registered with CREW" \
-    || echo "⚠ QUOTE_BRIEF CREW registration failed"
+# QUOTE_BRIEF self-registers via its own persistent _crew_register_with_retry
+# thread (same pattern as RECON). No curl needed here — server.py owns it.
 
 # SOCIAL (activity_driven) — started by OM boot check if active sessions exist
 
