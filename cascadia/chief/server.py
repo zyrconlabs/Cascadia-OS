@@ -27,7 +27,7 @@ from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.chief.models import TaskRequest, TaskResponse
 from cascadia.chief.operator_selector import select_target
 from cascadia.chief.fallback import intelligent_fallback
-from cascadia.chief.commands import parse_command, build_help_text, build_operators_text
+from cascadia.chief.commands import parse_command, build_help_text, build_operators_text, parse_contact_command
 from cascadia.chief.intent_router import (
     classify_intent,
     validate_routing_decision,
@@ -130,6 +130,18 @@ class ChiefService:
         )
 
         # ── Step 0 — Slash command fast-path (100% accuracy, no LLM) ────────
+        # /contact_N must come FIRST — not in COMMANDS dict, would otherwise be "unknown"
+        contact_cmd = parse_contact_command(req.task)
+        if contact_cmd is not None:
+            reply_text = self._mark_lead_contacted(
+                contact_cmd["row_id"], contact_cmd["status"], chat_id
+            )
+            return 200, TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="status", selected_target="/contact",
+                reply_text=reply_text,
+            ).to_dict()
+
         parsed_cmd = parse_command(req.task)
         if parsed_cmd is not None:
             cmd = parsed_cmd["command"]
@@ -594,25 +606,30 @@ class ChiefService:
         except Exception as exc:
             return f"📊 Could not read lead data: {exc}"
 
-        total    = len(rows)
-        high     = sum(1 for r in rows if r.get("confidence", "").lower() == "high")
-        medium   = sum(1 for r in rows if r.get("confidence", "").lower() == "medium")
-        contacted = sum(1 for r in rows if r.get("contacted", "").lower() in ("yes",))
-        pending  = sum(1 for r in rows if r.get("contacted", "").lower() == "pending")
+        total         = len(rows)
+        high          = sum(1 for r in rows if r.get("confidence", "").lower() == "high")
+        medium        = sum(1 for r in rows if r.get("confidence", "").lower() == "medium")
+        contacted     = sum(1 for r in rows if r.get("contacted", "").lower() == "yes")
+        not_interested = sum(1 for r in rows if r.get("contacted", "").lower() == "not_interested")
+        pending       = sum(1 for r in rows if r.get("contacted", "").lower() == "pending")
+        uncontacted   = sum(
+            1 for r in rows
+            if r.get("contacted", "").strip().lower() not in ("yes", "not_interested", "pending")
+        )
         top5 = [
             r for r in rows
             if r.get("confidence", "").lower() == "high"
             and r.get("phone", "").strip()
-            and r.get("contacted", "").lower() not in ("yes", "pending")
+            and r.get("contacted", "").lower() not in ("yes", "not_interested", "pending")
         ][:5]
 
         lines = [
             "📊 Lead Pipeline — Houston Contractors\n",
-            f"Total leads: {total}",
-            f"High confidence: {high}",
-            f"Medium confidence: {medium}",
-            f"Contacted: {contacted}",
-            f"Pending outreach: {pending}",
+            f"Total: {total} | High confidence: {high} | Medium: {medium}\n",
+            f"✅ Contacted:       {contacted}",
+            f"❌ Not interested:  {not_interested}",
+            f"⏳ Pending outreach: {pending}",
+            f"📋 Uncontacted:     {uncontacted}",
         ]
         if top5:
             lines.append("\nTop uncontacted (high confidence):")
@@ -620,6 +637,28 @@ class ChiefService:
                 lines.append(f"{i}. {r['business_name']} — {r.get('phone', 'no phone')}")
         lines.append("\nRun /outreach to brief these leads.")
         return "\n".join(lines)
+
+    def _mark_lead_contacted(self, row_id: str, status: str, chat_id: str) -> str:
+        """Call RECON /api/contact and return a user-facing reply."""
+        _LABELS = {
+            "yes": "✅ Contacted",
+            "not_interested": "❌ Not interested",
+            "pending": "⏳ Pending",
+        }
+        try:
+            result = _http_post(
+                f"{self._RECON_URL}/api/contact",
+                {"row_id": row_id, "status": status},
+                timeout=10,
+            )
+            if result.get("ok"):
+                biz   = result.get("business_name", f"lead {row_id}")
+                label = _LABELS.get(status, status)
+                return f"{label}: {biz} marked."
+            return f"❌ Could not mark lead: {result.get('error', 'unknown error')}"
+        except Exception as exc:
+            self.runtime.logger.error("CHIEF: mark_contacted failed: %s", exc)
+            return f"❌ Could not reach RECON to mark lead: {exc}"
 
     def _run_outreach_and_notify(self, chat_id: str) -> None:
         """Background: POST to RECON /api/outreach with chat_id."""
