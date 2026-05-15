@@ -32,6 +32,7 @@ from cascadia.chief.intent_router import (
     validate_routing_decision,
     append_history,
     get_history,
+    set_last_action,
     CONFIDENCE_DISPATCH,
     CONFIDENCE_CLARIFY,
 )
@@ -150,6 +151,7 @@ class ChiefService:
             raw_result = self._dispatch_via_beacon(req, target, task_id)
             reply_text = self._format_reply(target, raw_result)
             append_history(chat_id, "assistant", reply_text[:500])
+            set_last_action(chat_id, "dispatch_operator", target, reply_text[:300])
             ok   = "error" not in raw_result
             resp = TaskResponse(
                 ok=ok, task_id=task_id,
@@ -160,7 +162,7 @@ class ChiefService:
 
         # ── C. LLM intent classifier ── pass stored history ───────────────────
         history  = get_history(chat_id)
-        decision = classify_intent(req.task, history)
+        decision = classify_intent(req.task, history, chat_id=chat_id)
 
         # ── D. Validate against catalog + policy ──────────────────────────────
         decision  = validate_routing_decision(decision)
@@ -197,6 +199,7 @@ class ChiefService:
             raw_result = self._dispatch_via_beacon(req, target, task_id)
             reply_text = self._format_reply(target, raw_result)
             append_history(chat_id, "assistant", reply_text[:500])
+            set_last_action(chat_id, "dispatch_operator", target, reply_text[:300])
             ok   = "error" not in raw_result
             resp = TaskResponse(
                 ok=ok, task_id=task_id,
@@ -209,6 +212,7 @@ class ChiefService:
         if decision.action == "ask_clarification":
             question = decision.question or "Could you give me a bit more detail?"
             append_history(chat_id, "assistant", question)
+            set_last_action(chat_id, "conversation", None, question[:200])
             resp = TaskResponse(
                 ok=True, task_id=task_id,
                 selected_type="none",
@@ -235,6 +239,7 @@ class ChiefService:
                 reply_text = plan_summary
 
             append_history(chat_id, "assistant", reply_text[:500])
+            set_last_action(chat_id, "dispatch_operator", targets[0] if targets else None, reply_text[:300])
             resp = TaskResponse(
                 ok=True, task_id=task_id,
                 selected_type="operator",
@@ -246,6 +251,7 @@ class ChiefService:
         # ── I. Conversation / fallback ────────────────────────────────────────
         reply_text = intelligent_fallback(req.task, req.source_channel)
         append_history(chat_id, "assistant", reply_text[:500])
+        set_last_action(chat_id, "conversation", None, reply_text[:200])
         resp = TaskResponse(
             ok=True, task_id=task_id,
             selected_type="none",
