@@ -196,7 +196,7 @@ class TestChiefFormatsReplyCleanly(unittest.TestCase):
 
         self.assertTrue(body["ok"])
         reply = body["reply_text"]
-        self.assertIn("quote_brief", reply)
+        self.assertIn("proposal text", reply)   # content from operator, no "Completed by" prefix
         self.assertNotIn('"result"', reply)
 
 
