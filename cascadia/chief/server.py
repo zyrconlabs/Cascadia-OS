@@ -468,7 +468,7 @@ class ChiefService:
     _OPERATOR_FALLBACK_PORTS: dict[str, tuple[int, str]] = {
         "recon":       (8002, "/api/task"),
         "quote_brief": (8006, "/api/task"),
-        "scout":       (7002, "/api/task"),
+        "scout":       (7002, "/api/chat"),
         "email":       (8010, "/api/task"),
         "debrief":     (8008, "/api/task"),
         "quote":       (8007, "/api/task"),
