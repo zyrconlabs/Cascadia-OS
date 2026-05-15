@@ -46,7 +46,10 @@ from cascadia.chief.intent_router import (  # noqa: E402
     validate_routing_decision,
     append_history,
     get_history,
+    set_last_action,
+    get_last_action,
     _chat_history,
+    _last_action,
     _parse_decision,
 )
 from cascadia.chief import operator_selector as sel  # noqa: E402
@@ -512,6 +515,149 @@ class TestHistoryStore(unittest.TestCase):
     def test_empty_chat_id_ignored(self):
         append_history("", "user", "should not store")
         self.assertEqual(get_history(""), [])
+
+
+# ── 13. "do it again" resolves via last_action ────────────────────────────────
+
+class TestDoItAgainResolvesWithLastAction(unittest.TestCase):
+    def setUp(self):
+        self.cid = "test_last_action_do_it_again"
+        _last_action.pop(self.cid, None)
+
+    def test_do_it_again_resolves(self):
+        """set_last_action(recon) → 'do it again' LLM receives last_action context."""
+        set_last_action(self.cid, "dispatch_operator", "recon", "240 leads found")
+
+        decision_dict = {
+            "action": "dispatch_operator",
+            "target": "recon",
+            "confidence": 0.88,
+            "reason": "Repeat of prior RECON scan.",
+            "required_inputs": {"industry": "HVAC", "location": "Houston"},
+            "missing_inputs": [],
+            "question": None,
+        }
+
+        messages_sent = []
+
+        def fake_urlopen(req, timeout=None):
+            url = getattr(req, "full_url", str(req))
+            if "4011" in url:
+                body = json.loads(req.data.decode())
+                messages_sent.extend(body.get("messages", []))
+                return _llm_mock(decision_dict)
+            return _urlopen_mock({})
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = classify_intent(
+                "do it again", [], OPERATOR_CATALOG, MISSION_CATALOG,
+                chat_id=self.cid,
+            )
+
+        self.assertEqual(result.action, "dispatch_operator")
+        self.assertEqual(result.target, "recon")
+
+        # System prompt must contain last_action context
+        system_content = next(
+            (m["content"] for m in messages_sent if m["role"] == "system"), ""
+        )
+        self.assertIn("CURRENT SESSION CONTEXT", system_content)
+        self.assertIn("recon", system_content)
+        self.assertIn("240 leads found", system_content)
+
+
+# ── 14. "those contacts" resolves via last_action ────────────────────────────
+
+class TestThoseContactsResolvesWithLastAction(unittest.TestCase):
+    def setUp(self):
+        self.cid = "test_last_action_those_contacts"
+        _last_action.pop(self.cid, None)
+
+    def test_those_contacts_resolves(self):
+        """last_action with RECON result → 'how many have emails?' must not ask_clarification."""
+        set_last_action(
+            self.cid, "dispatch_operator", "recon",
+            "Total leads: 240. Top: Abacus Plumbing 713-812-7070",
+        )
+
+        decision_dict = {
+            "action": "dispatch_operator",
+            "target": "recon",
+            "confidence": 0.84,
+            "reason": "Follow-up query about prior RECON result.",
+            "required_inputs": {"industry": "plumbing", "location": "Houston"},
+            "missing_inputs": [],
+            "question": None,
+        }
+
+        messages_sent = []
+
+        def fake_urlopen(req, timeout=None):
+            url = getattr(req, "full_url", str(req))
+            if "4011" in url:
+                body = json.loads(req.data.decode())
+                messages_sent.extend(body.get("messages", []))
+                return _llm_mock(decision_dict)
+            return _urlopen_mock({})
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = classify_intent(
+                "how many of those have emails?", [], OPERATOR_CATALOG, MISSION_CATALOG,
+                chat_id=self.cid,
+            )
+
+        self.assertNotEqual(result.action, "ask_clarification",
+                            "With last_action context LLM should not ask for clarification")
+
+        system_content = next(
+            (m["content"] for m in messages_sent if m["role"] == "system"), ""
+        )
+        self.assertIn("CURRENT SESSION CONTEXT", system_content)
+        self.assertIn("Abacus Plumbing", system_content)
+
+
+# ── 15. No last_action → prompt unchanged, still routes correctly ─────────────
+
+class TestNoLastActionStillWorks(unittest.TestCase):
+    def setUp(self):
+        self.cid = "test_no_last_action_new_user_999"
+        _last_action.pop(self.cid, None)
+
+    def test_no_last_action_still_works(self):
+        """Fresh chat_id with no last_action → system prompt has no SESSION CONTEXT block."""
+        decision_dict = {
+            "action": "dispatch_operator",
+            "target": "recon",
+            "confidence": 0.90,
+            "reason": "Explicit recon request.",
+            "required_inputs": {"industry": "HVAC", "location": "Houston"},
+            "missing_inputs": [],
+            "question": None,
+        }
+
+        messages_sent = []
+
+        def fake_urlopen(req, timeout=None):
+            url = getattr(req, "full_url", str(req))
+            if "4011" in url:
+                body = json.loads(req.data.decode())
+                messages_sent.extend(body.get("messages", []))
+                return _llm_mock(decision_dict)
+            return _urlopen_mock({})
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = classify_intent(
+                "run recon", [], OPERATOR_CATALOG, MISSION_CATALOG,
+                chat_id=self.cid,
+            )
+
+        self.assertEqual(result.target, "recon")
+
+        system_content = next(
+            (m["content"] for m in messages_sent if m["role"] == "system"), ""
+        )
+        self.assertNotIn("CURRENT SESSION CONTEXT", system_content,
+                         "No last_action should mean no context block in system prompt")
 
 
 if __name__ == "__main__":

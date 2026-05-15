@@ -34,6 +34,29 @@ HISTORY_LIMIT = 6
 _history_lock: threading.Lock = threading.Lock()
 _chat_history: dict[str, deque] = {}
 
+_last_action_lock: threading.Lock = threading.Lock()
+_last_action: dict[str, dict] = {}
+
+
+def set_last_action(
+    chat_id: str, action: str, target: str | None, result_preview: str
+) -> None:
+    if not chat_id:
+        return
+    with _last_action_lock:
+        _last_action[chat_id] = {
+            "action":         action,
+            "target":         target,
+            "result_preview": result_preview[:300],
+        }
+
+
+def get_last_action(chat_id: str) -> dict:
+    if not chat_id:
+        return {}
+    with _last_action_lock:
+        return dict(_last_action.get(chat_id, {}))
+
 
 def append_history(chat_id: str, role: str, content: str) -> None:
     """Record one message turn for chat_id."""
@@ -180,7 +203,7 @@ def _build_catalog_text() -> str:
     return "\n".join(lines)
 
 
-_SYSTEM_PROMPT = """\
+_BASE_SYSTEM_PROMPT = """\
 You are a routing classifier for Cascadia OS, a business management platform for \
 contractor and trades companies.
 
@@ -216,6 +239,24 @@ JSON schema:
   "question": str or null
 }}
 """.format(catalog=_build_catalog_text())
+
+
+def _build_system_prompt(chat_id: str) -> str:
+    last = get_last_action(chat_id)
+    if not last:
+        return _BASE_SYSTEM_PROMPT
+    target = last.get("target") or "none"
+    return _BASE_SYSTEM_PROMPT + (
+        f"\n\nCURRENT SESSION CONTEXT:\n"
+        f"Last action: {last['action']}\n"
+        f"Last operator used: {target}\n"
+        f"Last result summary: {last.get('result_preview', '')}\n\n"
+        f"Use this context to resolve references:\n"
+        f"- \"do it again\" → repeat last operator ({target})\n"
+        f"- \"those contacts\" → refers to last operator result above\n"
+        f"- \"how many of those\" → refers to last result above\n\n"
+        f"Do NOT ask for clarification if last_action answers the question."
+    )
 
 
 # ── LLM call ──────────────────────────────────────────────────────────────────
@@ -285,19 +326,23 @@ def classify_intent(
     conversation_history: list[dict] | None = None,
     operator_catalog: dict | None = None,
     mission_catalog: dict | None = None,
+    chat_id: str = "",
 ) -> RoutingDecision:
     """
     Call the local LLM to classify the user's intent and return a RoutingDecision.
     operator_catalog / mission_catalog override module-level catalogs for testing.
+    chat_id is used to inject last_action context into the system prompt.
     """
-    messages: list[dict] = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    messages: list[dict] = [{"role": "system", "content": _build_system_prompt(chat_id)}]
     if conversation_history:
         messages.extend(conversation_history[-6:])  # last 3 exchanges
     messages.append({"role": "user", "content": user_message})
 
+    last = get_last_action(chat_id)
     log.info(
-        "classify_intent: msg=%r history_turns=%d total_messages=%d",
-        user_message[:60], len(conversation_history or []), len(messages),
+        "classify_intent: msg=%r history_turns=%d last_action=%r total_messages=%d",
+        user_message[:60], len(conversation_history or []),
+        last.get("action") if last else None, len(messages),
     )
 
     raw = _call_llm(messages)
