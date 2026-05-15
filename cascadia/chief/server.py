@@ -27,12 +27,14 @@ from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.chief.models import TaskRequest, TaskResponse
 from cascadia.chief.operator_selector import select_target
 from cascadia.chief.fallback import intelligent_fallback
+from cascadia.chief.commands import parse_command, build_help_text, build_operators_text
 from cascadia.chief.intent_router import (
     classify_intent,
     validate_routing_decision,
     append_history,
     get_history,
     set_last_action,
+    OPERATOR_CATALOG,
     CONFIDENCE_DISPATCH,
     CONFIDENCE_CLARIFY,
 )
@@ -125,6 +127,60 @@ class ChiefService:
             "CHIEF received task [%s] from %s via %s",
             task_id, req.sender, req.source_channel,
         )
+
+        # ── Step 0 — Slash command fast-path (100% accuracy, no LLM) ────────
+        parsed_cmd = parse_command(req.task)
+        if parsed_cmd is not None:
+            cmd = parsed_cmd["command"]
+            if parsed_cmd.get("unknown"):
+                reply_text = (
+                    f"I don't know that command: {cmd}\n"
+                    f"Try /help to see what's available."
+                )
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="none",
+                    reply_text=reply_text,
+                ).to_dict()
+            if cmd == "/help":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=build_help_text(),
+                ).to_dict()
+            if cmd == "/operators":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=build_operators_text(OPERATOR_CATALOG),
+                ).to_dict()
+            if cmd == "/status":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._status_summary(),
+                ).to_dict()
+            if cmd == "/missions":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._missions_summary(),
+                ).to_dict()
+            if parsed_cmd["operator"]:
+                target = parsed_cmd["operator"]
+                self.runtime.logger.info(
+                    "CHIEF command fast-path: %s → operator=%s", cmd, target
+                )
+                raw_result = self._dispatch_via_beacon(req, target, task_id)
+                reply_text = self._format_reply(target, raw_result)
+                append_history(chat_id, "user",      req.task)
+                append_history(chat_id, "assistant", reply_text[:500])
+                set_last_action(chat_id, "dispatch_operator", target, reply_text[:300])
+                ok = "error" not in raw_result
+                return 200, TaskResponse(
+                    ok=ok, task_id=task_id,
+                    selected_type="operator", selected_target=target,
+                    reply_text=reply_text, raw_result=raw_result,
+                ).to_dict()
 
         # ── A. Status commands — fast-path, not recorded in history ──────────
         selection = select_target(req.task, CREW_URL)
