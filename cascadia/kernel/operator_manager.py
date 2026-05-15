@@ -507,6 +507,25 @@ class OperatorManager:
             woken_count, sleeping_count,
         )
 
+    def _prewarm_operators(self) -> None:
+        """Wake operators with prewarm=true in their manifest.
+        Called 15s after boot check so CREW is settled before they register."""
+        warmed = 0
+        for op in list(self.operators.values()):
+            if not op.manifest.get("prewarm"):
+                continue
+            if op.proc is not None and op.proc.poll() is None:
+                self.logger.debug("Prewarm: %s already running — skip", op.id)
+                continue
+            self.logger.info("OM: pre-warming %s", op.id)
+            try:
+                self.wake_operator(op.id, "boot_prewarm")
+                warmed += 1
+            except Exception as exc:
+                self.logger.warning("OM: prewarm failed for %s: %s", op.id, exc)
+        if warmed:
+            self.logger.info("OM: pre-warmed %d operator(s)", warmed)
+
     # ── Restart helpers ───────────────────────────────────────────────────────
 
     def _try_restart(self, op: OperatorProcess) -> None:
@@ -673,6 +692,7 @@ class OperatorManager:
         """Background loop: liveness check every 30s, soft pulse every 15min."""
         time.sleep(STARTUP_GRACE)
         self._boot_check()
+        threading.Timer(15.0, self._prewarm_operators).start()
         last_pulse = time.time()
 
         while self._running:
