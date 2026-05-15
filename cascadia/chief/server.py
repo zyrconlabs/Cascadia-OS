@@ -468,6 +468,11 @@ class ChiefService:
     _OPERATOR_FALLBACK_PORTS: dict[str, tuple[int, str]] = {
         "recon":       (8002, "/api/task"),
         "quote_brief": (8006, "/api/task"),
+        "scout":       (7002, "/api/task"),
+        "email":       (8010, "/api/task"),
+        "debrief":     (8008, "/api/task"),
+        "quote":       (8007, "/api/task"),
+        "social":      (8011, "/api/task"),
     }
 
     def _dispatch_via_beacon(
@@ -575,7 +580,7 @@ class ChiefService:
             err = str(result["error"]).lower()
             if any(x in err for x in (
                 "unreachable", "connection refused", "did not wake",
-                "operator not reachable", "timed out",
+                "not reachable", "timed out",
             )):
                 return (
                     f"The {target} worker is starting up — this can take up to "
