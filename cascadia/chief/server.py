@@ -332,26 +332,42 @@ class ChiefService:
     # BEACON dispatch
     # ------------------------------------------------------------------
 
+    # Fallback ports for operators that register dynamically with CREW.
+    # Used when BEACON can't find the operator (duplicate CREW instances,
+    # registration lag, or CREW restart clearing in-memory registry).
+    _OPERATOR_FALLBACK_PORTS: dict[str, tuple[int, str]] = {
+        "recon":       (8002, "/api/task"),
+        "quote_brief": (8006, "/api/task"),
+    }
+
     def _dispatch_via_beacon(
         self, req: TaskRequest, target: str, task_id: str
     ) -> dict:
+        message = {
+            "task": req.task,
+            "task_id": task_id,
+            "source_channel": req.source_channel,
+            "reply_channel": req.reply_channel,
+            "sender": req.sender,
+            "tenant_id": req.tenant_id,
+            "metadata": req.metadata,
+        }
         payload = {
             "sender": "chief",
             "message_type": "run.execute",
             "target": target,
-            "message": {
-                "task": req.task,
-                "task_id": task_id,
-                "source_channel": req.source_channel,
-                "reply_channel": req.reply_channel,
-                "sender": req.sender,
-                "tenant_id": req.tenant_id,
-                "metadata": req.metadata,
-            },
+            "message": message,
+            "timeout": 60,
         }
         try:
-            result = _http_post(f"{BEACON_URL}/route", payload, timeout=30)
+            result = _http_post(f"{BEACON_URL}/route", payload, timeout=75)
             # BEACON wraps the operator response in forward_response
+            if result.get("forwarded") is False:
+                # BEACON couldn't find the operator port — fall back to direct dispatch
+                self.runtime.logger.warning(
+                    "CHIEF: BEACON could not forward to %s — trying direct dispatch", target
+                )
+                return self._dispatch_direct(target, message)
             return result.get("forward_response") or result
         except urllib.error.URLError as exc:
             self.runtime.logger.warning(
@@ -363,6 +379,35 @@ class ChiefService:
                 "CHIEF: BEACON dispatch to %s error: %s", target, exc
             )
             return {"error": str(exc), "target": target}
+
+    def _dispatch_direct(self, target: str, message: dict) -> dict:
+        """Direct operator dispatch — used when BEACON can't find the operator port."""
+        # Try CREW lookup first (handles dynamic registration)
+        try:
+            crew_data = _http_get(f"{CREW_URL}/crew", timeout=3)
+            op = crew_data.get("operators", {}).get(target)
+            if op and op.get("port"):
+                port     = op["port"]
+                task_hook = op.get("task_hook", "/api/task")
+                self.runtime.logger.info(
+                    "CHIEF direct dispatch: %s → port %d%s (via CREW)", target, port, task_hook
+                )
+                return _http_post(f"http://127.0.0.1:{port}{task_hook}", message, timeout=60)
+        except Exception as exc:
+            self.runtime.logger.warning("CHIEF: CREW lookup for %s failed: %s", target, exc)
+
+        # Fall back to known static ports
+        if target in self._OPERATOR_FALLBACK_PORTS:
+            port, task_hook = self._OPERATOR_FALLBACK_PORTS[target]
+            self.runtime.logger.info(
+                "CHIEF direct dispatch: %s → port %d%s (fallback)", target, port, task_hook
+            )
+            try:
+                return _http_post(f"http://127.0.0.1:{port}{task_hook}", message, timeout=60)
+            except Exception as exc:
+                return {"error": f"direct dispatch to {target} failed: {exc}"}
+
+        return {"error": f"operator '{target}' not reachable — not in CREW and no fallback port"}
 
     # ------------------------------------------------------------------
     # Reply formatting

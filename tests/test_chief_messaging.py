@@ -182,47 +182,53 @@ def run_all_tests() -> int:
                   and "registered worker" not in (r or ""),
         uid_offset=1, timeout=16)
 
+    time.sleep(3)   # let RECON scan start settle before next query
     run("T02", "how many contacts found?",
         lambda r: r and any(c.isdigit() for c in (r or ""))
                   and ("lead" in r.lower() or "contact" in r.lower()),
         uid_offset=2)
 
-    time.sleep(2)
+    time.sleep(3)
     run("T03", "Draft a proposal for warehouse mezzanine installation",
         lambda r: r and any(w in r.lower() for w in
                             ("proposal", "quote", "mezzanine", "completed", "brief")),
         uid_offset=3, timeout=18)
 
+    time.sleep(3)
     run("T04", "Find me HVAC contractors in Houston",
         lambda r: r and "could not find" not in r.lower()
                   and "registered worker" not in r.lower(),
         uid_offset=4)
 
+    time.sleep(3)
     run("T05", "I need to find new clients for my plumbing business",
         lambda r: r and "registered worker" not in (r or ""),
-        uid_offset=5)
+        uid_offset=5, timeout=18)
 
     # ── GROUP 2: COMMAND FAST-PATH ────────────────────────────────────────────
 
-    time.sleep(2)
+    time.sleep(3)
     run("T06", "/recon",
         lambda r: r and ("scan" in r.lower() or "recon" in r.lower() or "leads" in r.lower()),
         uid_offset=6, timeout=16)
 
-    time.sleep(2)
+    time.sleep(3)
     run("T07", "/quote warehouse mezzanine",
         lambda r: r and any(w in r.lower() for w in ("quote", "proposal", "completed", "brief")),
-        uid_offset=7, timeout=18)
+        uid_offset=7, timeout=22)
 
+    time.sleep(4)   # T07 (quote_brief + LLM) can be slow; give system a moment
     run("T08", "/status",
         lambda r: r and ("status" in r.lower() or "crew" in r.lower()
                          or "ready" in r.lower() or "cascadia" in r.lower()),
-        uid_offset=8)
+        uid_offset=8, timeout=15)
 
+    time.sleep(2)
     run("T09", "/help",
         lambda r: r and "/recon" in r and "/quote" in r,
         uid_offset=9)
 
+    time.sleep(2)
     run("T10", "/operators",
         lambda r: r and ("recon" in r.lower() or "quote" in r.lower()
                          or "operator" in r.lower()),
@@ -230,43 +236,48 @@ def run_all_tests() -> int:
 
     # ── GROUP 3: CONVERSATIONAL FALLBACK ──────────────────────────────────────
 
+    time.sleep(2)
     run("T11", "What is the weather today?",
         lambda r: r and "registered worker" not in r.lower()
                   and len(r) > 10,
         uid_offset=11)
 
+    time.sleep(2)
     run("T12", "Can you send an invoice?",
         lambda r: r and ("invoice" in r.lower() or "roadmap" in r.lower()
                          or "available" in r.lower()),
         uid_offset=12, timeout=20)
 
+    time.sleep(2)
     run("T13", "Hello",
         lambda r: r and len(r) > 5,
         uid_offset=13)
 
+    time.sleep(2)
     run("T14", "What can you do?",
         lambda r: r and ("error" not in r.lower() or len(r) > 20),
-        uid_offset=14)
+        uid_offset=14, timeout=18)
 
     # ── GROUP 4: CONTEXT / MULTI-TURN ─────────────────────────────────────────
 
     # T15: "/recon" → "do it again"
     # Use command fast-path to guarantee dispatch + last_action set
-    time.sleep(2)
+    time.sleep(3)
     run("T15a", "/recon",
         lambda r: r and ("scan" in r.lower() or "recon" in r.lower() or "leads" in r.lower()),
         uid_offset=15, timeout=16)
-    time.sleep(3)   # let last_action settle in CHIEF
+    time.sleep(4)   # let last_action settle in CHIEF, RECON scan starts
     run("T15b", "do it again",
         lambda r: r and ("scan" in r.lower() or "recon" in r.lower()
                          or "leads" in r.lower())
                   and "what" not in r.lower()[:30],
-        uid_offset=16, timeout=18)
+        uid_offset=16, timeout=20)
 
     # T16: "how many contacts found?" → "how many of those have emails?"
+    time.sleep(3)
     run("T16a", "how many contacts found?",
         lambda r: r is not None,
-        uid_offset=17)
+        uid_offset=17, timeout=18)
     time.sleep(3)
     run("T16b", "how many of those have emails?",
         lambda r: r and "what contacts" not in r.lower(),

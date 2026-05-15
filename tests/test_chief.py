@@ -361,5 +361,66 @@ class TestQuoteBriefNotRegisteredAsChief(unittest.TestCase):
         self.assertNotEqual(manifest["id"], "chief")
 
 
+# ---------------------------------------------------------------------------
+# Test 13 — CHIEF falls back to direct dispatch when BEACON returns forwarded=False
+# ---------------------------------------------------------------------------
+CREW_QUOTE_BRIEF_WITH_PORT = {
+    "crew_size": 1,
+    "operators": {
+        "quote_brief": {
+            "operator_id": "quote_brief",
+            "capabilities": ["quote.generate", "brief.generate",
+                             "proposal.draft", "business.brief"],
+            "health_hook": "/health",
+            "port": 8006,
+            "task_hook": "/api/task",
+        }
+    },
+}
+
+
+class TestChiefDirectDispatchFallback(unittest.TestCase):
+    def test_chief_dispatches_directly_when_beacon_not_forwarded(self):
+        """When BEACON returns forwarded=False, CHIEF falls back to direct dispatch."""
+        svc = _make_svc()
+        captured = []
+
+        def fake_urlopen(req, timeout=None):
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            body = json.loads(req.data.decode()) if getattr(req, "data", None) else {}
+            captured.append({"url": url, "body": body})
+            if "/crew" in url:
+                # Both the keyword-selector GET and _dispatch_direct GET hit this
+                return _urlopen_mock(CREW_QUOTE_BRIEF_WITH_PORT)
+            if "/route" in url:
+                # BEACON says it cannot forward
+                return _urlopen_mock({
+                    "ok": True, "routed_to": "quote_brief",
+                    "forwarded": False,
+                    "note": "Target port not registered — acknowledged only",
+                })
+            # Direct dispatch to operator at port 8006
+            return _urlopen_mock({"result": "Proposal drafted successfully."})
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            code, body = svc.handle_task({
+                "task": "draft a proposal",
+                "source_channel": "telegram",
+                "metadata": {"chat_id": 123456},
+            })
+
+        # Should succeed via direct dispatch, not fall back to "Task completed."
+        self.assertTrue(body["ok"])
+        self.assertNotEqual(body["reply_text"], "Task completed.")
+        self.assertIn("Proposal", body["reply_text"])
+
+        # Should have attempted a direct dispatch (POST not to /route or /crew)
+        direct_calls = [
+            p for p in captured
+            if "/route" not in p["url"] and "/crew" not in p["url"]
+        ]
+        self.assertGreater(len(direct_calls), 0, "No direct dispatch attempt found")
+
+
 if __name__ == "__main__":
     unittest.main()
