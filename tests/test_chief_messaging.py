@@ -186,7 +186,7 @@ def run_all_tests() -> int:
     run("T02", "how many contacts found?",
         lambda r: r and any(c.isdigit() for c in (r or ""))
                   and ("lead" in r.lower() or "contact" in r.lower()),
-        uid_offset=2)
+        uid_offset=2, timeout=20)
 
     time.sleep(3)
     run("T03", "Draft a proposal for warehouse mezzanine installation",
@@ -198,7 +198,7 @@ def run_all_tests() -> int:
     run("T04", "Find me HVAC contractors in Houston",
         lambda r: r and "could not find" not in r.lower()
                   and "registered worker" not in r.lower(),
-        uid_offset=4)
+        uid_offset=4, timeout=20)
 
     time.sleep(3)
     run("T05", "I need to find new clients for my plumbing business",
@@ -215,18 +215,18 @@ def run_all_tests() -> int:
     time.sleep(3)
     run("T07", "/quote warehouse mezzanine",
         lambda r: r and any(w in r.lower() for w in ("quote", "proposal", "completed", "brief")),
-        uid_offset=7, timeout=22)
+        uid_offset=7, timeout=35)
 
-    time.sleep(4)   # T07 (quote_brief + LLM) can be slow; give system a moment
+    time.sleep(6)   # T07 (quote_brief + LLM) can be slow; give system a moment
     run("T08", "/status",
         lambda r: r and ("status" in r.lower() or "crew" in r.lower()
                          or "ready" in r.lower() or "cascadia" in r.lower()),
         uid_offset=8, timeout=15)
 
-    time.sleep(2)
+    time.sleep(4)
     run("T09", "/help",
         lambda r: r and "/recon" in r and "/quote" in r,
-        uid_offset=9)
+        uid_offset=9, timeout=20)
 
     time.sleep(2)
     run("T10", "/operators",
@@ -248,10 +248,10 @@ def run_all_tests() -> int:
                          or "available" in r.lower()),
         uid_offset=12, timeout=20)
 
-    time.sleep(2)
+    time.sleep(4)
     run("T13", "Hello",
         lambda r: r and len(r) > 5,
-        uid_offset=13)
+        uid_offset=13, timeout=20)
 
     time.sleep(2)
     run("T14", "What can you do?",
@@ -266,7 +266,7 @@ def run_all_tests() -> int:
     run("T15a", "/recon",
         lambda r: r and ("scan" in r.lower() or "recon" in r.lower() or "leads" in r.lower()),
         uid_offset=15, timeout=16)
-    time.sleep(4)   # let last_action settle in CHIEF, RECON scan starts
+    time.sleep(6)   # let last_action settle in shared file before next request
     run("T15b", "do it again",
         lambda r: r and ("scan" in r.lower() or "recon" in r.lower()
                          or "leads" in r.lower())

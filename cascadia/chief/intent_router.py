@@ -16,6 +16,7 @@ import urllib.request
 import urllib.error
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("chief.intent_router")
@@ -37,23 +38,43 @@ _chat_history: dict[str, deque] = {}
 _last_action_lock: threading.Lock = threading.Lock()
 _last_action: dict[str, dict] = {}
 
+# File-based last_action so all CHIEF instances share context across
+# multi-process deployments (FLINT spawns duplicate CHIEF processes).
+_LAST_ACTION_FILE = Path("/tmp/cascadia_last_action.json")
+
 
 def set_last_action(
-    chat_id: str, action: str, target: str | None, result_preview: str
+    chat_id: str, action: str, target: str | None, result_preview: str,
+    original_task: str = "",
 ) -> None:
     if not chat_id:
         return
+    entry = {
+        "action":         action,
+        "target":         target,
+        "result_preview": result_preview[:300],
+        "original_task":  original_task[:500],
+    }
     with _last_action_lock:
-        _last_action[chat_id] = {
-            "action":         action,
-            "target":         target,
-            "result_preview": result_preview[:300],
-        }
+        _last_action[chat_id] = entry
+        try:
+            existing: dict = {}
+            if _LAST_ACTION_FILE.exists():
+                existing = json.loads(_LAST_ACTION_FILE.read_text())
+            existing[chat_id] = entry
+            _LAST_ACTION_FILE.write_text(json.dumps(existing))
+        except Exception:
+            pass
 
 
 def get_last_action(chat_id: str) -> dict:
     if not chat_id:
         return {}
+    try:
+        data = json.loads(_LAST_ACTION_FILE.read_text())
+        return data.get(chat_id, {})
+    except Exception:
+        pass
     with _last_action_lock:
         return dict(_last_action.get(chat_id, {}))
 
