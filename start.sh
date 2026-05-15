@@ -67,16 +67,10 @@ else
 fi
 
 # ── 2. License Gate ───────────────────────────────────────────────────────
-if curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; then
-    echo "✓ License Gate already running"
-else
-    echo "▸ Starting License Gate..."
-    PYTHON="${REPO}/.venv/bin/python3"
-    [[ ! -f "$PYTHON" ]] && PYTHON="python3"
-    "$PYTHON" -m cascadia.licensing.license_gate >> data/logs/license_gate.log 2>&1 &
-    sleep 2
-    curl -sf http://127.0.0.1:6100/api/health > /dev/null && echo "✓ License Gate ready" || echo "✗ License Gate failed — check data/logs/license_gate.log"
-fi
+# License Gate is a FLINT-managed service (config.json → services[license_gate]).
+# Starting it directly here causes FLINT's _cleanup_orphan_components() to
+# SIGKILL the orphan when FLINT boots, printing a spurious "Killed: 9" line.
+# We skip the direct start and let FLINT own it; health check runs post-FLINT.
 
 # ── 2.5 NATS message bus ──────────────────────────────────────────────────
 if command -v nats-server &> /dev/null; then
@@ -142,6 +136,21 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
         echo "  Last state: $FLINT_STATE"
         echo "  Check data/logs/ for errors"
     fi
+fi
+
+# ── 3.5. License Gate (FLINT-managed — wait for it to come up) ────────────
+echo "▸ Waiting for License Gate..."
+LG_WAIT=0
+until curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; do
+    sleep 1
+    LG_WAIT=$((LG_WAIT + 1))
+    if [ $LG_WAIT -ge 30 ]; then
+        echo "✗ License Gate did not come up after 30s — check data/logs/license_gate.log"
+        break
+    fi
+done
+if curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; then
+    echo "✓ License Gate ready (port 6100)"
 fi
 
 # ── 4. PRISM Dashboard ────────────────────────────────────────────────────
