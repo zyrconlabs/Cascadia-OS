@@ -49,6 +49,9 @@ BEACON_URL = os.environ.get("BEACON_URL", "http://127.0.0.1:6200")
 MISSION_MANAGER_URL = os.environ.get("MISSION_MANAGER_URL", "http://127.0.0.1:6207")
 BELL_URL   = os.environ.get("BELL_URL", "http://127.0.0.1:6204")
 TELEGRAM_URL = os.environ.get("TELEGRAM_URL", "http://127.0.0.1:9000")
+OM_URL     = os.environ.get("OM_URL", "http://127.0.0.1:6210")
+
+_WAKE_WAIT = 35  # seconds to wait for operator health after wake (covers OM's 30s poll cycle)
 
 
 def _http_post(url: str, payload: dict, timeout: int = 30) -> dict:
@@ -79,7 +82,7 @@ class ChiefService:
 
         # Resolve URLs from config port map so no hardcoded ports leak
         port_map = {c["name"]: c["port"] for c in self.config.get("components", [])}
-        global CREW_URL, BEACON_URL, MISSION_MANAGER_URL, BELL_URL
+        global CREW_URL, BEACON_URL, MISSION_MANAGER_URL, BELL_URL, OM_URL
         if not os.environ.get("CREW_URL"):
             CREW_URL = f"http://127.0.0.1:{port_map.get('crew', 5100)}"
         if not os.environ.get("BEACON_URL"):
@@ -88,6 +91,8 @@ class ChiefService:
             MISSION_MANAGER_URL = f"http://127.0.0.1:{port_map.get('mission_manager', 6207)}"
         if not os.environ.get("BELL_URL"):
             BELL_URL = f"http://127.0.0.1:{port_map.get('bell', 6204)}"
+        if not os.environ.get("OM_URL"):
+            OM_URL = f"http://127.0.0.1:{port_map.get('operator_manager', 6210)}"
 
         self.runtime = ServiceRuntime(
             name=name,
@@ -401,6 +406,62 @@ class ChiefService:
     # BEACON dispatch
     # ------------------------------------------------------------------
 
+    def _wake_and_wait(self, target: str) -> bool:
+        """Ask OM to wake a sleeping operator; poll its health until ready or timeout."""
+        try:
+            body = json.dumps({"reason": "dispatch_requested"}).encode()
+            req = urllib.request.Request(
+                f"{OM_URL}/operators/{target}/wake",
+                data=body, method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                result = json.loads(r.read().decode())
+            if not result.get("ok"):
+                self.runtime.logger.warning(
+                    "CHIEF: OM rejected wake for %s: %s", target, result
+                )
+                return False
+        except Exception as exc:
+            self.runtime.logger.warning(
+                "CHIEF: OM unreachable for wake(%s): %s", target, exc
+            )
+            return False
+
+        # Get the operator's port so we can poll its health directly (faster than
+        # waiting for OM's 30s monitoring cycle to mark it running)
+        op_port = None
+        try:
+            with urllib.request.urlopen(
+                f"{OM_URL}/operators/{target}/status", timeout=3
+            ) as r:
+                op_port = json.loads(r.read().decode()).get("port")
+        except Exception:
+            pass
+
+        self.runtime.logger.info(
+            "CHIEF: waking %s (port %s) — waiting up to %ds",
+            target, op_port, _WAKE_WAIT,
+        )
+        deadline = time.time() + _WAKE_WAIT
+        while time.time() < deadline:
+            if op_port:
+                try:
+                    with urllib.request.urlopen(
+                        f"http://127.0.0.1:{op_port}/api/health", timeout=2
+                    ) as r:
+                        if r.status == 200:
+                            time.sleep(2)  # allow CREW registration to complete
+                            return True
+                except Exception:
+                    pass
+            time.sleep(1)
+
+        self.runtime.logger.warning(
+            "CHIEF: %s did not become healthy within %ds", target, _WAKE_WAIT
+        )
+        return False
+
     # Fallback ports for operators that register dynamically with CREW.
     # Used when BEACON can't find the operator (duplicate CREW instances,
     # registration lag, or CREW restart clearing in-memory registry).
@@ -436,8 +497,35 @@ class ChiefService:
                 self.runtime.logger.warning(
                     "CHIEF: BEACON could not forward to %s — trying direct dispatch", target
                 )
-                return self._dispatch_direct(target, message)
-            return result.get("forward_response") or result
+                direct = self._dispatch_direct(target, message)
+                if "error" not in direct:
+                    return direct
+                # direct failed — try wake+retry (operator may be sleeping/evicted from CREW)
+                self.runtime.logger.info(
+                    "CHIEF: %s not reachable — attempting wake via OM", target
+                )
+                if self._wake_and_wait(target):
+                    retry = _http_post(f"{BEACON_URL}/route", payload, timeout=75)
+                    if retry.get("forwarded") is not False:
+                        return retry.get("forward_response") or retry
+                    return self._dispatch_direct(target, message)
+                return direct
+
+            forward_resp = result.get("forward_response") or result
+            # Target was found in CREW but its port returned 503 (sleeping process)
+            if (
+                result.get("forward_status") == 503
+                and isinstance(forward_resp, dict)
+                and "unreachable" in str(forward_resp.get("error", ""))
+            ):
+                self.runtime.logger.info(
+                    "CHIEF: %s unreachable (503) — attempting wake via OM", target
+                )
+                if self._wake_and_wait(target):
+                    retry = _http_post(f"{BEACON_URL}/route", payload, timeout=75)
+                    if retry.get("forwarded") is not False:
+                        return retry.get("forward_response") or retry
+            return forward_resp
         except urllib.error.URLError as exc:
             self.runtime.logger.warning(
                 "CHIEF: BEACON dispatch to %s failed: %s", target, exc
