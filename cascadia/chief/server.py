@@ -623,18 +623,25 @@ class ChiefService:
             and r.get("contacted", "").lower() not in ("yes", "not_interested", "pending")
         ][:5]
 
+        email_high     = sum(1 for r in rows if r.get("email_quality") == "high")
+        email_medium   = sum(1 for r in rows if r.get("email_quality") == "medium")
+        email_inferred = sum(1 for r in rows if r.get("email_quality") == "inferred")
+        email_none     = total - email_high - email_medium - email_inferred
+
         lines = [
             "📊 Lead Pipeline — Houston Contractors\n",
             f"Total: {total} | High confidence: {high} | Medium: {medium}\n",
-            f"✅ Contacted:       {contacted}",
-            f"❌ Not interested:  {not_interested}",
+            f"✅ Contacted:        {contacted}",
+            f"❌ Not interested:   {not_interested}",
             f"⏳ Pending outreach: {pending}",
-            f"📋 Uncontacted:     {uncontacted}",
+            f"📋 Uncontacted:      {uncontacted}\n",
+            f"📧 Emails — named: {email_high} | generic: {email_medium} | inferred: {email_inferred} | none: {email_none}",
         ]
         if top5:
             lines.append("\nTop uncontacted (high confidence):")
             for i, r in enumerate(top5, 1):
-                lines.append(f"{i}. {r['business_name']} — {r.get('phone', 'no phone')}")
+                email_tag = f" | 📧 {r['email']}" if r.get("email") else ""
+                lines.append(f"{i}. {r['business_name']} — {r.get('phone', 'no phone')}{email_tag}")
         lines.append("\nRun /outreach to brief these leads.")
         return "\n".join(lines)
 
