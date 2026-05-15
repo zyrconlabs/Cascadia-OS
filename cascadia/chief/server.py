@@ -572,6 +572,15 @@ class ChiefService:
 
     def _format_reply(self, target: str, result: dict) -> str:
         if "error" in result:
+            err = str(result["error"]).lower()
+            if any(x in err for x in (
+                "unreachable", "connection refused", "did not wake",
+                "operator not reachable", "timed out",
+            )):
+                return (
+                    f"The {target} worker is starting up — this can take up to "
+                    f"30 seconds on first use. Please try again in a moment."
+                )
             return (
                 f"Task could not be completed.\n"
                 f"Worker: {target}\n"
