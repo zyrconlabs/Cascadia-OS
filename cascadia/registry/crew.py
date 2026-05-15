@@ -38,6 +38,8 @@ _RESERVED_PATH_PATTERNS = (
 )
 
 _STITCH_PORT = 6201
+_HEALTH_POLL_INTERVAL = 30   # seconds between health checks
+_HEALTH_EVICT_AFTER   = 2    # consecutive misses before eviction
 
 _REQUIRED_MANIFEST_FIELDS = {'operator_id', 'name', 'version', 'capabilities'}
 _REQUIRED_DEPOT_MANIFEST_FIELDS = {'id', 'name', 'version', 'port', 'start_cmd',
@@ -170,6 +172,7 @@ class CrewService:
         )
         self._config = config
         self.registry: Dict[str, Dict[str, Any]] = {}
+        self._health_failures: Dict[str, int] = {}
         self._watchdog = OperatorWatchdog(config, self.runtime.logger)
         self._kill_switch = kill_switch_provider or NoopKillSwitchProvider()
         self._verifier = verifier or Verifier()
@@ -190,6 +193,7 @@ class CrewService:
         if not op_id:
             return 400, {'error': 'operator_id required'}
         self.registry[op_id] = payload
+        self._health_failures.pop(op_id, None)  # clear stale failure count on re-registration
         self.runtime.logger.info('CREW registered operator: %s', op_id)
         return 201, {'registered': op_id, 'crew_size': len(self.registry)}
 
@@ -1087,8 +1091,53 @@ class CrewService:
         """GET /api/watchdog/status — operator health and restart counts."""
         return 200, self._watchdog.get_status()
 
+    def _start_health_poller(self) -> None:
+        """Background thread: poll registered operators and evict dead ones.
+
+        Operators that crash or are killed cannot call /deregister. This poller
+        detects them via health checks and removes stale entries so CHIEF does not
+        route to ports that refuse connections.
+        """
+        def _loop() -> None:
+            while True:
+                _time.sleep(_HEALTH_POLL_INTERVAL)
+                to_evict = []
+                for op_id, rec in list(self.registry.items()):
+                    port = rec.get('port')
+                    if not port:
+                        continue
+                    health_hook = rec.get('health_hook', '/health')
+                    try:
+                        with _urllib_request.urlopen(
+                            f'http://127.0.0.1:{port}{health_hook}', timeout=3
+                        ) as r:
+                            alive = r.status == 200
+                    except Exception:
+                        alive = False
+                    if alive:
+                        self._health_failures.pop(op_id, None)
+                    else:
+                        count = self._health_failures.get(op_id, 0) + 1
+                        self._health_failures[op_id] = count
+                        if count >= _HEALTH_EVICT_AFTER:
+                            to_evict.append(op_id)
+                for op_id in to_evict:
+                    self.registry.pop(op_id, None)
+                    self._health_failures.pop(op_id, None)
+                    self.runtime.logger.warning(
+                        'CREW: evicted %s — unreachable for %d consecutive checks',
+                        op_id, _HEALTH_EVICT_AFTER,
+                    )
+
+        threading.Thread(target=_loop, daemon=True, name='crew-health-poller').start()
+        self.runtime.logger.info(
+            'CREW health poller started (%ds interval, evict after %d misses)',
+            _HEALTH_POLL_INTERVAL, _HEALTH_EVICT_AFTER,
+        )
+
     def start(self) -> None:
         self._watchdog.start()
+        self._start_health_poller()
         _start_removed_cleanup_daemon(_OPERATORS_DIR)
         self.runtime.logger.info('CREW: .removed cleanup daemon started (30-day purge)')
         self.runtime.start()
