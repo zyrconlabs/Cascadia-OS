@@ -606,26 +606,30 @@ class ChiefService:
         except Exception as exc:
             return f"📊 Could not read lead data: {exc}"
 
+        def _s(r, k, default=""):
+            v = r.get(k) or default
+            return str(v).strip().lower()
+
         total         = len(rows)
-        high          = sum(1 for r in rows if r.get("confidence", "").lower() == "high")
-        medium        = sum(1 for r in rows if r.get("confidence", "").lower() == "medium")
-        contacted     = sum(1 for r in rows if r.get("contacted", "").lower() == "yes")
-        not_interested = sum(1 for r in rows if r.get("contacted", "").lower() == "not_interested")
-        pending       = sum(1 for r in rows if r.get("contacted", "").lower() == "pending")
+        high          = sum(1 for r in rows if _s(r, "confidence") == "high")
+        medium        = sum(1 for r in rows if _s(r, "confidence") == "medium")
+        contacted     = sum(1 for r in rows if _s(r, "contacted") == "yes")
+        not_interested = sum(1 for r in rows if _s(r, "contacted") == "not_interested")
+        pending       = sum(1 for r in rows if _s(r, "contacted") == "pending")
         uncontacted   = sum(
             1 for r in rows
-            if r.get("contacted", "").strip().lower() not in ("yes", "not_interested", "pending")
+            if _s(r, "contacted") not in ("yes", "not_interested", "pending")
         )
         top5 = [
             r for r in rows
-            if r.get("confidence", "").lower() == "high"
-            and r.get("phone", "").strip()
-            and r.get("contacted", "").lower() not in ("yes", "not_interested", "pending")
+            if _s(r, "confidence") == "high"
+            and _s(r, "phone")
+            and _s(r, "contacted") not in ("yes", "not_interested", "pending")
         ][:5]
 
-        email_high     = sum(1 for r in rows if r.get("email_quality") == "high")
-        email_medium   = sum(1 for r in rows if r.get("email_quality") == "medium")
-        email_inferred = sum(1 for r in rows if r.get("email_quality") == "inferred")
+        email_high     = sum(1 for r in rows if _s(r, "email_quality") == "high")
+        email_medium   = sum(1 for r in rows if _s(r, "email_quality") == "medium")
+        email_inferred = sum(1 for r in rows if _s(r, "email_quality") == "inferred")
         email_none     = total - email_high - email_medium - email_inferred
 
         lines = [
