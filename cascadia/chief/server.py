@@ -26,6 +26,19 @@ from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.chief.models import TaskRequest, TaskResponse
 from cascadia.chief.operator_selector import select_target
+from cascadia.chief.fallback import intelligent_fallback
+from cascadia.chief.commands import parse_command, build_help_text, build_operators_text
+from cascadia.chief.intent_router import (
+    classify_intent,
+    validate_routing_decision,
+    append_history,
+    get_history,
+    get_last_action,
+    set_last_action,
+    OPERATOR_CATALOG,
+    CONFIDENCE_DISPATCH,
+    CONFIDENCE_CLARIFY,
+)
 
 _VERSION = "1.0.0"
 
@@ -107,66 +120,233 @@ class ChiefService:
     # ------------------------------------------------------------------
 
     def handle_task(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        task_id = uuid.uuid4().hex
-        req = TaskRequest.from_dict(payload)
+        task_id  = uuid.uuid4().hex
+        req      = TaskRequest.from_dict(payload)
+        chat_id  = str(req.metadata.get("chat_id") or "")
 
         self.runtime.logger.info(
             "CHIEF received task [%s] from %s via %s",
             task_id, req.sender, req.source_channel,
         )
 
-        # Operator / status selection
-        selection = select_target(req.task, CREW_URL)
-        self.runtime.logger.info(
-            "CHIEF selector: type=%s target=%s confidence=%.2f reason=%s",
-            selection["selected_type"],
-            selection.get("target"),
-            selection.get("confidence", 0.0),
-            selection.get("reason"),
-        )
+        # ── Step 0 — Slash command fast-path (100% accuracy, no LLM) ────────
+        parsed_cmd = parse_command(req.task)
+        if parsed_cmd is not None:
+            cmd = parsed_cmd["command"]
+            if parsed_cmd.get("unknown"):
+                reply_text = (
+                    f"I don't know that command: {cmd}\n"
+                    f"Try /help to see what's available."
+                )
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="none",
+                    reply_text=reply_text,
+                ).to_dict()
+            if cmd == "/help":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=build_help_text(),
+                ).to_dict()
+            if cmd == "/operators":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=build_operators_text(OPERATOR_CATALOG),
+                ).to_dict()
+            if cmd == "/status":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._status_summary(),
+                ).to_dict()
+            if cmd == "/missions":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._missions_summary(),
+                ).to_dict()
+            if parsed_cmd["operator"]:
+                target = parsed_cmd["operator"]
+                self.runtime.logger.info(
+                    "CHIEF command fast-path: %s → operator=%s", cmd, target
+                )
+                raw_result = self._dispatch_via_beacon(req, target, task_id)
+                reply_text = self._format_reply(target, raw_result)
+                append_history(chat_id, "user",      req.task)
+                append_history(chat_id, "assistant", reply_text[:500])
+                set_last_action(chat_id, "dispatch_operator", target, reply_text[:300], original_task=req.task)
+                ok = "error" not in raw_result
+                return 200, TaskResponse(
+                    ok=ok, task_id=task_id,
+                    selected_type="operator", selected_target=target,
+                    reply_text=reply_text, raw_result=raw_result,
+                ).to_dict()
 
-        # Status commands
+        # ── A. Status commands — fast-path, not recorded in history ──────────
+        selection = select_target(req.task, CREW_URL)
         if selection["selected_type"] == "status":
             reply_text = self._handle_status_command(selection["target"])
             resp = TaskResponse(
-                ok=True,
-                task_id=task_id,
-                selected_type="status",
-                selected_target=selection["target"],
+                ok=True, task_id=task_id,
+                selected_type="status", selected_target=selection["target"],
                 reply_text=reply_text,
             )
             return 200, resp.to_dict()
 
-        # No operator found
-        if not selection["ok"]:
-            reply_text = (
-                "I received your task but could not find a registered "
-                "worker for it.\n\n"
-                "Use /operators to see available workers, or "
-                "be more specific about what you need."
+        # Record user message now (after status gate — we don't track /status etc.)
+        append_history(chat_id, "user", req.task)
+
+        # ── A2. Repeat fast-path — "do it again" without LLM ────────────────
+        _REPEAT_PHRASES = frozenset({
+            "do it again", "run it again", "run again", "repeat that",
+            "again", "repeat", "same again", "do that again",
+        })
+        if req.task.lower().strip() in _REPEAT_PHRASES and chat_id:
+            last = get_last_action(chat_id)
+            if last and last.get("action") == "dispatch_operator" and last.get("target"):
+                target = last["target"]
+                original = last.get("original_task") or req.task
+                self.runtime.logger.info(
+                    "CHIEF repeat fast-path: repeating %s with original task=%r", target, original[:40]
+                )
+                # Replay with the original task so the operator recognizes the request
+                repeat_req = TaskRequest(
+                    task=original,
+                    source_channel=req.source_channel,
+                    reply_channel=req.reply_channel,
+                    sender=req.sender,
+                    tenant_id=req.tenant_id,
+                    metadata=req.metadata,
+                )
+                raw_result = self._dispatch_via_beacon(repeat_req, target, task_id)
+                reply_text = self._format_reply(target, raw_result)
+                append_history(chat_id, "assistant", reply_text[:500])
+                set_last_action(chat_id, "dispatch_operator", target, reply_text[:300], original_task=original)
+                ok = "error" not in raw_result
+                return 200, TaskResponse(
+                    ok=ok, task_id=task_id,
+                    selected_type="operator", selected_target=target,
+                    reply_text=reply_text, raw_result=raw_result,
+                ).to_dict()
+
+        # ── B. Keyword fast-path (confidence >= 0.90, no LLM needed) ─────────
+        kw_confidence = selection.get("confidence", 0.0)
+        if selection["ok"] and kw_confidence >= 0.90:
+            self.runtime.logger.info(
+                "CHIEF keyword fast-path: target=%s confidence=%.2f",
+                selection["target"], kw_confidence,
             )
+            target     = selection["target"]
+            raw_result = self._dispatch_via_beacon(req, target, task_id)
+            reply_text = self._format_reply(target, raw_result)
+            append_history(chat_id, "assistant", reply_text[:500])
+            set_last_action(chat_id, "dispatch_operator", target, reply_text[:300], original_task=req.task)
+            ok   = "error" not in raw_result
             resp = TaskResponse(
-                ok=False,
-                task_id=task_id,
-                selected_type="none",
-                reply_text=reply_text,
-                raw_result={"selector_reason": selection.get("reason", "")},
+                ok=ok, task_id=task_id,
+                selected_type="operator", selected_target=target,
+                reply_text=reply_text, raw_result=raw_result,
             )
             return 200, resp.to_dict()
 
-        # Dispatch to operator via BEACON
-        target = selection["target"]
-        raw_result = self._dispatch_via_beacon(req, target, task_id)
-        reply_text = self._format_reply(target, raw_result)
+        # ── C. LLM intent classifier ── pass stored history ───────────────────
+        history  = get_history(chat_id)
+        decision = classify_intent(req.task, history, chat_id=chat_id)
 
-        ok = "error" not in raw_result
+        # ── D. Validate against catalog + policy ──────────────────────────────
+        decision  = validate_routing_decision(decision)
+        validated = decision.action not in ("conversation",) or decision.confidence > 0
+
+        # ── E. Apply confidence thresholds ────────────────────────────────────
+        if decision.action == "dispatch_operator":
+            if decision.confidence < CONFIDENCE_DISPATCH:
+                decision.action = "ask_clarification"
+                if not decision.question:
+                    decision.question = (
+                        "I think I know what you need but I'm not sure — "
+                        "could you give me a bit more detail?"
+                    )
+            elif CONFIDENCE_CLARIFY <= decision.confidence < CONFIDENCE_DISPATCH:
+                decision.action = "ask_clarification"
+
+        # ── Audit log ─────────────────────────────────────────────────────────
+        self.runtime.logger.info(
+            'INTENT_ROUTER | msg="%s" | action=%s | target=%s | '
+            'confidence=%.2f | reason="%s" | validated=%s | final_action=%s',
+            req.task[:50],
+            decision.action,
+            decision.target,
+            decision.confidence,
+            decision.reason[:60],
+            "pass" if validated else "fail",
+            decision.action,
+        )
+
+        # ── F. Dispatch operator ──────────────────────────────────────────────
+        if decision.action == "dispatch_operator":
+            target     = decision.target
+            raw_result = self._dispatch_via_beacon(req, target, task_id)
+            reply_text = self._format_reply(target, raw_result)
+            append_history(chat_id, "assistant", reply_text[:500])
+            set_last_action(chat_id, "dispatch_operator", target, reply_text[:300], original_task=req.task)
+            ok   = "error" not in raw_result
+            resp = TaskResponse(
+                ok=ok, task_id=task_id,
+                selected_type="operator", selected_target=target,
+                reply_text=reply_text, raw_result=raw_result,
+            )
+            return 200, resp.to_dict()
+
+        # ── G. Ask clarification ──────────────────────────────────────────────
+        if decision.action == "ask_clarification":
+            question = decision.question or "Could you give me a bit more detail?"
+            append_history(chat_id, "assistant", question)
+            set_last_action(chat_id, "conversation", None, question[:200])
+            resp = TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="none",
+                reply_text=question,
+                raw_result={"reason": decision.reason, "missing": decision.missing_inputs},
+            )
+            return 200, resp.to_dict()
+
+        # ── H. Multi-step plan ────────────────────────────────────────────────
+        if decision.action == "multi_step_plan":
+            targets    = decision.targets or []
+            plan_lines = ["Here's my plan:"]
+            for i, t in enumerate(targets, 1):
+                plan_lines.append(f"  {i}. {t}")
+            plan_lines.append("\nStarting with the first step now...")
+            plan_summary = "\n".join(plan_lines)
+
+            if targets:
+                first_target = targets[0]
+                raw_result   = self._dispatch_via_beacon(req, first_target, task_id)
+                first_reply  = self._format_reply(first_target, raw_result)
+                reply_text   = plan_summary + "\n\n" + first_reply
+            else:
+                reply_text = plan_summary
+
+            append_history(chat_id, "assistant", reply_text[:500])
+            set_last_action(chat_id, "dispatch_operator", targets[0] if targets else None, reply_text[:300])
+            resp = TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="operator",
+                selected_target=targets[0] if targets else None,
+                reply_text=reply_text,
+            )
+            return 200, resp.to_dict()
+
+        # ── I. Conversation / fallback ────────────────────────────────────────
+        reply_text = intelligent_fallback(req.task, req.source_channel)
+        append_history(chat_id, "assistant", reply_text[:500])
+        set_last_action(chat_id, "conversation", None, reply_text[:200])
         resp = TaskResponse(
-            ok=ok,
-            task_id=task_id,
-            selected_type="operator",
-            selected_target=target,
+            ok=True, task_id=task_id,
+            selected_type="none",
             reply_text=reply_text,
-            raw_result=raw_result,
+            raw_result={"intent_reason": decision.reason},
         )
         return 200, resp.to_dict()
 
@@ -186,26 +366,42 @@ class ChiefService:
     # BEACON dispatch
     # ------------------------------------------------------------------
 
+    # Fallback ports for operators that register dynamically with CREW.
+    # Used when BEACON can't find the operator (duplicate CREW instances,
+    # registration lag, or CREW restart clearing in-memory registry).
+    _OPERATOR_FALLBACK_PORTS: dict[str, tuple[int, str]] = {
+        "recon":       (8002, "/api/task"),
+        "quote_brief": (8006, "/api/task"),
+    }
+
     def _dispatch_via_beacon(
         self, req: TaskRequest, target: str, task_id: str
     ) -> dict:
+        message = {
+            "task": req.task,
+            "task_id": task_id,
+            "source_channel": req.source_channel,
+            "reply_channel": req.reply_channel,
+            "sender": req.sender,
+            "tenant_id": req.tenant_id,
+            "metadata": req.metadata,
+        }
         payload = {
             "sender": "chief",
             "message_type": "run.execute",
             "target": target,
-            "message": {
-                "task": req.task,
-                "task_id": task_id,
-                "source_channel": req.source_channel,
-                "reply_channel": req.reply_channel,
-                "sender": req.sender,
-                "tenant_id": req.tenant_id,
-                "metadata": req.metadata,
-            },
+            "message": message,
+            "timeout": 60,
         }
         try:
-            result = _http_post(f"{BEACON_URL}/route", payload, timeout=30)
+            result = _http_post(f"{BEACON_URL}/route", payload, timeout=75)
             # BEACON wraps the operator response in forward_response
+            if result.get("forwarded") is False:
+                # BEACON couldn't find the operator port — fall back to direct dispatch
+                self.runtime.logger.warning(
+                    "CHIEF: BEACON could not forward to %s — trying direct dispatch", target
+                )
+                return self._dispatch_direct(target, message)
             return result.get("forward_response") or result
         except urllib.error.URLError as exc:
             self.runtime.logger.warning(
@@ -217,6 +413,35 @@ class ChiefService:
                 "CHIEF: BEACON dispatch to %s error: %s", target, exc
             )
             return {"error": str(exc), "target": target}
+
+    def _dispatch_direct(self, target: str, message: dict) -> dict:
+        """Direct operator dispatch — used when BEACON can't find the operator port."""
+        # Try CREW lookup first (handles dynamic registration)
+        try:
+            crew_data = _http_get(f"{CREW_URL}/crew", timeout=3)
+            op = crew_data.get("operators", {}).get(target)
+            if op and op.get("port"):
+                port     = op["port"]
+                task_hook = op.get("task_hook", "/api/task")
+                self.runtime.logger.info(
+                    "CHIEF direct dispatch: %s → port %d%s (via CREW)", target, port, task_hook
+                )
+                return _http_post(f"http://127.0.0.1:{port}{task_hook}", message, timeout=60)
+        except Exception as exc:
+            self.runtime.logger.warning("CHIEF: CREW lookup for %s failed: %s", target, exc)
+
+        # Fall back to known static ports
+        if target in self._OPERATOR_FALLBACK_PORTS:
+            port, task_hook = self._OPERATOR_FALLBACK_PORTS[target]
+            self.runtime.logger.info(
+                "CHIEF direct dispatch: %s → port %d%s (fallback)", target, port, task_hook
+            )
+            try:
+                return _http_post(f"http://127.0.0.1:{port}{task_hook}", message, timeout=60)
+            except Exception as exc:
+                return {"error": f"direct dispatch to {target} failed: {exc}"}
+
+        return {"error": f"operator '{target}' not reachable — not in CREW and no fallback port"}
 
     # ------------------------------------------------------------------
     # Reply formatting
@@ -242,7 +467,7 @@ class ChiefService:
             content = "\n".join(
                 f"{k}: {v}" for k, v in list(content.items())[:5]
             )
-        reply = f"Completed by {target}\n\n{str(content)}"
+        reply = str(content)
         return reply[:3500]
 
     # ------------------------------------------------------------------

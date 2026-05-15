@@ -203,7 +203,7 @@ class VanguardService:
 
     def _handle_telegram_inbound(self, envelope: dict) -> None:
         """
-        Background handler: send ack → POST task to CHIEF → send result to Telegram.
+        Background handler: POST task to CHIEF → send result to Telegram.
         Owns: Telegram reply dispatch. Does not own: operator selection (CHIEF owns that).
         """
         raw_meta = envelope.get('raw', {}).get('metadata', {})
@@ -216,16 +216,7 @@ class VanguardService:
         sender    = envelope.get('sender', 'unknown')
         tenant_id = envelope.get('tenant_id', 'default')
 
-        # 1. Immediate ack
-        try:
-            self._telegram_post(
-                f'{TELEGRAM_CONNECTOR_URL}/send',
-                {'chat_id': chat_id, 'text': '⏳ Received. CHIEF is on it...'},
-            )
-        except Exception as exc:
-            self.runtime.logger.warning('VANGUARD: telegram ack failed: %s', exc)
-
-        # 2. Dispatch to CHIEF
+        # Dispatch to CHIEF
         reply_text = '✅ Task completed.'
         try:
             result = self._telegram_post(
@@ -243,9 +234,7 @@ class VanguardService:
             reply_text = result.get('reply_text') or '✅ Task completed.'
         except urllib.error.URLError:
             self.runtime.logger.error('VANGUARD: CHIEF dispatch timed out for chat_id=%s', chat_id)
-            reply_text = (
-                '⏳ Still working on it — this task is taking longer than expected.'
-            )
+            reply_text = '❌ Request timed out. Please try again.'
         except Exception as exc:
             self.runtime.logger.error('VANGUARD: CHIEF dispatch error: %s', exc)
             reply_text = '❌ Something went wrong. Please try again.'

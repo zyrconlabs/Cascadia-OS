@@ -1,0 +1,55 @@
+/Users/andy/Zyrcon/cascadia-os/tests/test_chief_messaging.py:74: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  baseline = datetime.utcnow()
+
+CHIEF Live Messaging Test Suite
+Messages are sent to @ZyrconBot → chat_id 1535010257
+──────────────────────────────────────────────────────────────────────────────
+TEST   INPUT                          RESULT  REPLY PREVIEW
+──────────────────────────────────────────────────────────────────────────────
+T01    run recon                      PASS    🔍 RECON scan started. I'll message you when it's…
+T02    how many contacts found?       FAIL    How many contacts would you like to know about?
+T03    Draft a proposal for warehouse FAIL    <no reply>
+T04    Find me HVAC contractors in Ho FAIL    <no reply>
+T05    I need to find new clients for PASS    🔍 RECON scan started. I'll message you when it's…
+T06    /recon                         PASS    🔍 RECON scan started. I'll message you when it's…
+T07    /quote warehouse mezzanine     FAIL    <no reply>
+T08    /status                        FAIL    <no reply>
+T09    /help                          PASS    📋 CHIEF Commands  /recon        Run a RECON lead…
+T10    /operators                     PASS    🤖 Available Operators  ✅ RECON — Find and resear…
+T11    What is the weather today?     PASS    Could you please specify the location for which …
+T12    Can you send an invoice?       FAIL    <no reply>
+T13    Hello                          FAIL    <no reply>
+T14    What can you do?               PASS    Sure, I can help with finding leads in Houston o…
+T15a   /recon                         PASS    🔍 RECON scan started. I'll message you when it's…
+T15b   do it again                    FAIL    <no reply>
+T16a   how many contacts found?       FAIL    <no reply>
+T16b   how many of those have emails? PASS    Could you please specify the leads or prospects …
+T17                                   PASS    Could you please specify the leads or prospects …
+T18    asdfghjkl random gibberish     FAIL    <no reply>
+T19    /unknowncommand                PASS    I don't know that command: /unknowncommand Try /…
+T20    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx PASS    Could you please provide more details or specify…
+──────────────────────────────────────────────────────────────────────────────
+
+⚠️  Final score: 12/22 passed
+
+Failed tests:
+  T02: input='how many contacts found?'
+        reply='How many contacts would you like to know about?'
+  T03: input='Draft a proposal for warehouse mezzanine'
+        reply='<no reply>'
+  T04: input='Find me HVAC contractors in Houston'
+        reply='<no reply>'
+  T07: input='/quote warehouse mezzanine'
+        reply='<no reply>'
+  T08: input='/status'
+        reply='<no reply>'
+  T12: input='Can you send an invoice?'
+        reply='<no reply>'
+  T13: input='Hello'
+        reply='<no reply>'
+  T15b: input='do it again'
+        reply='<no reply>'
+  T16a: input='how many contacts found?'
+        reply='<no reply>'
+  T18: input='asdfghjkl random gibberish'
+        reply='<no reply>'
