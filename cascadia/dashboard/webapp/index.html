@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Zyrcon Command Center</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--tg-theme-bg-color, #1a1a2e);
+      color: var(--tg-theme-text-color, #ffffff);
+      padding: 12px;
+      min-height: 100vh;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; }
+    .funnel {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .stage-card {
+      flex: 0 0 auto;
+      background: var(--tg-theme-secondary-bg-color, #16213e);
+      border-radius: 10px;
+      padding: 10px 14px;
+      text-align: center;
+      min-width: 70px;
+    }
+    .stage-card .count {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--tg-theme-link-color, #5b8dee);
+    }
+    .stage-card .label { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+    .stage-card.hot .count { color: #ff6b6b; }
+    .section {
+      background: var(--tg-theme-secondary-bg-color, #16213e);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0.7;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .lead-row {
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .lead-row:last-child { border-bottom: none; }
+    .lead-name { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+    .lead-meta { font-size: 12px; opacity: 0.6; margin-bottom: 8px; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:active { opacity: 0.7; }
+    .btn-primary {
+      background: var(--tg-theme-button-color, #5b8dee);
+      color: var(--tg-theme-button-text-color, #fff);
+    }
+    .btn-success { background: #2ed573; color: #000; }
+    .btn-danger  { background: #ff4757; color: #fff; }
+    .btn-ghost {
+      background: rgba(255,255,255,0.1);
+      color: var(--tg-theme-text-color, #fff);
+    }
+    .big-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .big-btn {
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--tg-theme-button-color, #5b8dee);
+      color: var(--tg-theme-button-text-color, #fff);
+    }
+    .empty { text-align: center; opacity: 0.5; padding: 16px; font-size: 14px; }
+    .badge {
+      display: inline-block;
+      background: #ff4757;
+      color: #fff;
+      border-radius: 10px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-left: 6px;
+    }
+    .badge.zero { background: rgba(255,255,255,0.2); }
+    .loading { text-align: center; padding: 20px; opacity: 0.5; }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2ed573;
+      color: #000;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 1000;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>⚡ Command Center</h1>
+    <button class="btn btn-ghost" onclick="loadAll()" style="font-size:11px;padding:4px 10px">
+      ↻ Refresh
+    </button>
+  </div>
+
+  <!-- Pipeline Funnel -->
+  <div class="funnel" id="funnel">
+    <div class="loading">Loading pipeline...</div>
+  </div>
+
+  <!-- Big Action Buttons -->
+  <div class="big-actions">
+    <button class="big-btn" onclick="runRecon()">🔍 Run RECON</button>
+    <button class="big-btn" onclick="runOutreach()">📤 Send Outreach</button>
+  </div>
+
+  <!-- Pending Approvals -->
+  <div class="section">
+    <div class="section-title">
+      📄 Pending Approvals
+      <span class="badge zero" id="approval-count">0</span>
+    </div>
+    <div id="approvals"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- Recent Replies -->
+  <div class="section">
+    <div class="section-title">
+      💬 Recent Replies
+      <span class="badge zero" id="reply-count">0</span>
+    </div>
+    <div id="replies"><div class="loading">Loading...</div></div>
+  </div>
+
+  <!-- Hot Leads -->
+  <div class="section">
+    <div class="section-title">🔥 Hot Leads</div>
+    <div id="hot-leads"><div class="loading">Loading...</div></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    // Same-origin: works for both localhost and public URL (ngrok/Tailscale)
+    const API = '';
+
+    let _toastTimer = null;
+    function showToast(msg, color) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.background = color || '#2ed573';
+      t.style.color = (color === '#ff4757') ? '#fff' : '#000';
+      t.classList.add('show');
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    async function api(path, method, body) {
+      const opts = { method: method || 'GET', headers: { 'Content-Type': 'application/json' } };
+      if (body) opts.body = JSON.stringify(body);
+      try {
+        const r = await fetch(API + path, opts);
+        return await r.json();
+      } catch (e) {
+        return { error: e.message };
+      }
+    }
+
+    async function loadFunnel() {
+      const d = await api('/api/pipeline/summary');
+      if (d.error) {
+        document.getElementById('funnel').innerHTML = '<div class="empty">PRISM unreachable</div>';
+        return;
+      }
+      const stages = [
+        { key: 'new',       label: 'New',       emoji: '🆕', hot: false },
+        { key: 'contacted', label: 'Contacted',  emoji: '📤', hot: false },
+        { key: 'replied',   label: 'Replied',    emoji: '💬', hot: true  },
+        { key: 'quoted',    label: 'Quoted',     emoji: '📄', hot: true  },
+        { key: 'won',       label: 'Won',        emoji: '✅', hot: false },
+        { key: 'lost',      label: 'Lost',       emoji: '❌', hot: false },
+      ];
+      document.getElementById('funnel').innerHTML = stages.map(s => `
+        <div class="stage-card ${s.hot ? 'hot' : ''}">
+          <div class="count">${(d.stages || {})[s.key] || 0}</div>
+          <div class="label">${s.emoji} ${s.label}</div>
+        </div>
+      `).join('');
+    }
+
+    async function loadApprovals() {
+      const d = await api('/api/pipeline/approvals');
+      const el = document.getElementById('approvals');
+      const badge = document.getElementById('approval-count');
+      if (!Array.isArray(d)) { el.innerHTML = '<div class="empty">Error loading</div>'; return; }
+      badge.textContent = d.length;
+      badge.className = 'badge' + (d.length ? '' : ' zero');
+      if (!d.length) { el.innerHTML = '<div class="empty">No pending approvals</div>'; return; }
+      el.innerHTML = d.map(a => `
+        <div class="lead-row">
+          <div class="lead-name">${esc(a.business_name)}</div>
+          <div class="lead-meta">
+            📧 ${esc(a.email)}<br>
+            💰 ${esc(a.budget || 'TBD')}<br>
+            <span style="opacity:0.7">${esc((a.proposal_preview || '').slice(0, 100))}...</span>
+          </div>
+          <div class="actions">
+            <button class="btn btn-success" onclick="approve('${a.row_id}')">✅ Send Proposal</button>
+            <button class="btn btn-danger"  onclick="reject('${a.row_id}')">❌ Discard</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function loadReplies() {
+      const d = await api('/api/pipeline/replies');
+      const el = document.getElementById('replies');
+      const badge = document.getElementById('reply-count');
+      if (!Array.isArray(d)) { el.innerHTML = '<div class="empty">Error loading</div>'; return; }
+      badge.textContent = d.length;
+      badge.className = 'badge' + (d.length ? '' : ' zero');
+      if (!d.length) { el.innerHTML = '<div class="empty">No replies yet</div>'; return; }
+      el.innerHTML = [...d].reverse().slice(0, 5).map(r => `
+        <div class="lead-row">
+          <div class="lead-name">${esc(r.business_name || r.from_email)}</div>
+          <div class="lead-meta">
+            ${esc(r.subject || 'No subject')}<br>
+            ${esc((r.detected_at || '').slice(0, 16).replace('T', ' '))} UTC
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" onclick="generateQuote('${r.row_idx}')">📄 Generate Quote</button>
+            <button class="btn btn-ghost"   onclick="setStage('${r.row_idx}','lost')">❌ Not interested</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function loadHotLeads() {
+      const d = await api('/api/pipeline/hot');
+      const el = document.getElementById('hot-leads');
+      if (!Array.isArray(d)) { el.innerHTML = '<div class="empty">Error loading</div>'; return; }
+      if (!d.length) { el.innerHTML = '<div class="empty">No hot leads yet</div>'; return; }
+      el.innerHTML = d.slice(0, 5).map(l => `
+        <div class="lead-row">
+          <div class="lead-name">${esc(l.business_name)}</div>
+          <div class="lead-meta">
+            📞 ${esc(l.phone || 'No phone')} &nbsp;|&nbsp;
+            <strong>${esc(l.deal_stage)}</strong>
+            ${l.reply_subject ? '<br>' + esc(l.reply_subject.slice(0, 60)) : ''}
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" onclick="generateQuote('${l.row_id}')">📄 Quote</button>
+            ${l.phone ? `<button class="btn btn-ghost" onclick="window.open('tel:${esc(l.phone)}')">📞 Call</button>` : ''}
+            <button class="btn btn-danger"  onclick="setStage('${l.row_id}','lost')">❌ Lost</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function approve(rowId) {
+      showToast('Sending proposal...');
+      const d = await api('/api/pipeline/approve/' + rowId, 'POST');
+      if (d.ok) { showToast('✅ Proposal sent!'); loadAll(); }
+      else showToast('❌ ' + (d.error || 'Send failed'), '#ff4757');
+    }
+
+    async function reject(rowId) {
+      const d = await api('/api/pipeline/reject/' + rowId, 'POST');
+      showToast('Proposal discarded');
+      loadAll();
+    }
+
+    async function generateQuote(rowId) {
+      showToast('Generating quote...');
+      const d = await api('/api/pipeline/quote/' + rowId, 'POST');
+      if (d.ok) { showToast('📄 Quote ready — check approvals!'); setTimeout(loadApprovals, 1500); }
+      else showToast('❌ ' + (d.error || 'Quote failed'), '#ff4757');
+    }
+
+    async function setStage(rowId, stage) {
+      await api('/api/pipeline/stage/' + rowId, 'POST', { stage });
+      showToast('Marked as ' + stage);
+      loadAll();
+    }
+
+    async function runRecon() {
+      showToast('🔍 RECON scan starting...');
+      await api('/api/pipeline/recon', 'POST');
+      showToast('Scan running — check back in a minute');
+    }
+
+    async function runOutreach() {
+      showToast('📤 Sending outreach...');
+      const d = await api('/api/pipeline/outreach', 'POST', { limit: 5, send: true });
+      if (d.error) showToast('❌ ' + d.error, '#ff4757');
+      else showToast('Outreach started — emails going out');
+      setTimeout(loadFunnel, 3000);
+    }
+
+    function esc(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function loadAll() {
+      loadFunnel();
+      loadApprovals();
+      loadReplies();
+      loadHotLeads();
+    }
+
+    loadAll();
+  </script>
+</body>
+</html>
