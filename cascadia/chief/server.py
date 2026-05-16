@@ -223,6 +223,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text="📤 Drafting and sending to top leads. Stand by...",
                 ).to_dict()
+            if cmd == "/followups":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._followups_snapshot(),
+                ).to_dict()
             if parsed_cmd["operator"]:
                 target = parsed_cmd["operator"]
                 self.runtime.logger.info(
@@ -766,6 +772,60 @@ class ChiefService:
                 email_tag = f" | 📧 {r['email']}" if r.get("email") else ""
                 lines.append(f"{i}. {r['business_name']} — {r.get('phone', 'no phone')}{email_tag}")
         lines.append("\nRun /outreach to brief these leads.")
+        return "\n".join(lines)
+
+    def _followups_snapshot(self) -> str:
+        """Read CSV and return a formatted follow-up status summary."""
+        import csv as _csv
+        from datetime import datetime, timezone
+        from pathlib import Path
+        try:
+            rows = list(_csv.DictReader(
+                open(self._CSV_PATH, newline="", encoding="utf-8")))
+        except Exception as exc:
+            return f"📬 Could not read lead data: {exc}"
+
+        now = datetime.now(timezone.utc)
+        due_now: list[dict] = []
+        sent: list[dict] = []
+        upcoming: list[dict] = []
+
+        for r in rows:
+            due_str  = (r.get("followup_due_at") or "").strip()
+            sent_str = (r.get("followup_sent_at") or "").strip()
+            reply    = (r.get("reply_received") or "").strip().lower()
+            if not due_str:
+                continue
+            if sent_str:
+                sent.append(r)
+                continue
+            if reply == "yes":
+                continue
+            try:
+                due = datetime.fromisoformat(due_str)
+            except ValueError:
+                continue
+            if due <= now:
+                due_now.append(r)
+            else:
+                upcoming.append(r)
+
+        lines = [f"📬 Follow-up Status\n",
+                 f"Overdue / due now:  {len(due_now)}",
+                 f"Sent:               {len(sent)}",
+                 f"Upcoming:           {len(upcoming)}"]
+
+        if due_now:
+            lines.append("\nDue now (sequencer will send at next 30-min check):")
+            for r in due_now[:5]:
+                lines.append(f"• {r.get('business_name','')} | {r.get('email','')}")
+        if upcoming:
+            lines.append("\nUpcoming (next 3 days):")
+            for r in upcoming[:3]:
+                due_str = r.get("followup_due_at","")[:10]
+                lines.append(f"• {r.get('business_name','')} — due {due_str}")
+        if not due_now and not upcoming and not sent:
+            lines.append("\nNo follow-ups scheduled yet. Run /send_outreach to start.")
         return "\n".join(lines)
 
     def _mark_lead_contacted(self, row_id: str, status: str, chat_id: str) -> str:
