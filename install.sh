@@ -480,7 +480,11 @@ echo "  ║                                              ║"
 echo "  ║  → SwiftBar shows live system status         ║"
 echo "  ║  → Starts automatically at every boot        ║"
 echo "  ╚══════════════════════════════════════════════╝"
-echo "" 
+echo ""
+echo "  To configure your AI model:"
+echo "    bash scripts/setup-llm.sh"
+echo "  Or open Settings → AI Mode in PRISM."
+echo ""
 
 # ── PATH setup ────────────────────────────────────────────────────────────────
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
