@@ -206,6 +206,23 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text="📋 Pulling top leads for outreach. Stand by...",
                 ).to_dict()
+            if cmd == "/send_outreach":
+                if not chat_id:
+                    return 200, TaskResponse(
+                        ok=False, task_id=task_id, selected_type="none",
+                        reply_text="❌ /send_outreach requires a Telegram chat_id.",
+                    ).to_dict()
+                threading.Thread(
+                    target=self._run_send_outreach_and_notify,
+                    args=(chat_id,),
+                    daemon=True,
+                    name=f"chief-send-outreach-{task_id[:8]}",
+                ).start()
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text="📤 Drafting and sending to top leads. Stand by...",
+                ).to_dict()
             if parsed_cmd["operator"]:
                 target = parsed_cmd["operator"]
                 self.runtime.logger.info(
@@ -784,11 +801,30 @@ class ChiefService:
             self.runtime.logger.info("CHIEF outreach started: %s", result)
         except Exception as exc:
             self.runtime.logger.error("CHIEF outreach dispatch failed: %s", exc)
-            # Send error message to user
             try:
                 _http_post(
                     f"{TELEGRAM_URL}/send",
                     {"chat_id": chat_id, "text": f"❌ Could not start outreach: {exc}"},
+                    timeout=5,
+                )
+            except Exception:
+                pass
+
+    def _run_send_outreach_and_notify(self, chat_id: str) -> None:
+        """Background: POST to RECON /api/send_outreach — drafts and sends emails."""
+        try:
+            result = _http_post(
+                f"{self._RECON_URL}/api/send_outreach",
+                {"chat_id": chat_id, "limit": 5},
+                timeout=10,
+            )
+            self.runtime.logger.info("CHIEF send_outreach started: %s", result)
+        except Exception as exc:
+            self.runtime.logger.error("CHIEF send_outreach dispatch failed: %s", exc)
+            try:
+                _http_post(
+                    f"{TELEGRAM_URL}/send",
+                    {"chat_id": chat_id, "text": f"❌ Could not start send_outreach: {exc}"},
                     timeout=5,
                 )
             except Exception:
