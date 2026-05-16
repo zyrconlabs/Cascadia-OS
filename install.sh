@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Cascadia OS — One-Click Installer  (Mac & Linux)
+# Cascadia OS — One-Click Installer  (macOS, zero admin required)
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.sh | bash
 # ─────────────────────────────────────────────────────────────────────────────
-set -euo pipefail
 
 # Reconnect stdin to the terminal so all interactive prompts work under curl | bash
-# (curl pipes the script into bash, which replaces stdin; /dev/tty bypasses that)
 [ -t 0 ] || exec </dev/tty
 
-REPO="zyrconlabs/cascadia-os"   # ← replace with your GitHub username/repo
+set -euo pipefail
+
+# ── Config ────────────────────────────────────────────────────────────────────
+REPO="https://github.com/zyrconlabs/cascadia-os.git"
 BRANCH="main"
 INSTALL_DIR="$HOME/cascadia-os"
-VERSION=$(grep -m1 '^version' "$(dirname "$0")/pyproject.toml" 2>/dev/null | cut -d'"' -f2 || echo "0.44.0")
 VENV_DIR="$INSTALL_DIR/.venv"
-MIN_PYTHON="3.11"
+BIN_DIR="$HOME/.local/bin"
+MODEL_DIR="$INSTALL_DIR/models"
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "${CYAN}[cascadia]${NC} $*"; }
-success() { echo -e "${GREEN}[cascadia]${NC} $*"; }
-warn()    { echo -e "${YELLOW}[cascadia]${NC} $*"; }
-die()     { echo -e "${RED}[cascadia] ERROR:${NC} $*" >&2; exit 1; }
+ok()      { echo -e "${GREEN}[cascadia] ✓${NC} $*"; }
+warn()    { echo -e "${YELLOW}[cascadia] ⚠${NC} $*"; }
+die()     { echo -e "${RED}[cascadia] ✗${NC} $*" >&2; exit 1; }
 
-
-# ── Zyrcon AI logo ────────────────────────────────────────────────────────────
+# ── Banner ────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "\033[1;31m  ███████╗██╗   ██╗██████╗  ██████╗ ██████╗ ███╗   ██╗\033[0m"
 echo -e "\033[1;31m     ███╔╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔═══██╗████╗  ██║\033[0m"
@@ -35,14 +35,46 @@ echo -e "\033[1;31m  ███████╗   ██║   ██║  ██║
 echo -e "\033[1;31m  ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝\033[0m"
 echo -e "\033[0;90m                      A I   P L A T F O R M\033[0m"
 echo ""
-
+echo "  ╔══════════════════════════════════════════╗"
+echo "  ║        Cascadia OS — Installer           ║"
+echo "  ║        AI Business Operating System      ║"
+echo "  ╚══════════════════════════════════════════╝"
 echo ""
-echo "  ╔══════════════════════════════════════╗"
-echo "  ║       Cascadia OS v${VERSION} Installer    ║"
-echo "  ╚══════════════════════════════════════╝"
-echo ""
 
-# ── Pre-install disclosure ─────────────────────────────────────────────────────
+# ── Preflight ─────────────────────────────────────────────────────────────────
+[[ "$(uname)" == "Darwin" ]] || die "Cascadia OS requires macOS."
+
+# Chip detection — used for binary downloads
+ARCH=$(uname -m)   # arm64 or x86_64
+[[ "$ARCH" == "arm64" ]] && LLAMA_ARCH="arm64" || LLAMA_ARCH="x64"
+[[ "$ARCH" == "arm64" ]] && NATS_ARCH="arm64"  || NATS_ARCH="amd64"
+
+# Disk space (5 GB minimum)
+FREE_GB=$(df -g "$HOME" | tail -1 | awk '{print $4}')
+[[ "$FREE_GB" -ge 5 ]] || die "Need at least 5 GB free disk space. Have ${FREE_GB} GB."
+
+# curl is always present on macOS
+command -v curl &>/dev/null || die "curl not found — this should not happen on macOS."
+
+# git — ships with macOS (Xcode Command Line Tools)
+if ! command -v git &>/dev/null; then
+    info "Git not found — triggering developer tools install..."
+    info "A system dialog will appear. Click Install, then re-run this installer."
+    xcode-select --install 2>/dev/null || true
+    die "Re-run this installer after the developer tools finish installing."
+fi
+ok "Git $(git --version | awk '{print $3}')"
+
+# ── ~/bin setup ───────────────────────────────────────────────────────────────
+mkdir -p "$BIN_DIR"
+export PATH="$BIN_DIR:$PATH"
+for _profile in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    if [[ -f "$_profile" ]] && ! grep -q "$BIN_DIR" "$_profile" 2>/dev/null; then
+        echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$_profile"
+    fi
+done
+
+# ── Disclosure + confirmation ─────────────────────────────────────────────────
 echo ""
 echo "  ┌─────────────────────────────────────────────────────────────────┐"
 echo "  │                   BEFORE YOU CONTINUE                          │"
@@ -50,21 +82,23 @@ echo "  ├───────────────────────
 echo "  │                                                                 │"
 echo "  │  This installer will automatically:                            │"
 echo "  │                                                                 │"
-echo "  │  ● Install Homebrew          (if not present, macOS only)      │"
-echo "  │  ● Install SwiftBar          (menu bar controller, macOS only) │"
-echo "  │  ● Install Python 3.11+      (if not present)                  │"
-echo "  │  ● Install Python packages   (flask, cryptography, and others) │"
-echo "  │  ● Download an AI model      (1–4 GB depending on selection)   │"
-echo "  │  ● Register a login agent    (auto-starts Cascadia at boot)    │"
+echo "  │  ● Install Python 3.12      (user space, no admin needed)      │"
+echo "  │  ● Install Python packages  (flask, cryptography, and others)  │"
+echo "  │  ● Download NATS server     (~10 MB binary)                    │"
+echo "  │  ● Download AI runtime      (llama.cpp binary)                 │"
+echo "  │  ● Download an AI model     (1–4 GB depending on selection)    │"
+echo "  │  ● Register a login agent   (auto-starts Cascadia at boot)     │"
 echo "  │                                                                 │"
 echo "  │  Files are written to:                                         │"
-echo "  │  ● ~/cascadia-os/                  (application)               │"
-echo "  │  ● ~/Library/LaunchAgents/         (login agent, macOS only)   │"
+echo "  │  ● ~/cascadia-os/           (application)                      │"
+echo "  │  ● ~/.local/bin/            (nats-server, llama-server)        │"
+echo "  │  ● ~/Library/LaunchAgents/  (login agent)                      │"
 echo "  │                                                                 │"
-echo "  │  Nothing else on your system is modified.                      │"
+echo "  │  No administrator password is required.                        │"
+echo "  │  Nothing outside your home folder is modified.                 │"
 echo "  │                                                                 │"
-echo "  │  To uninstall at any time:                                     │"
-echo "  │  https://github.com/zyrconlabs/Cascadia-OS/blob/main/UNINSTALL.md  │"
+echo "  │  To uninstall:                                                  │"
+echo "  │  https://github.com/zyrconlabs/Cascadia-OS/blob/main/UNINSTALL.md │"
 echo "  │                                                                 │"
 echo "  │  By continuing you agree to the terms in LICENSE.              │"
 echo "  │                                                                 │"
@@ -76,213 +110,223 @@ echo ""
 echo "  ✓ Starting installation..."
 echo ""
 
-# ── 0. Mac prerequisites — Homebrew and SwiftBar ──────────────────────────────
-if [[ "$(uname)" == "Darwin" ]]; then
-    # Verify admin access before attempting anything that needs sudo
-    if ! sudo -n true 2>/dev/null; then
-        if ! sudo -v; then
-            die "Administrator access is required to install Homebrew.
-  The current user ($(whoami)) is not an Administrator.
-  Fix: open System Settings → Users & Groups, select this user, and enable Administrator.
-  Or ask your system admin to run: sudo dscl . -append /Groups/admin GroupMembership $(whoami)"
-        fi
-    fi
-
-    # Install Homebrew if not present
-    if ! command -v brew &>/dev/null; then
-        info "Homebrew not found — installing..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        # Add brew to PATH for Apple Silicon and Intel
-        if [[ -f "/opt/homebrew/bin/brew" ]]; then
-            eval "$(/opt/homebrew/bin/brew shellenv)"
-        elif [[ -f "/usr/local/bin/brew" ]]; then
-            eval "$(/usr/local/bin/brew shellenv)"
-        fi
-        success "Homebrew installed"
-    else
-        success "Homebrew found: $(brew --version | head -1)"
-    fi
-
-    # Install SwiftBar if not present
-    if [[ ! -d "/Applications/SwiftBar.app" ]] && [[ ! -d "$HOME/Applications/SwiftBar.app" ]]; then
-        info "SwiftBar not found — installing via Homebrew..."
-        brew install --cask swiftbar
-        success "SwiftBar installed"
-    else
-        success "SwiftBar found"
-    fi
-
-    # Open SwiftBar so it registers and creates its plugin folder
-    if [[ ! -d "$HOME/Library/Application Support/SwiftBar/Plugins" ]]; then
-        info "Launching SwiftBar to initialise plugin folder..."
-        open -a SwiftBar
-        # Wait up to 15s for SwiftBar to create the Plugins directory
-        SWIFTBAR_WAIT=0
-        while [[ ! -d "$HOME/Library/Application Support/SwiftBar/Plugins" ]] && [[ $SWIFTBAR_WAIT -lt 15 ]]; do
-            sleep 1
-            SWIFTBAR_WAIT=$((SWIFTBAR_WAIT + 1))
-        done
-        if [[ -d "$HOME/Library/Application Support/SwiftBar/Plugins" ]]; then
-            success "SwiftBar plugin folder ready"
-        else
-            warn "SwiftBar plugin folder not created yet — plugin will be linked if SwiftBar is opened manually"
-        fi
-    fi
+# ── Python via uv (user-space, no admin, no brew) ─────────────────────────────
+# uv manages Python versions in ~/.local/share/uv — no sudo ever
+info "Setting up Python..."
+UV_BIN="$BIN_DIR/uv"
+if ! command -v uv &>/dev/null; then
+    info "Installing uv (Python manager)..."
+    curl -fsSL https://astral.sh/uv/install.sh | sh
+    # uv installs itself to ~/.local/bin — now in PATH
 fi
+command -v uv &>/dev/null || die "uv install failed. Check your internet connection."
+ok "uv $(uv --version | awk '{print $2}')"
 
-# ── 1. Check Python ───────────────────────────────────────────────────────────
-info "Checking Python version..."
-PYTHON=""
-for cmd in python3.12 python3.11 python3; do
-    if command -v "$cmd" &>/dev/null; then
-        ver=$("$cmd" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-        major=${ver%%.*}; minor=${ver##*.}
-        if [[ $major -ge 3 && $minor -ge 11 ]]; then
-            PYTHON="$cmd"
-            success "Found Python $ver at $(command -v $cmd)"
-            break
-        fi
-    fi
-done
-
-if [[ -z "$PYTHON" ]]; then
-    die "Python $MIN_PYTHON+ is required. Install it from https://python.org and re-run this script."
-fi
-
-# ── 2. Check Git ──────────────────────────────────────────────────────────────
-info "Checking git..."
-command -v git &>/dev/null || die "git is required. Install it and re-run."
-success "git found."
-
-# ── 3. Clone or update ────────────────────────────────────────────────────────
+# ── Clone repo ────────────────────────────────────────────────────────────────
+info "Downloading Cascadia OS..."
 if [[ -d "$INSTALL_DIR/.git" ]]; then
-    info "Existing installation found at $INSTALL_DIR — pulling latest..."
-    git -C "$INSTALL_DIR" pull --ff-only origin "$BRANCH"
+    warn "Existing install found — updating to latest..."
+    git -C "$INSTALL_DIR" pull --ff-only origin "$BRANCH" --quiet
 else
-    info "Cloning Cascadia OS into $INSTALL_DIR..."
-    git clone --branch "$BRANCH" --depth 1 "https://github.com/$REPO.git" "$INSTALL_DIR"
+    git clone --branch "$BRANCH" --depth 1 "$REPO" "$INSTALL_DIR" --quiet
 fi
+ok "Cascadia OS downloaded"
 
+# ── Virtual environment + packages ────────────────────────────────────────────
+info "Installing Python packages..."
 cd "$INSTALL_DIR"
+# uv creates the venv and installs deps — Python 3.12 auto-downloaded if needed
+uv venv "$VENV_DIR" --python 3.12 --quiet
+uv pip install --python "$VENV_DIR" -e ".[operators]" --quiet
+ok "Python packages installed"
 
-# ── 4. Virtual environment ────────────────────────────────────────────────────
-if [[ ! -d "$VENV_DIR" ]]; then
-    info "Creating virtual environment..."
-    "$PYTHON" -m venv "$VENV_DIR"
-fi
-source "$VENV_DIR/bin/activate"
-success "Virtual environment ready."
-
-# ── 5. Install package ────────────────────────────────────────────────────────
-info "Installing Cascadia OS..."
-pip install --quiet --upgrade pip
-pip install --quiet -e ".[operators]"
-success "Package installed."
-
-# ── 6. Config ─────────────────────────────────────────────────────────────────
+# ── Silent first-time setup ───────────────────────────────────────────────────
+info "Running first-time setup..."
 if [[ ! -f "$INSTALL_DIR/config.json" ]]; then
     cp "$INSTALL_DIR/config.example.json" "$INSTALL_DIR/config.json"
-    warn "config.json created from example. Edit it before starting."
-else
-    info "config.json already exists — skipping."
+fi
+"$VENV_DIR/bin/python" -m cascadia.installer.once \
+    --dir "$INSTALL_DIR" --config config.json --no-browser
+ok "Setup complete"
+
+# ── NATS server binary ────────────────────────────────────────────────────────
+info "Installing NATS server..."
+if ! command -v nats-server &>/dev/null; then
+    NATS_TAG=$(curl -fsSL "https://api.github.com/repos/nats-io/nats-server/releases/latest" \
+        | "$VENV_DIR/bin/python" -c \
+          "import json,sys; print(json.load(sys.stdin)['tag_name'])" 2>/dev/null \
+        || echo "v2.14.0")
+    NATS_URL="https://github.com/nats-io/nats-server/releases/download/${NATS_TAG}/nats-server-${NATS_TAG}-darwin-${NATS_ARCH}.tar.gz"
+    info "Downloading NATS ${NATS_TAG}..."
+    curl -fsSL "$NATS_URL" | tar -xz -C /tmp
+    mv "/tmp/nats-server-${NATS_TAG}-darwin-${NATS_ARCH}/nats-server" "$BIN_DIR/nats-server"
+    chmod +x "$BIN_DIR/nats-server"
+    rm -rf "/tmp/nats-server-${NATS_TAG}-darwin-${NATS_ARCH}"
+fi
+ok "NATS $(nats-server --version)"
+
+# ── llama.cpp binary ──────────────────────────────────────────────────────────
+info "Installing AI runtime (llama.cpp)..."
+LLAMA_BIN=""
+for _candidate in \
+    "$BIN_DIR/llama-server" \
+    "/opt/homebrew/bin/llama-server" \
+    "/usr/local/bin/llama-server" \
+    "$HOME/Zyrcon/llama.cpp/build/bin/llama-server"; do
+    [[ -f "$_candidate" ]] && { LLAMA_BIN="$_candidate"; break; }
+done
+
+if [[ -z "$LLAMA_BIN" ]]; then
+    LLAMA_TAG=$(curl -fsSL "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest" \
+        | "$VENV_DIR/bin/python" -c \
+          "import json,sys; print(json.load(sys.stdin)['tag_name'])" 2>/dev/null \
+        || echo "")
+    if [[ -n "$LLAMA_TAG" ]]; then
+        LLAMA_ARCHIVE="llama-${LLAMA_TAG}-bin-macos-${LLAMA_ARCH}.tar.gz"
+        LLAMA_URL="https://github.com/ggerganov/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_ARCHIVE}"
+        info "Downloading llama.cpp ${LLAMA_TAG}..."
+        if curl -fsSL "$LLAMA_URL" -o /tmp/llama.tar.gz 2>/dev/null; then
+            mkdir -p /tmp/llama_extract
+            tar -xzf /tmp/llama.tar.gz -C /tmp/llama_extract
+            find /tmp/llama_extract -name "llama-server" -exec mv {} "$BIN_DIR/llama-server" \; 2>/dev/null || true
+            rm -rf /tmp/llama.tar.gz /tmp/llama_extract
+            [[ -f "$BIN_DIR/llama-server" ]] && chmod +x "$BIN_DIR/llama-server"
+            LLAMA_BIN="$BIN_DIR/llama-server"
+        else
+            warn "llama.cpp download failed — AI features require llama-server in PATH"
+        fi
+    else
+        warn "Could not fetch llama.cpp release info — AI features require llama-server in PATH"
+    fi
 fi
 
-# ── 7. Silent first-time setup (dirs, db, config) ────────────────────────────
-# AI mode is chosen in PRISM Settings surface — no separate browser wizard needed
-info "Running silent setup (directories, database, config defaults)..."
-"$VENV_DIR/bin/python" -m cascadia.installer.once --dir "$INSTALL_DIR" --config config.json --no-browser
-success "Setup complete."
+[[ -n "$LLAMA_BIN" ]] && ok "AI runtime at $LLAMA_BIN" || \
+    warn "AI runtime not installed — limited mode until llama-server is available"
 
-# ── 9. Launcher script ───────────────────────────────────────────────────────
-LAUNCHER="$HOME/.local/bin/cascadia"
-mkdir -p "$HOME/.local/bin"
+# ── Config ────────────────────────────────────────────────────────────────────
+info "Updating config paths..."
+mkdir -p "$INSTALL_DIR/data/logs"
+mkdir -p "$INSTALL_DIR/data/runtime/pids"
+mkdir -p "$MODEL_DIR"
+
+"$VENV_DIR/bin/python" - <<PYEOF
+import json, os
+from pathlib import Path
+
+p = Path("$INSTALL_DIR/config.json")
+c = json.loads(p.read_text())
+
+home = os.environ["HOME"]
+
+def fix(v):
+    if isinstance(v, str):
+        return v.replace("/Users/andy", home).replace("/Users/zyrcon", home)
+    if isinstance(v, dict): return {k: fix(x) for k, x in v.items()}
+    if isinstance(v, list): return [fix(x) for x in v]
+    return v
+
+c = fix(c)
+
+llm = c.setdefault("llm", {})
+llm["models_dir"] = "$MODEL_DIR"
+if "$LLAMA_BIN":
+    llm["llama_bin"] = "$LLAMA_BIN"
+
+p.write_text(json.dumps(c, indent=2))
+PYEOF
+ok "Config updated"
+
+# ── AI model ──────────────────────────────────────────────────────────────────
+echo ""
+if ls "$MODEL_DIR"/*.gguf 2>/dev/null | head -1 | grep -q gguf; then
+    ok "AI model already present"
+else
+    info "Select AI model:"
+    echo ""
+    echo "  1) Qwen 2.5 1.5B  — ~1 GB  (fastest, lighter tasks)"
+    echo "  2) Qwen 2.5 3B    — ~2 GB  (recommended)"
+    echo "  3) Skip           — configure later in PRISM Settings"
+    echo ""
+    read -r -p "  Choice [1/2/3]: " _model_choice
+    echo ""
+    case "$_model_choice" in
+        1)
+            _model_file="qwen2.5-1.5b-instruct-q4_k_m.gguf"
+            _model_url="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/${_model_file}"
+            ;;
+        2)
+            _model_file="qwen2.5-3b-instruct-q4_k_m.gguf"
+            _model_url="https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/${_model_file}"
+            ;;
+        *)
+            _model_file=""
+            warn "Skipped — open PRISM → Settings to download a model later"
+            ;;
+    esac
+
+    if [[ -n "${_model_file:-}" ]]; then
+        info "Downloading ${_model_file} (this takes a few minutes)..."
+        curl -fsSL --progress-bar "$_model_url" -o "$MODEL_DIR/$_model_file" && \
+            ok "AI model ready" || \
+            warn "Download failed — retry in PRISM → Settings"
+
+        # Update config with selected model
+        "$VENV_DIR/bin/python" - <<PYEOF
+import json
+from pathlib import Path
+p = Path("$INSTALL_DIR/config.json")
+c = json.loads(p.read_text())
+c.setdefault("llm", {})["model"] = "$_model_file"
+p.write_text(json.dumps(c, indent=2))
+PYEOF
+    fi
+fi
+
+# ── Launcher script ───────────────────────────────────────────────────────────
+LAUNCHER="$BIN_DIR/cascadia"
 cat > "$LAUNCHER" <<EOF
 #!/usr/bin/env bash
 cd "$INSTALL_DIR"
-bash -n "$INSTALL_DIR/start.sh" || { echo "[cascadia] ERROR: start.sh has syntax errors — aborting"; exit 1; }
 exec bash "$INSTALL_DIR/start.sh"
 EOF
 chmod +x "$LAUNCHER"
 
-# ── 10. Create startup wrapper (used by launchd + manual runs) ────────────────
-# This wrapper ensures llama.cpp + Cascadia start in the right order at boot
+# ── Startup wrapper (activates venv for launchd) ──────────────────────────────
 STARTUP_WRAPPER="$INSTALL_DIR/run.sh"
 cat > "$STARTUP_WRAPPER" <<EOF
 #!/usr/bin/env bash
-# Cascadia OS startup wrapper — used by launchd and manual runs
-# Starts llama.cpp then Cascadia OS watchdog in the correct order
-cd "$INSTALL_DIR"
 source "$VENV_DIR/bin/activate"
-bash -n "$INSTALL_DIR/start.sh" || { echo "[cascadia] ERROR: start.sh has syntax errors — aborting"; exit 1; }
+cd "$INSTALL_DIR"
 exec bash "$INSTALL_DIR/start.sh"
 EOF
 chmod +x "$STARTUP_WRAPPER"
-success "Startup wrapper created: run.sh" 
 
-
-# ── 11. Flint menu bar controller ─────────────────────────────────────────────
-PLUGIN_SRC="$INSTALL_DIR/cascadia/flint/cascadia.5s.sh"
-chmod +x "$PLUGIN_SRC"
-
+# ── Flint / SwiftBar plugin ───────────────────────────────────────────────────
+FLINT_SRC="$INSTALL_DIR/cascadia/flint/cascadia.5s.sh"
 SWIFTBAR_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
-XBAR_DIR="$HOME/Library/Application Support/xbar/plugins"
-ARGOS_DIR="$HOME/.config/argos"
-INSTALLED_FLINT=false
-
-if [[ "$(uname)" == "Darwin" ]]; then
-    if [[ -d "$SWIFTBAR_DIR" ]]; then
-        # Symlink — one source of truth, repo changes reflect instantly in SwiftBar
-        ln -sf "$PLUGIN_SRC" "$SWIFTBAR_DIR/cascadia.5s.sh"
-        chmod +x "$PLUGIN_SRC"
-        success "Flint plugin linked → SwiftBar (symlink — no copy needed)"
-        INSTALLED_FLINT=true
-    elif [[ -d "$XBAR_DIR" ]]; then
-        ln -sf "$PLUGIN_SRC" "$XBAR_DIR/cascadia.5s.sh"
-        chmod +x "$PLUGIN_SRC"
-        success "Flint plugin linked → xbar (symlink)"
-        INSTALLED_FLINT=true
-    fi
-    if [[ "$INSTALLED_FLINT" = false ]]; then
-        echo ""
-        info "Menu bar controller (Flint) not auto-installed."
-        echo "  Install SwiftBar: brew install swiftbar"
-        echo "  Then run: bash install.sh   (it will auto-link on next run)"
-        echo "  Or link manually:"
-        echo "    mkdir -p \"$SWIFTBAR_DIR\""
-        echo "    ln -sf \"$PLUGIN_SRC\" \"$SWIFTBAR_DIR/cascadia.5s.sh\""
-        echo "  Or run without SwiftBar: python -m cascadia.flint.tray"
-    fi
-elif [[ "$(uname)" == "Linux" ]]; then
-    if [[ -d "$ARGOS_DIR" ]]; then
-        ln -sf "$PLUGIN_SRC" "$ARGOS_DIR/cascadia.5s.sh"
-        chmod +x "$PLUGIN_SRC"
-        success "Flint plugin linked → Argos (symlink)"
-        INSTALLED_FLINT=true
-    fi
-    if [[ "$INSTALLED_FLINT" = false ]]; then
-        echo ""
-        info "Menu bar controller not auto-installed."
-        echo "  Install Argos (GNOME) or link manually:"
-        echo "    ln -sf \"$PLUGIN_SRC\" ~/.config/argos/cascadia.5s.sh"
-        echo "  Or run: python -m cascadia.flint.tray"
-    fi
+if [[ -f "$FLINT_SRC" ]] && [[ -d "$SWIFTBAR_DIR" ]]; then
+    chmod +x "$FLINT_SRC"
+    ln -sf "$FLINT_SRC" "$SWIFTBAR_DIR/cascadia.5s.sh"
+    ok "Flint plugin linked to SwiftBar"
+elif [[ ! -d "$SWIFTBAR_DIR" ]]; then
+    warn "SwiftBar not installed — install it to get the menu bar controller"
+    warn "  brew install --cask swiftbar   (requires admin once)"
 fi
 
+# ── Login agent (no sudo — ~/Library is user-owned) ───────────────────────────
+info "Registering auto-start login agent..."
+PLIST_DIR="$HOME/Library/LaunchAgents"
+PLIST_PATH="$PLIST_DIR/ai.cascadia.os.plist"
+mkdir -p "$PLIST_DIR"
 
-# ── 12. Auto-start on login (launchd + SwiftBar login item) ───────────────────
-if [[ "$(uname)" == "Darwin" ]]; then
-    PLIST_DIR="$HOME/Library/LaunchAgents"
-    PLIST_PATH="$PLIST_DIR/com.zyrconlabs.cascadia.plist"
-    PYTHON_BIN="$VENV_DIR/bin/python"
-    mkdir -p "$PLIST_DIR"
-
-    cat > "$PLIST_PATH" << PLIST
+cat > "$PLIST_PATH" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.zyrconlabs.cascadia</string>
+    <string>ai.cascadia.os</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
@@ -302,162 +346,51 @@ if [[ "$(uname)" == "Darwin" ]]; then
 </plist>
 PLIST
 
-    # Unload old agent if present, load new one
-    launchctl unload "$PLIST_PATH" 2>/dev/null || true
-    launchctl load "$PLIST_PATH" 2>/dev/null && \
-        success "Cascadia registered as login agent — starts automatically at boot" || \
-        info "launchctl load failed — run manually: launchctl load $PLIST_PATH"
+launchctl unload "$PLIST_PATH" 2>/dev/null || true
+launchctl load  "$PLIST_PATH" 2>/dev/null && \
+    ok "Login agent registered — Cascadia starts automatically at boot" || \
+    warn "launchctl load failed — start manually: bash ~/cascadia-os/start.sh"
 
-    # ── Separate launchd plist for llama.cpp — auto-restarts on crash ─────────
-    LLAMA_PLIST_PATH="$PLIST_DIR/com.zyrconlabs.cascadia.llama.plist"
-    # Find llama-server — priority: brew → Zyrcon production → fallback
-    LLAMA_BIN_PATH=""
-    for candidate in \
-        "/opt/homebrew/bin/llama-server" \
-        "/usr/local/bin/llama-server" \
-        "$HOME/Zyrcon/llama.cpp/build/bin/llama-server" \
-        "$HOME/llama.cpp/build/bin/llama-server"; do
-        if [[ -f "$candidate" ]]; then
-            LLAMA_BIN_PATH="$candidate"
-            break
-        fi
-    done
-
-    # Auto-build if not found anywhere
-    if [[ -z "$LLAMA_BIN_PATH" ]]; then
-        info "llama.cpp not found — building from source into ~/Zyrcon/llama.cpp"
-        info "This takes 5-10 minutes on first install..."
-        LLAMA_SRC="$HOME/Zyrcon/llama.cpp"
-        if [[ -d "$LLAMA_SRC/.git" ]]; then
-            git -C "$LLAMA_SRC" pull --ff-only
-        else
-            git clone https://github.com/ggerganov/llama.cpp "$LLAMA_SRC" --depth 1
-        fi
-        cmake "$LLAMA_SRC" -B "$LLAMA_SRC/build" -DGGML_METAL=ON -DCMAKE_BUILD_TYPE=Release
-        cmake --build "$LLAMA_SRC/build" --config Release -j$(sysctl -n hw.ncpu)
-        LLAMA_BIN_PATH="$LLAMA_SRC/build/bin/llama-server"
-        if [[ -f "$LLAMA_BIN_PATH" ]]; then
-            success "llama.cpp built successfully"
-        else
-            die "llama.cpp build failed. Install manually: brew install llama.cpp then re-run installer."
-        fi
-    fi
-
-    cat > "$LLAMA_PLIST_PATH" << LLAMA_PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.zyrconlabs.cascadia.llama</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>
-MODEL=\$(python3 -c "import json; c=json.load(open('${INSTALL_DIR}/config.json')); l=c.get('llm',{}); print(l.get('models_dir','${INSTALL_DIR}/models').rstrip('/')+'/'+l.get('model',''))" 2>/dev/null);
-BIN=\$(python3 -c "import json; c=json.load(open('${INSTALL_DIR}/config.json')); print(c.get('llm',{}).get('llama_bin','${LLAMA_BIN_PATH}'))" 2>/dev/null || echo "${LLAMA_BIN_PATH}");
-GPU=\$(python3 -c "import json; c=json.load(open('${INSTALL_DIR}/config.json')); print(c.get('llm',{}).get('n_gpu_layers',99))" 2>/dev/null || echo "99");
-PROVIDER=\$(python3 -c "import json; c=json.load(open('${INSTALL_DIR}/config.json')); print(c.get('llm',{}).get('provider',''))" 2>/dev/null || echo "");
-[[ "\$PROVIDER" != "llamacpp" ]] && exit 0;
-[[ ! -f "\$MODEL" ]] && exit 0;
-[[ ! -f "\$BIN" ]] && exit 0;
-exec "\$BIN" --model "\$MODEL" --host 0.0.0.0 --port 8080 --ctx-size 4096 --n-gpu-layers "\$GPU"
-        </string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>${INSTALL_DIR}</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>ThrottleInterval</key>
-    <integer>10</integer>
-    <key>StandardOutPath</key>
-    <string>${INSTALL_DIR}/data/logs/llamacpp.log</string>
-    <key>StandardErrorPath</key>
-    <string>${INSTALL_DIR}/data/logs/llamacpp.log</string>
-</dict>
-</plist>
-LLAMA_PLIST
-
-    launchctl unload "$LLAMA_PLIST_PATH" 2>/dev/null || true
-    launchctl load "$LLAMA_PLIST_PATH" 2>/dev/null && \
-        success "llama.cpp registered as login agent — auto-restarts on crash" || \
-        info "llama.cpp launchd registration failed — will start manually via start.sh"
-
-    # Add SwiftBar to Login Items so it auto-launches at boot
-    # Find SwiftBar — check common locations
-    SWIFTBAR_APP=""
-    for candidate in "/Applications/SwiftBar.app" "$HOME/Applications/SwiftBar.app"; do
-        if [[ -d "$candidate" ]]; then
-            SWIFTBAR_APP="$candidate"
-            break
-        fi
-    done
-    if [[ -z "$SWIFTBAR_APP" ]]; then
-        SWIFTBAR_APP=$(mdfind "kMDItemCFBundleIdentifier == 'com.ameba.SwiftBar'" 2>/dev/null | head -1)
-    fi
-
-    if [[ -n "$SWIFTBAR_APP" ]]; then
-        osascript << APPLESCRIPT 2>/dev/null && \
-            success "SwiftBar added to Login Items — launches automatically at boot" || \
-            info "Could not add SwiftBar to Login Items — add manually in System Settings → General → Login Items"
-tell application "System Events"
-    if not (exists login item "SwiftBar") then
-        make new login item at end of login items with properties ¬
-            {name:"SwiftBar", path:"${SWIFTBAR_APP}", hidden:false}
-    end if
-end tell
-APPLESCRIPT
-    else
-        info "SwiftBar not found — install with: brew install swiftbar"
-        info "Then run install.sh again to register it as a login item"
-    fi
+# ── PATH reminder ─────────────────────────────────────────────────────────────
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+    warn "Run: source ~/.zshrc   (to get 'cascadia' command in this session)"
 fi
 
-# ── 13. Start Cascadia and verify ────────────────────────────────────────────
+# ── First boot ────────────────────────────────────────────────────────────────
 echo ""
-info "Starting Cascadia OS full stack (llama.cpp + all services)..."
-
-# Unload any old launchd agent first — prevents it respawning the old instance
-launchctl unload "$HOME/Library/LaunchAgents/com.zyrconlabs.cascadia.plist" 2>/dev/null || true
-sleep 1
-
-# Kill any stale instances
+info "Starting Cascadia OS..."
 pkill -f "cascadia.kernel" 2>/dev/null || true
-pkill -f "llama-server" 2>/dev/null || true
-sleep 2
-
-# Load the new launchd agent (points to new run.sh)
-launchctl load "$HOME/Library/LaunchAgents/com.zyrconlabs.cascadia.plist" 2>/dev/null || true
-
-# start.sh handles llama.cpp → Cascadia OS in correct order
+sleep 1
 mkdir -p "$INSTALL_DIR/data/logs"
-# Validate start.sh syntax before attempting to run
-bash -n "$INSTALL_DIR/start.sh" || die "start.sh has syntax errors — aborting deployment"
-cd "$INSTALL_DIR" && bash start.sh
+bash "$INSTALL_DIR/run.sh" >> "$INSTALL_DIR/data/logs/startup.log" 2>&1 &
+info "Waiting for services (25s)..."
+sleep 25
 
+# ── Health checks ─────────────────────────────────────────────────────────────
+echo ""
+info "Health checks..."
+_pass=0; _fail=0
+for _ep in "6300/health:PRISM" "5100/health:CREW" "6200/health:BEACON"; do
+    _url="http://127.0.0.1:${_ep%%:*}"
+    _name="${_ep##*:}"
+    if curl -sf "$_url" >/dev/null 2>&1; then
+        ok "$_name"; ((_pass++)) || true
+    else
+        warn "$_name not responding yet"; ((_fail++)) || true
+    fi
+done
 
-# ── Open dashboard on first install ──────────────────────────────────────────
+# ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 if [[ ! -f "$INSTALL_DIR/.setup_complete" ]]; then
-    FIRST_INSTALL=1
-    info "Opening setup wizard..."
-    sleep 3
-    [[ "$(uname)" == "Darwin" ]] && open "http://localhost:6300/setup" 2>/dev/null || true
+    [[ "$(uname)" == "Darwin" ]] && \
+        open "http://localhost:6300/setup" 2>/dev/null || true
 else
-    FIRST_INSTALL=0
-    info "Opening PRISM dashboard..."
-    [[ "$(uname)" == "Darwin" ]] && open "http://localhost:6300" 2>/dev/null || true
+    [[ "$(uname)" == "Darwin" ]] && \
+        open "http://localhost:6300" 2>/dev/null || true
 fi
 touch "$INSTALL_DIR/.setup_complete"
 
-[[ "$(uname)" == "Darwin" ]] && open -g "swiftbar://refreshAllPlugins" 2>/dev/null || true
-
-echo ""
-
-# ── Cascadia OS by Zyrcon logo ────────────────────────────────────────────────
 echo ""
 echo -e "\033[1;35m   ██████╗ █████╗ ███████╗ ██████╗ █████╗ ██████╗ ██╗ █████╗ \033[0m"
 echo -e "\033[1;35m  ██╔════╝██╔══██╗██╔════╝██╔════╝██╔══██╗██╔══██╗██║██╔══██╗\033[0m"
@@ -470,30 +403,17 @@ echo ""
 echo "  ╔══════════════════════════════════════════════╗"
 echo "  ║  Cascadia OS is running.                     ║"
 echo "  ║                                              ║"
-  if [[ "$FIRST_INSTALL" == "1" ]]; then
-    echo "  ║  → Setup wizard opened — takes about 2 minutes ║"
-    echo "  ║  → Download your AI model to activate operators ║"
-  else
-    echo "  ║  → PRISM dashboard opened in your browser    ║"
-    echo "  ║  → Demo data loaded — check the Approvals tab ║"
-  fi
-echo "  ║  → SwiftBar shows live system status         ║"
-echo "  ║  → Starts automatically at every boot        ║"
+if [[ "${_fail}" -eq 0 ]]; then
+echo "  ║  ✓ All services healthy                      ║"
+else
+echo "  ║  ⚠ Some services still starting — see logs  ║"
+fi
+echo "  ║                                              ║"
+echo "  ║  Dashboard:  http://localhost:6300           ║"
+echo "  ║  Logs:       ~/cascadia-os/data/logs/        ║"
+echo "  ║                                              ║"
+echo "  ║  To stop:    bash ~/cascadia-os/stop.sh      ║"
+echo "  ║  To start:   bash ~/cascadia-os/start.sh     ║"
+echo "  ║  Or just:    cascadia  (after source ~/.zshrc) ║"
 echo "  ╚══════════════════════════════════════════════╝"
 echo ""
-echo "  To configure your AI model:"
-echo "    bash scripts/setup-llm.sh"
-echo "  Or open Settings → AI Mode in PRISM."
-echo ""
-
-# ── PATH setup ────────────────────────────────────────────────────────────────
-if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-    for profile in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
-        if [[ -f "$profile" ]] && ! grep -q ".local/bin" "$profile"; then
-            echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> "$profile"
-            info "Added ~/.local/bin to $profile"
-            break
-        fi
-    done
-    export PATH="$HOME/.local/bin:$PATH"
-fi
