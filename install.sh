@@ -66,7 +66,7 @@ echo "  │  By continuing you agree to the terms in LICENSE.              │"
 echo "  │                                                                 │"
 echo "  └─────────────────────────────────────────────────────────────────┘"
 echo ""
-read -r -p "  Continue with installation? [y/N]  " _confirm
+read -r -p "  Continue with installation? [y/N]  " _confirm </dev/tty
 echo ""
 [[ "$_confirm" =~ ^[Yy]$ ]] || { echo "  Installation cancelled."; echo ""; exit 0; }
 echo "  ✓ Starting installation..."
