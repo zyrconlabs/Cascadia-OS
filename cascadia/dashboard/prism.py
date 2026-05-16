@@ -255,6 +255,19 @@ class PrismService:
 
         self.runtime.register_route('POST', '/api/prism/demo/trigger',          self.demo_trigger)
         self.runtime.register_route('GET',  '/api/prism/demo/first-run-status', self.demo_first_run_status)
+        # Telegram WebApp — static serving + pipeline command center
+        self.runtime.register_route('GET', '/webapp',                             self.serve_webapp)
+        self.runtime.register_route('GET',  '/api/pipeline/summary',              self.pipeline_summary)
+        self.runtime.register_route('GET',  '/api/pipeline/hot',                  self.pipeline_hot)
+        self.runtime.register_route('GET',  '/api/pipeline/replies',              self.pipeline_replies)
+        self.runtime.register_route('GET',  '/api/pipeline/approvals',            self.pipeline_approvals)
+        self.runtime.register_route('POST', '/api/pipeline/approve/{row_id}',     self.pipeline_approve)
+        self.runtime.register_route('POST', '/api/pipeline/reject/{row_id}',      self.pipeline_reject)
+        self.runtime.register_route('POST', '/api/pipeline/stage/{row_id}',       self.pipeline_set_stage)
+        self.runtime.register_route('POST', '/api/pipeline/quote/{row_id}',       self.pipeline_generate_quote)
+        self.runtime.register_route('POST', '/api/pipeline/outreach',             self.pipeline_outreach)
+        self.runtime.register_route('POST', '/api/pipeline/recon',                self.pipeline_recon)
+        self._pipeline_approvals_lock = threading.Lock()
         # RECON Leads — mobile integration
         self.runtime.register_route('GET',  '/api/recon/leads',                  self.recon_leads)
         self.runtime.register_route('GET',  '/api/recon/leads/download',         self.recon_leads_download)
@@ -3872,6 +3885,294 @@ document.getElementById('key').addEventListener('keydown', function(e){
     def recon_operator_status_ext(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """GET /api/operators/recon/status — proxy to recon_status."""
         return self.recon_status(payload)
+
+    # ------------------------------------------------------------------
+    # Telegram WebApp — static serving
+    # ------------------------------------------------------------------
+
+    def serve_webapp(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /webapp — serve the pipeline command center webapp."""
+        index = Path(__file__).parent / 'webapp' / 'index.html'
+        if not index.exists():
+            return 404, {'__html__': b'<h1>Webapp not found. Run setup.</h1>'}
+        return 200, {'__html__': index.read_bytes()}
+
+    # ------------------------------------------------------------------
+    # Telegram WebApp — pipeline data helpers
+    # ------------------------------------------------------------------
+
+    def _pipeline_replies_path(self) -> Path:
+        return self._recon_csv_path.parent / 'replies.json'
+
+    def _pipeline_approvals_path(self) -> Path:
+        return self._recon_csv_path.parent / 'pending_quotes.json'
+
+    def _pipeline_read_replies(self) -> List[Dict[str, Any]]:
+        path = self._pipeline_replies_path()
+        if not path.exists():
+            return []
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            return []
+
+    def _pipeline_read_approvals(self) -> Dict[str, Any]:
+        path = self._pipeline_approvals_path()
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            return {}
+
+    def _pipeline_write_approvals(self, data: Dict[str, Any]) -> None:
+        self._pipeline_approvals_path().write_text(json.dumps(data, indent=2))
+
+    # ------------------------------------------------------------------
+    # Telegram WebApp — pipeline API endpoints
+    # ------------------------------------------------------------------
+
+    def pipeline_summary(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/pipeline/summary — funnel stage counts and email coverage."""
+        rows = self._recon_read_csv()
+
+        def _s(r: Dict[str, Any], k: str) -> str:
+            return str(r.get(k) or '').strip().lower()
+
+        stages: Dict[str, int] = {s: 0 for s in ('new', 'contacted', 'replied', 'quoted', 'won', 'lost')}
+        email_coverage: Dict[str, int] = {q: 0 for q in ('high', 'medium', 'inferred', 'none')}
+        hot = 0
+        for r in rows:
+            stage = _s(r, 'deal_stage') or 'new'
+            stages[stage if stage in stages else 'new'] += 1
+            eq = _s(r, 'email_quality') or 'none'
+            email_coverage[eq if eq in email_coverage else 'none'] += 1
+            if stage in ('replied', 'contacted') and _s(r, 'email'):
+                hot += 1
+        return 200, {
+            'total': len(rows),
+            'stages': stages,
+            'hot_leads': hot,
+            'email_coverage': email_coverage,
+        }
+
+    def pipeline_hot(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/pipeline/hot — leads in replied/contacted stage needing action."""
+        rows = self._recon_read_csv()
+
+        def _s(r: Dict[str, Any], k: str) -> str:
+            return str(r.get(k) or '').strip().lower()
+
+        _PRIORITY = {'replied': 0, 'contacted': 1, 'quoted': 2}
+        hot = []
+        for i, r in enumerate(rows):
+            stage = _s(r, 'deal_stage') or 'new'
+            if stage not in _PRIORITY:
+                continue
+            hot.append({
+                'row_id':        i,
+                'business_name': r.get('business_name', ''),
+                'phone':         r.get('phone', ''),
+                'email':         r.get('email', ''),
+                'deal_stage':    stage,
+                'reply_subject': r.get('reply_subject', ''),
+            })
+        hot.sort(key=lambda x: _PRIORITY.get(x['deal_stage'], 99))
+        return 200, hot[:20]
+
+    def pipeline_replies(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/pipeline/replies — all reply log entries."""
+        return 200, self._pipeline_read_replies()
+
+    def pipeline_approvals(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/pipeline/approvals — quotes awaiting send approval."""
+        data   = self._pipeline_read_approvals()
+        result = []
+        for row_id, entry in data.items():
+            body = entry.get('body', '')
+            result.append({
+                'row_id':           row_id,
+                'business_name':    entry.get('business_name', ''),
+                'email':            entry.get('email', ''),
+                'proposal_preview': body[:200] if body else '',
+                'budget':           entry.get('budget', 'TBD'),
+                'created_at':       entry.get('created_at', ''),
+            })
+        result.sort(key=lambda x: x['created_at'], reverse=True)
+        return 200, result
+
+    def pipeline_approve(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/pipeline/approve/{row_id} — send pending quote email."""
+        row_id = str(payload.get('row_id', '')).strip()
+        if not row_id:
+            return 400, {'ok': False, 'error': 'row_id required'}
+
+        with self._pipeline_approvals_lock:
+            data  = self._pipeline_read_approvals()
+            entry = data.get(row_id)
+
+        if not entry:
+            return 404, {'ok': False, 'error': f'No pending quote for lead #{row_id}'}
+
+        email   = entry.get('email', '')
+        subject = entry.get('subject', 'Proposal — Zyrcon Labs')
+        body    = entry.get('body', '')
+        biz     = entry.get('business_name', f'lead #{row_id}')
+        if not email:
+            return 400, {'ok': False, 'error': f'No email address for {biz}'}
+
+        email_port = self._ports.get('email', 8010)
+        result = _http_post(email_port, '/api/task',
+                            {'to': email, 'subject': subject, 'body': body}, timeout=20.0)
+        if not result or not result.get('ok'):
+            err = (result or {}).get('error', 'email operator unreachable')
+            return 500, {'ok': False, 'error': err}
+
+        # Mark deal_stage=quoted in CSV
+        try:
+            rows = self._recon_read_csv()
+            idx  = int(row_id)
+            if 0 <= idx < len(rows):
+                for r in rows:
+                    r.setdefault('deal_stage', '')
+                    r.setdefault('quoted_at', '')
+                rows[idx]['deal_stage'] = 'quoted'
+                rows[idx]['quoted_at']  = _now()
+                self._recon_write_csv(rows)
+        except Exception as exc:
+            self.runtime.logger.error('pipeline_approve: CSV update failed: %s', exc)
+
+        with self._pipeline_approvals_lock:
+            data = self._pipeline_read_approvals()
+            data.pop(row_id, None)
+            self._pipeline_write_approvals(data)
+
+        return 200, {'ok': True, 'sent_to': email, 'business_name': biz}
+
+    def pipeline_reject(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/pipeline/reject/{row_id} — discard a pending quote."""
+        row_id = str(payload.get('row_id', '')).strip()
+        if not row_id:
+            return 400, {'ok': False, 'error': 'row_id required'}
+
+        with self._pipeline_approvals_lock:
+            data  = self._pipeline_read_approvals()
+            entry = data.pop(row_id, None)
+            self._pipeline_write_approvals(data)
+
+        biz = (entry or {}).get('business_name', f'lead #{row_id}')
+        return 200, {'ok': True, 'discarded': biz}
+
+    def pipeline_set_stage(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/pipeline/stage/{row_id} — manually advance deal stage."""
+        row_id = str(payload.get('row_id', '')).strip()
+        stage  = str(payload.get('stage', '')).strip().lower()
+        valid  = {'new', 'contacted', 'replied', 'quoted', 'won', 'lost'}
+        if not row_id or stage not in valid:
+            return 400, {'ok': False, 'error': f'row_id and stage ({"|".join(sorted(valid))}) required'}
+        try:
+            rows = self._recon_read_csv()
+            idx  = int(row_id)
+            if not (0 <= idx < len(rows)):
+                return 404, {'ok': False, 'error': f'row {row_id} not found'}
+            for r in rows:
+                r.setdefault('deal_stage', '')
+            rows[idx]['deal_stage'] = stage
+            self._recon_write_csv(rows)
+            biz = rows[idx].get('business_name', f'lead #{row_id}')
+            return 200, {'ok': True, 'row_id': row_id, 'deal_stage': stage, 'business_name': biz}
+        except Exception as exc:
+            return 500, {'ok': False, 'error': str(exc)}
+
+    def pipeline_generate_quote(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/pipeline/quote/{row_id} — generate proposal and queue for approval."""
+        row_id = str(payload.get('row_id', '')).strip()
+        if not row_id:
+            return 400, {'ok': False, 'error': 'row_id required'}
+
+        rows = self._recon_read_csv()
+        try:
+            idx = int(row_id)
+        except ValueError:
+            return 400, {'ok': False, 'error': f'Invalid row_id: {row_id!r}'}
+        if not (0 <= idx < len(rows)):
+            return 404, {'ok': False, 'error': f'Lead #{row_id} not found'}
+
+        lead  = rows[idx]
+        biz   = lead.get('business_name', '').strip() or f'Lead #{row_id}'
+        email = lead.get('email', '').strip()
+        btype = (lead.get('business_type') or lead.get('notes') or 'contractor').strip()[:60]
+        city  = lead.get('city', 'Houston').strip() or 'Houston'
+        scope = (payload.get('description') or
+                 f'Pipeline management and lead generation for {btype} contractors in {city}')
+
+        quote_port = self._ports.get('quote', 8007)
+        result = _http_post(quote_port, '/api/task', {
+            'task': scope,
+            'context': {
+                'company_name':  biz,
+                'contact_email': email,
+                'contact_name':  '',
+                'opportunity':   scope,
+            },
+        }, timeout=30.0)
+
+        if not result:
+            return 503, {'ok': False, 'error': 'Quote operator unreachable (port 8007)'}
+
+        proposal = result.get('result') or {}
+        if not proposal:
+            return 500, {'ok': False, 'error': 'Quote operator returned no proposal'}
+
+        budget   = proposal.get('budget', 'TBD')
+        sections = proposal.get('sections') or {}
+        body_parts = ['Hi there,\n\nThank you for getting back to us.\n']
+        if sections.get('scope'):
+            body_parts.append(str(sections['scope']))
+        if sections.get('approach'):
+            body_parts.append(str(sections['approach']))
+        if budget and budget != 'TBD':
+            body_parts.append(f'Investment: {budget}')
+        body_parts.append('Worth a quick call to walk through the details?\n\nAndy | Zyrcon Labs')
+        email_body    = '\n\n'.join(body_parts)
+        email_subject = f'Proposal — Zyrcon Labs for {biz}'
+
+        entry = {
+            'row_id':        row_id,
+            'business_name': biz,
+            'email':         email,
+            'phone':         lead.get('phone', '').strip(),
+            'proposal_id':   proposal.get('id', ''),
+            'subject':       email_subject,
+            'body':          email_body,
+            'budget':        str(budget),
+            'created_at':    _now(),
+        }
+        with self._pipeline_approvals_lock:
+            data = self._pipeline_read_approvals()
+            data[row_id] = entry
+            self._pipeline_write_approvals(data)
+
+        return 200, {'ok': True, 'row_id': row_id, 'business_name': biz, 'budget': str(budget)}
+
+    def pipeline_outreach(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/pipeline/outreach — trigger send-outreach via RECON."""
+        limit      = max(1, min(int(payload.get('limit', 5)), 20))
+        recon_port = self._ports.get('recon', 8002)
+        # chat_id='webapp': Telegram notify fails silently; emails still send
+        result = _http_post(recon_port, '/api/send_outreach',
+                            {'chat_id': 'webapp', 'limit': limit}, timeout=15.0)
+        if result is None:
+            return 503, {'ok': False, 'error': 'RECON operator not reachable'}
+        return 200, {'ok': True, 'limit': limit, 'result': result}
+
+    def pipeline_recon(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/pipeline/recon — trigger a fresh RECON scan."""
+        recon_port = self._ports.get('recon', 8002)
+        result = _http_post(recon_port, '/api/start', {}, timeout=10.0)
+        if result is None:
+            return 503, {'ok': False, 'error': 'RECON operator not reachable'}
+        return 200, {'ok': True, 'started': True}
 
     def _start_approval_timeout_daemon(self) -> None:
         try:
