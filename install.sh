@@ -6,6 +6,10 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# Reconnect stdin to the terminal so all interactive prompts work under curl | bash
+# (curl pipes the script into bash, which replaces stdin; /dev/tty bypasses that)
+[ -t 0 ] || exec </dev/tty
+
 REPO="zyrconlabs/cascadia-os"   # ← replace with your GitHub username/repo
 BRANCH="main"
 INSTALL_DIR="$HOME/cascadia-os"
@@ -66,7 +70,7 @@ echo "  │  By continuing you agree to the terms in LICENSE.              │"
 echo "  │                                                                 │"
 echo "  └─────────────────────────────────────────────────────────────────┘"
 echo ""
-read -r -p "  Continue with installation? [y/N]  " _confirm </dev/tty
+read -r -p "  Continue with installation? [y/N]  " _confirm
 echo ""
 [[ "$_confirm" =~ ^[Yy]$ ]] || { echo "  Installation cancelled."; echo ""; exit 0; }
 echo "  ✓ Starting installation..."
@@ -74,6 +78,16 @@ echo ""
 
 # ── 0. Mac prerequisites — Homebrew and SwiftBar ──────────────────────────────
 if [[ "$(uname)" == "Darwin" ]]; then
+    # Verify admin access before attempting anything that needs sudo
+    if ! sudo -n true 2>/dev/null; then
+        if ! sudo -v; then
+            die "Administrator access is required to install Homebrew.
+  The current user ($(whoami)) is not an Administrator.
+  Fix: open System Settings → Users & Groups, select this user, and enable Administrator.
+  Or ask your system admin to run: sudo dscl . -append /Groups/admin GroupMembership $(whoami)"
+        fi
+    fi
+
     # Install Homebrew if not present
     if ! command -v brew &>/dev/null; then
         info "Homebrew not found — installing..."
