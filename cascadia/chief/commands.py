@@ -15,6 +15,7 @@ COMMANDS: dict[str, dict] = {
     "/outreach":      {"operator": None, "description": "Brief top 5 uncontacted leads for outreach"},
     "/send_outreach": {"operator": None, "description": "Draft AND send outreach emails to top leads"},
     "/followups":     {"operator": None, "description": "Show pending follow-ups due today"},
+    "/replies":       {"operator": None, "description": "Show recent lead replies from inbox"},
     "/pipeline":  {"operator": None,          "description": "Show lead pipeline snapshot"},
     "/status":    {"operator": None,          "description": "Show system status"},
     "/missions":  {"operator": None,          "description": "Recent mission runs"},
@@ -61,6 +62,28 @@ def parse_contact_command(text: str) -> dict | None:
     raw = (m.group(2) or "").lower()
     status_map = {"": "yes", "yes": "yes", "no": "not_interested", "pending": "pending"}
     return {"row_id": m.group(1), "status": status_map[raw]}
+
+
+def parse_quote_command(text: str) -> dict | None:
+    """
+    Match /quote_N [optional description].
+    Returns {"row_id": "31", "description": "..."} or None if no match.
+    """
+    m = _re.match(r'^/quote_(\d+)(?:\s+(.+))?$', text.strip(), _re.IGNORECASE)
+    if not m:
+        return None
+    return {"row_id": m.group(1), "description": (m.group(2) or "").strip()}
+
+
+def parse_approval_command(text: str) -> dict | None:
+    """
+    Match /approve_N or /reject_N.
+    Returns {"action": "approve", "row_id": "31"} or None if no match.
+    """
+    m = _re.match(r'^/(approve|reject)_(\d+)$', text.strip(), _re.IGNORECASE)
+    if not m:
+        return None
+    return {"action": m.group(1).lower(), "row_id": m.group(2)}
 
 
 def build_help_text() -> str:

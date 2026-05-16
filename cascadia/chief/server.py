@@ -27,7 +27,10 @@ from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.chief.models import TaskRequest, TaskResponse
 from cascadia.chief.operator_selector import select_target
 from cascadia.chief.fallback import intelligent_fallback
-from cascadia.chief.commands import parse_command, build_help_text, build_operators_text, parse_contact_command
+from cascadia.chief.commands import (
+    parse_command, build_help_text, build_operators_text,
+    parse_contact_command, parse_quote_command, parse_approval_command,
+)
 from cascadia.chief.intent_router import (
     classify_intent,
     validate_routing_decision,
@@ -147,6 +150,36 @@ class ChiefService:
                 reply_text=reply_text,
             ).to_dict()
 
+        quote_cmd = parse_quote_command(req.task)
+        if quote_cmd is not None:
+            if not chat_id:
+                return 200, TaskResponse(
+                    ok=False, task_id=task_id, selected_type="none",
+                    reply_text="❌ /quote_N requires a Telegram chat_id.",
+                ).to_dict()
+            threading.Thread(
+                target=self._generate_quote_for_lead,
+                args=(quote_cmd["row_id"], quote_cmd["description"], chat_id),
+                daemon=True,
+                name=f"chief-quote-{task_id[:8]}",
+            ).start()
+            return 200, TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="status", selected_target="/quote",
+                reply_text=f"📄 Drafting proposal for lead #{quote_cmd['row_id']}. Stand by...",
+            ).to_dict()
+
+        approval_cmd = parse_approval_command(req.task)
+        if approval_cmd is not None:
+            reply_text = self._handle_approval(
+                approval_cmd["action"], approval_cmd["row_id"], chat_id
+            )
+            return 200, TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="status", selected_target=f"/{approval_cmd['action']}",
+                reply_text=reply_text,
+            ).to_dict()
+
         parsed_cmd = parse_command(req.task)
         if parsed_cmd is not None:
             cmd = parsed_cmd["command"]
@@ -228,6 +261,12 @@ class ChiefService:
                     ok=True, task_id=task_id,
                     selected_type="status", selected_target=cmd,
                     reply_text=self._followups_snapshot(),
+                ).to_dict()
+            if cmd == "/replies":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._replies_snapshot(),
                 ).to_dict()
             if parsed_cmd["operator"]:
                 target = parsed_cmd["operator"]
@@ -716,8 +755,11 @@ class ChiefService:
     # Pipeline snapshot + outreach dispatch
     # ------------------------------------------------------------------
 
-    _CSV_PATH = "/Users/andy/Zyrcon/operators/cascadia-os-operators/recon/output/houston_contractors.csv"
-    _RECON_URL = "http://127.0.0.1:8002"
+    _CSV_PATH       = "/Users/andy/Zyrcon/operators/cascadia-os-operators/recon/output/houston_contractors.csv"
+    _REPLIES_PATH   = "/Users/andy/Zyrcon/operators/cascadia-os-operators/recon/output/replies.json"
+    _APPROVALS_FILE = "/Users/andy/Zyrcon/operators/cascadia-os-operators/recon/output/pending_quotes.json"
+    _RECON_URL      = "http://127.0.0.1:8002"
+    _approvals_lock = threading.Lock()
 
     def _pipeline_snapshot(self) -> str:
         """Read houston_contractors.csv and return a formatted pipeline snapshot."""
@@ -735,13 +777,15 @@ class ChiefService:
             v = r.get(k) or default
             return str(v).strip().lower()
 
-        total         = len(rows)
-        high          = sum(1 for r in rows if _s(r, "confidence") == "high")
-        medium        = sum(1 for r in rows if _s(r, "confidence") == "medium")
-        contacted     = sum(1 for r in rows if _s(r, "contacted") == "yes")
+        total          = len(rows)
+        high           = sum(1 for r in rows if _s(r, "confidence") == "high")
+        medium         = sum(1 for r in rows if _s(r, "confidence") == "medium")
+        contacted      = sum(1 for r in rows if _s(r, "contacted") == "yes")
         not_interested = sum(1 for r in rows if _s(r, "contacted") == "not_interested")
-        pending       = sum(1 for r in rows if _s(r, "contacted") == "pending")
-        uncontacted   = sum(
+        pending        = sum(1 for r in rows if _s(r, "contacted") == "pending")
+        replied        = sum(1 for r in rows if _s(r, "reply_received") == "yes")
+        quoted         = sum(1 for r in rows if _s(r, "deal_stage") == "quoted")
+        uncontacted    = sum(
             1 for r in rows
             if _s(r, "contacted") not in ("yes", "not_interested", "pending")
         )
@@ -763,7 +807,9 @@ class ChiefService:
             f"✅ Contacted:        {contacted}",
             f"❌ Not interested:   {not_interested}",
             f"⏳ Pending outreach: {pending}",
-            f"📋 Uncontacted:      {uncontacted}\n",
+            f"📋 Uncontacted:      {uncontacted}",
+            f"📩 Replied:          {replied}",
+            f"📄 Quoted:           {quoted}\n",
             f"📧 Emails — named: {email_high} | generic: {email_medium} | inferred: {email_inferred} | none: {email_none}",
         ]
         if top5:
@@ -827,6 +873,241 @@ class ChiefService:
         if not due_now and not upcoming and not sent:
             lines.append("\nNo follow-ups scheduled yet. Run /send_outreach to start.")
         return "\n".join(lines)
+
+    def _replies_snapshot(self) -> str:
+        """Read replies.json and return a formatted summary of recent replies."""
+        from pathlib import Path
+        path = Path(self._REPLIES_PATH)
+        if not path.exists():
+            return "📩 No replies yet. Leads appear here when they reply to outreach emails."
+        try:
+            records = json.loads(path.read_text())
+        except Exception as exc:
+            return f"📩 Could not load replies: {exc}"
+        if not records:
+            return "📩 No replies yet."
+        lines = [f"📩 Inbox Replies ({len(records)} total)\n"]
+        for r in reversed(records[-10:]):
+            ts    = (r.get("detected_at") or "")[:16].replace("T", " ")
+            biz   = r.get("business_name", "?")
+            email = r.get("from_email", "")
+            subj  = (r.get("subject") or "")[:60]
+            idx   = r.get("row_idx", "")
+            lines.append(f"• {biz} <{email}>")
+            lines.append(f"  \"{subj}\"  {ts} UTC")
+            if idx != "":
+                lines.append(f"  → /quote_{idx} to draft a proposal")
+            lines.append("")
+        return "\n".join(lines).strip()
+
+    # ------------------------------------------------------------------
+    # Pending quote store
+    # ------------------------------------------------------------------
+
+    def _load_approvals(self) -> dict:
+        from pathlib import Path
+        path = Path(self._APPROVALS_FILE)
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            return {}
+
+    def _save_approvals(self, data: dict) -> None:
+        from pathlib import Path
+        Path(self._APPROVALS_FILE).write_text(json.dumps(data, indent=2))
+
+    def _store_pending_quote(self, row_id: str, entry: dict) -> None:
+        with self._approvals_lock:
+            data = self._load_approvals()
+            data[row_id] = entry
+            self._save_approvals(data)
+
+    # ------------------------------------------------------------------
+    # Quote generation + approval
+    # ------------------------------------------------------------------
+
+    def _generate_quote_for_lead(self, row_id: str, description: str, chat_id: str) -> None:
+        """Background: read lead → call quote operator → store + preview via Telegram."""
+        import csv
+        from pathlib import Path
+        from datetime import datetime, timezone
+
+        def _tg(text: str) -> None:
+            try:
+                _http_post(
+                    f"{TELEGRAM_URL}/send",
+                    {"chat_id": chat_id, "text": text},
+                    timeout=5,
+                )
+            except Exception:
+                pass
+
+        try:
+            rows = list(csv.DictReader(Path(self._CSV_PATH).open(newline="", encoding="utf-8")))
+        except Exception as exc:
+            _tg(f"❌ Could not read lead data: {exc}")
+            return
+
+        try:
+            idx = int(row_id)
+        except ValueError:
+            _tg(f"❌ Invalid row ID: {row_id!r}")
+            return
+
+        if idx < 0 or idx >= len(rows):
+            _tg(f"❌ Lead #{row_id} not found (only {len(rows)} rows).")
+            return
+
+        lead  = rows[idx]
+        biz   = lead.get("business_name", "").strip() or f"Lead #{row_id}"
+        email = lead.get("email", "").strip()
+        btype = (lead.get("business_type") or lead.get("notes") or "contractor").strip()[:60]
+        city  = lead.get("city", "Houston").strip() or "Houston"
+        phone = lead.get("phone", "").strip()
+        scope = description or f"Pipeline management and lead generation for {btype} contractors in {city}"
+
+        try:
+            result = _http_post(
+                "http://127.0.0.1:8007/api/task",
+                {
+                    "task": scope,
+                    "context": {
+                        "company_name":  biz,
+                        "contact_email": email,
+                        "contact_name":  "",
+                        "opportunity":   scope,
+                    },
+                },
+                timeout=30,
+            )
+        except Exception as exc:
+            _tg(f"❌ Quote operator unreachable: {exc}")
+            return
+
+        proposal = result.get("result") or {}
+        if not proposal:
+            _tg("❌ Quote operator returned no proposal.")
+            return
+
+        budget   = proposal.get("budget", "TBD")
+        sections = proposal.get("sections") or {}
+
+        body_parts = ["Hi there,\n\nThank you for getting back to us.\n"]
+        if sections.get("scope"):
+            body_parts.append(str(sections["scope"]))
+        if sections.get("approach"):
+            body_parts.append(str(sections["approach"]))
+        if budget and budget != "TBD":
+            body_parts.append(f"Investment: {budget}")
+        if sections.get("next_steps"):
+            body_parts.append(str(sections["next_steps"]))
+        else:
+            body_parts.append("Worth a quick call to walk through the details?")
+        body_parts.append("\nAndy | Zyrcon Labs")
+        email_body    = "\n\n".join(body_parts)
+        email_subject = f"Proposal — Zyrcon Labs for {biz}"
+
+        entry = {
+            "row_id":        row_id,
+            "business_name": biz,
+            "email":         email,
+            "phone":         phone,
+            "proposal_id":   proposal.get("id", ""),
+            "subject":       email_subject,
+            "body":          email_body,
+            "budget":        str(budget),
+            "created_at":    datetime.now(timezone.utc).isoformat(),
+        }
+        self._store_pending_quote(row_id, entry)
+
+        scope_preview = ""
+        if sections.get("scope"):
+            scope_preview = f"\n\n{str(sections['scope'])[:200]}"
+
+        _tg(
+            f"📄 Proposal ready — {biz}\n"
+            f"📧 To: {email or '(no email)'}\n"
+            f"💰 Budget: {budget}"
+            f"{scope_preview}\n\n"
+            f"Subject: {email_subject}\n\n"
+            f"{email_body[:500]}\n\n"
+            f"/approve_{row_id} ✅ Send  |  /reject_{row_id} ❌ Discard"
+        )
+
+    def _handle_approval(self, action: str, row_id: str, chat_id: str) -> str:
+        """Handle /approve_N or /reject_N. Returns reply text."""
+        import csv
+        from pathlib import Path
+        from datetime import datetime, timezone
+
+        with self._approvals_lock:
+            data  = self._load_approvals()
+            entry = data.get(row_id)
+
+        if not entry:
+            return (
+                f"⚠️ No pending quote for lead #{row_id}. "
+                "It may have already been sent or discarded."
+            )
+
+        biz = entry.get("business_name", f"lead #{row_id}")
+
+        if action == "reject":
+            with self._approvals_lock:
+                data = self._load_approvals()
+                data.pop(row_id, None)
+                self._save_approvals(data)
+            return f"❌ Proposal discarded — {biz}."
+
+        # approve — send email
+        email   = entry.get("email", "")
+        subject = entry.get("subject", "Proposal — Zyrcon Labs")
+        body    = entry.get("body", "")
+
+        if not email:
+            return f"❌ No email address for {biz} — cannot send proposal."
+
+        try:
+            send_result = _http_post(
+                "http://127.0.0.1:8010/api/task",
+                {"to": email, "subject": subject, "body": body},
+                timeout=20,
+            )
+        except Exception as exc:
+            return f"❌ Email operator unreachable: {exc}"
+
+        if not send_result.get("ok"):
+            err = send_result.get("error", "unknown")
+            return f"❌ Email send failed: {err}"
+
+        # Mark deal_stage=quoted in CSV
+        try:
+            csv_path = Path(self._CSV_PATH)
+            rows     = list(csv.DictReader(csv_path.open(newline="", encoding="utf-8")))
+            idx      = int(row_id)
+            if 0 <= idx < len(rows):
+                fieldnames = list(rows[0].keys())
+                if "quoted_at" not in fieldnames:
+                    fieldnames.append("quoted_at")
+                    for r in rows:
+                        r.setdefault("quoted_at", "")
+                rows[idx]["deal_stage"] = "quoted"
+                rows[idx]["quoted_at"]  = datetime.now(timezone.utc).isoformat()
+                with csv_path.open("w", newline="", encoding="utf-8") as f:
+                    w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                    w.writeheader()
+                    w.writerows(rows)
+        except Exception as exc:
+            self.runtime.logger.error("CHIEF: mark_quoted CSV update failed: %s", exc)
+
+        with self._approvals_lock:
+            data = self._load_approvals()
+            data.pop(row_id, None)
+            self._save_approvals(data)
+
+        return f"✅ Proposal sent to {biz} at {email}.\nDeal stage: quoted."
 
     def _mark_lead_contacted(self, row_id: str, status: str, chat_id: str) -> str:
         """Call RECON /api/contact and return a user-facing reply."""
