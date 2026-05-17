@@ -170,7 +170,6 @@ info "Installing AI runtime (llama.cpp)..."
 LLAMA_BIN=""
 for _candidate in \
     "$BIN_DIR/llama-server" \
-    "/opt/homebrew/bin/llama-server" \
     "/usr/local/bin/llama-server" \
     "$HOME/Zyrcon/llama.cpp/build/bin/llama-server"; do
     [[ -f "$_candidate" ]] && { LLAMA_BIN="$_candidate"; break; }
@@ -309,8 +308,8 @@ if [[ -f "$FLINT_SRC" ]] && [[ -d "$SWIFTBAR_DIR" ]]; then
     ln -sf "$FLINT_SRC" "$SWIFTBAR_DIR/cascadia.5s.sh"
     ok "Flint plugin linked to SwiftBar"
 elif [[ ! -d "$SWIFTBAR_DIR" ]]; then
-    warn "SwiftBar not installed — install it to get the menu bar controller"
-    warn "  brew install --cask swiftbar   (requires admin once)"
+    warn "SwiftBar not installed — menu bar controller disabled"
+    warn "Install manually: https://swiftbar.app"
 fi
 
 # ── Login agent (no sudo — ~/Library is user-owned) ───────────────────────────
