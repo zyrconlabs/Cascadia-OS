@@ -13,6 +13,7 @@ dependencies = [
     "ddgs>=4.0.0",
     "reportlab>=4.0.0",
     "stripe>=7.0.0",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]
