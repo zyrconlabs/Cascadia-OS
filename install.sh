@@ -8,7 +8,6 @@
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
-REPO="https://github.com/zyrconlabs/cascadia-os.git"
 BRANCH="main"
 INSTALL_DIR="$HOME/cascadia-os"
 VENV_DIR="$INSTALL_DIR/.venv"
@@ -52,15 +51,7 @@ FREE_GB=$(df -g "$HOME" | tail -1 | awk '{print $4}')
 
 # curl is always present on macOS
 command -v curl &>/dev/null || die "curl not found — this should not happen on macOS."
-
-# git — ships with macOS (Xcode Command Line Tools)
-if ! command -v git &>/dev/null; then
-    info "Git not found — triggering developer tools install..."
-    info "A system dialog will appear. Click Install, then re-run this installer."
-    xcode-select --install 2>/dev/null || true
-    die "Re-run this installer after the developer tools finish installing."
-fi
-ok "Git $(git --version | awk '{print $3}')"
+ok "curl ready"
 
 # ── ~/bin setup ───────────────────────────────────────────────────────────────
 mkdir -p "$BIN_DIR"
@@ -119,14 +110,17 @@ fi
 command -v uv &>/dev/null || die "uv install failed. Check your internet connection."
 ok "uv $(uv --version | awk '{print $2}')"
 
-# ── Clone repo ────────────────────────────────────────────────────────────────
+# ── Download repo (curl + unzip — no git/Xcode required) ─────────────────────
 info "Downloading Cascadia OS..."
-if [[ -d "$INSTALL_DIR/.git" ]]; then
-    warn "Existing install found — updating to latest..."
-    git -C "$INSTALL_DIR" pull --ff-only origin "$BRANCH" --quiet
-else
-    git clone --branch "$BRANCH" --depth 1 "$REPO" "$INSTALL_DIR" --quiet
+if [[ -d "$INSTALL_DIR" ]]; then
+    warn "Existing install found — downloading latest..."
+    rm -rf "$INSTALL_DIR"
 fi
+curl -fsSL "https://github.com/zyrconlabs/cascadia-os/archive/refs/heads/${BRANCH}.zip" \
+    -o /tmp/cascadia_src.zip
+unzip -q /tmp/cascadia_src.zip -d /tmp/cascadia_dl
+mv "/tmp/cascadia_dl/cascadia-os-${BRANCH}" "$INSTALL_DIR"
+rm -rf /tmp/cascadia_src.zip /tmp/cascadia_dl
 ok "Cascadia OS downloaded"
 
 # ── Virtual environment + packages ────────────────────────────────────────────
