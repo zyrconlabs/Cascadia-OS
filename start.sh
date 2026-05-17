@@ -160,19 +160,33 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     fi
 fi
 
-# ── 3.5. License Gate (FLINT-managed — wait for it to come up) ────────────
-echo "▸ Waiting for License Gate..."
-LG_WAIT=0
-until curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; do
-    sleep 1
-    LG_WAIT=$((LG_WAIT + 1))
-    if [ $LG_WAIT -ge 30 ]; then
-        echo "✗ License Gate did not come up after 30s — check data/logs/license_gate.log"
-        break
-    fi
-done
-if curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; then
-    echo "✓ License Gate ready (port 6100)"
+# ── 3.5. License Gate (FLINT-managed — only if configured) ───────────────
+_LG_CONFIGURED=false
+if python3 -c "
+import json,sys
+try:
+    c=json.load(open('config.json'))
+    svcs=[s if isinstance(s,str) else s.get('name','') for s in c.get('services',[])]
+    sys.exit(0 if 'license_gate' in svcs else 1)
+except: sys.exit(1)
+" 2>/dev/null; then
+    _LG_CONFIGURED=true
+fi
+if [ "$_LG_CONFIGURED" = true ]; then
+    echo "▸ Waiting for License Gate..."
+    LG_WAIT=0
+    until curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; do
+        sleep 1
+        LG_WAIT=$((LG_WAIT + 1))
+        if [ $LG_WAIT -ge 30 ]; then
+            echo "✗ License Gate did not come up after 30s — check data/logs/license_gate.log"
+            break
+        fi
+    done
+    curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1 \
+        && echo "✓ License Gate ready (port 6100)" || true
+else
+    echo "▸ License Gate not configured — skipping"
 fi
 
 # ── 4. PRISM Dashboard ────────────────────────────────────────────────────
@@ -195,18 +209,32 @@ echo "Running missions migration..."
 PYTHON="${REPO}/.venv/bin/python3"
 [[ ! -f "$PYTHON" ]] && PYTHON="python3"
 "$PYTHON" -m cascadia.missions.migrate >> data/logs/mission_manager.log 2>&1
-echo "▸ Waiting for Mission Manager (tier 2)..."
-MM_WAIT=0
-until curl -sf http://127.0.0.1:6207/healthz > /dev/null 2>&1; do
-    sleep 2
-    MM_WAIT=$((MM_WAIT + 2))
-    if [ $MM_WAIT -ge 60 ]; then
-        echo "✗ Mission Manager did not come up after 60s — check logs"
-        break
-    fi
-done
-if curl -sf http://127.0.0.1:6207/healthz > /dev/null 2>&1; then
-    echo "✓ Mission Manager ready on port 6207"
+_MM_CONFIGURED=false
+if python3 -c "
+import json,sys
+try:
+    c=json.load(open('config.json'))
+    svcs=[s if isinstance(s,str) else s.get('name','') for s in c.get('services',[])]
+    sys.exit(0 if 'mission_manager' in svcs else 1)
+except: sys.exit(1)
+" 2>/dev/null; then
+    _MM_CONFIGURED=true
+fi
+if [ "$_MM_CONFIGURED" = true ]; then
+    echo "▸ Waiting for Mission Manager..."
+    MM_WAIT=0
+    until curl -sf http://127.0.0.1:6207/healthz > /dev/null 2>&1; do
+        sleep 2
+        MM_WAIT=$((MM_WAIT + 2))
+        if [ $MM_WAIT -ge 60 ]; then
+            echo "✗ Mission Manager did not come up after 60s — check logs"
+            break
+        fi
+    done
+    curl -sf http://127.0.0.1:6207/healthz > /dev/null 2>&1 \
+        && echo "✓ Mission Manager ready (port 6207)" || true
+else
+    echo "▸ Mission Manager not configured — skipping"
 fi
 
 # ── 6. Operators ──────────────────────────────────────────────────────────
