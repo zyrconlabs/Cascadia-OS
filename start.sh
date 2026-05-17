@@ -17,6 +17,23 @@ export CASCADIA_OPERATORS_DIR
 # Clear intentional-stop flag so LaunchAgent resumes normal KeepAlive
 rm -f "$REPO/data/runtime/cascadia.stopped"
 
+# ── Singleton guard ───────────────────────────────────────────────────────
+_LOCK="$REPO/data/runtime/cascadia.start.lock"
+mkdir -p "$REPO/data/runtime"
+if [ -f "$_LOCK" ]; then
+    _PID=$(cat "$_LOCK" 2>/dev/null || echo "")
+    if [ -n "$_PID" ] && kill -0 "$_PID" 2>/dev/null; then
+        echo "[cascadia] Already running (PID $_PID) — exiting"
+        exit 0
+    else
+        echo "[cascadia] Clearing stale lock"
+        rm -f "$_LOCK"
+    fi
+fi
+echo $$ > "$_LOCK"
+trap 'rm -f "$_LOCK"' EXIT INT TERM HUP
+# ─────────────────────────────────────────────────────────────────────────
+
 # Find llama-server — priority: brew → Zyrcon → fallback
 LLAMA_BIN=""
 for _candidate in \
