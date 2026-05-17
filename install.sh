@@ -327,7 +327,12 @@ cat > "$PLIST_PATH" <<PLIST
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
     <key>StandardOutPath</key>
     <string>${INSTALL_DIR}/data/logs/startup.log</string>
     <key>StandardErrorPath</key>
