@@ -351,6 +351,24 @@ if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     warn "Run: source ~/.zshrc   (to get 'cascadia' command in this session)"
 fi
 
+# ── Vault encryption key ──────────────────────────────────────────────────────
+# Generates ONCE on fresh install — NEVER overwrites existing key
+info "Configuring vault..."
+_ENV_FILE="$INSTALL_DIR/.env"
+touch "$_ENV_FILE" 2>/dev/null || true
+chmod 600 "$_ENV_FILE" 2>/dev/null || true
+if ! grep -q "VAULT_ENCRYPTION_KEY" "$_ENV_FILE" 2>/dev/null; then
+    _VKEY=$("$VENV_DIR/bin/python3" -c "
+import secrets, base64
+print(base64.b64encode(secrets.token_bytes(32)).decode())
+")
+    echo "VAULT_ENCRYPTION_KEY=$_VKEY" >> "$_ENV_FILE"
+    ok "Vault key generated"
+else
+    ok "Vault key already present"
+fi
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ── First boot ────────────────────────────────────────────────────────────────
 echo ""
 info "Starting Cascadia OS..."
