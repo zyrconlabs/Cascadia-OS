@@ -5,9 +5,6 @@
 #   curl -fsSL https://raw.githubusercontent.com/zyrconlabs/cascadia-os/main/install.sh | bash
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Reconnect stdin to the terminal so all interactive prompts work under curl | bash
-[ -t 0 ] || exec </dev/tty
-
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -104,7 +101,7 @@ echo "  │  By continuing you agree to the terms in LICENSE.              │"
 echo "  │                                                                 │"
 echo "  └─────────────────────────────────────────────────────────────────┘"
 echo ""
-read -r -p "  Continue with installation? [y/N]  " _confirm
+read -r -p "  Continue with installation? [y/N]  " _confirm </dev/tty
 echo ""
 [[ "$_confirm" =~ ^[Yy]$ ]] || { echo "  Installation cancelled."; echo ""; exit 0; }
 echo "  ✓ Starting installation..."
@@ -246,7 +243,7 @@ else
     echo "  2) Qwen 2.5 3B    — ~2 GB  (recommended)"
     echo "  3) Skip           — configure later in PRISM Settings"
     echo ""
-    read -r -p "  Choice [1/2/3]: " _model_choice
+    read -r -p "  Choice [1/2/3]: " _model_choice </dev/tty
     echo ""
     case "$_model_choice" in
         1)
