@@ -6,6 +6,11 @@
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 
+# ── Operators directory ──────────────────────────────────────────────────
+CASCADIA_OPERATORS_DIR="${CASCADIA_OPERATORS_DIR:-$HOME/Zyrcon/operators/cascadia-os-operators}"
+export CASCADIA_OPERATORS_DIR
+# ─────────────────────────────────────────────────────────────────────────
+
 # Load environment variables (VAULT_ENCRYPTION_KEY, etc.) so all child processes inherit them.
 [[ -f "$REPO/.env" ]] && set -a && source "$REPO/.env" && set +a
 
@@ -94,7 +99,7 @@ if command -v nats-server &> /dev/null; then
     fi
 else
     echo "⚠ NATS not installed — real-time events disabled"
-    echo "  Install with: brew install nats-server"
+    echo "  Install with: bash ~/cascadia-os/install.sh"
 fi
 
 # ── 3. Cascadia OS ────────────────────────────────────────────────────────
@@ -189,7 +194,7 @@ fi
 
 # ── 6. Operators ──────────────────────────────────────────────────────────
 # ── RECON operator ──────────────────────────────────
-RECON_DIR="/Users/andy/Zyrcon/operators/cascadia-os-operators/recon"
+RECON_DIR="$CASCADIA_OPERATORS_DIR/recon"
 echo "▸ Starting RECON..."
 if curl -sf http://127.0.0.1:8002/api/health > /dev/null 2>&1; then
     echo "✓ RECON already running"
@@ -206,7 +211,7 @@ else
 fi
 
 # ── QUOTE_BRIEF operator ────────────────────────────
-QUOTE_BRIEF_DIR="/Users/andy/Zyrcon/operators/cascadia-os-operators/quote_brief"
+QUOTE_BRIEF_DIR="$CASCADIA_OPERATORS_DIR/quote_brief"
 echo "▸ Starting QUOTE_BRIEF..."
 if curl -sf http://127.0.0.1:8006/api/health > /dev/null 2>&1; then
     echo "✓ QUOTE_BRIEF already running"
