@@ -6,7 +6,13 @@
 # <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
 # <swiftbar.version>1.0.0</swiftbar.version>
 
-REPO_DIR="/Users/andy/Zyrcon/cascadia-os"
+_SCRIPT="${BASH_SOURCE[0]}"
+while [ -L "$_SCRIPT" ]; do
+    _DIR="$(cd -P "$(dirname "$_SCRIPT")" && pwd)"
+    _SCRIPT="$(readlink "$_SCRIPT")"
+    [[ "$_SCRIPT" != /* ]] && _SCRIPT="$_DIR/$_SCRIPT"
+done
+REPO_DIR="$(cd -P "$(dirname "$_SCRIPT")/../.." && pwd)"
 LOG_DIR="$REPO_DIR/data/logs"
 VAULT_DIR="$REPO_DIR/data/vault"
 PRISM_PORT=6300
