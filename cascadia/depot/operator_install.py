@@ -195,16 +195,65 @@ def install_operator(op_id: str, version: str = "",
 
 # ── Batch ─────────────────────────────────────────────────────────────────────
 
+def _scan_operators_dir(
+    operators_dir: Path, tier: str, paid_ok: bool,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Scan operators_dir for manifest.json files, split into installable/locked
+    by the current tier entitlement.  Skips entries without a top-level 'id'.
+    """
+    current_rank = TIER_RANK.get(tier, 0)
+    installable: List[Dict[str, Any]] = []
+    locked: List[Dict[str, Any]] = []
+    for op_dir in sorted(operators_dir.iterdir()):
+        if not op_dir.is_dir():
+            continue
+        mf = op_dir / "manifest.json"
+        if not mf.is_file():
+            continue
+        try:
+            manifest = json.loads(mf.read_text())
+        except Exception:
+            continue
+        if "id" not in manifest:
+            continue
+        op_tier = manifest.get("tier_required", "lite")
+        op_rank = TIER_RANK.get(op_tier, 0)
+        if op_rank == 0:
+            manifest["install_reason"] = "free"
+            installable.append(manifest)
+        elif not paid_ok:
+            manifest["lock_reason"] = "requires_paid_license"
+            locked.append(manifest)
+        elif current_rank >= op_rank:
+            manifest["install_reason"] = f"entitled_{tier}"
+            installable.append(manifest)
+        else:
+            manifest["lock_reason"] = "tier_insufficient"
+            manifest["required_tier"] = op_tier
+            locked.append(manifest)
+    return installable, locked
+
+
 def install_all_entitled(operators_dir: Optional[Path] = None,
                          verbose: bool = True) -> Dict[str, Any]:
     """
     Install all operators the current tier is entitled to.
+    When operators_dir exists, scans it for manifests directly (private operators).
+    Falls back to DEPOT catalog when no local dir is given (built-in connectors).
     Returns summary: {tier, installed, failed, locked, counts}.
     """
-    catalog = get_entitled_catalog()
-    tier = catalog["tier"]
-    installable = catalog["installable"]
-    locked = catalog["locked"]
+    profile = get_entitlement()
+    tier = profile.get("tier", "lite")
+    paid_ok = profile.get("features", {}).get("paid_operators", False)
+
+    if operators_dir and operators_dir.exists():
+        installable, locked = _scan_operators_dir(operators_dir, tier, paid_ok)
+    else:
+        catalog = get_entitled_catalog()
+        tier = catalog["tier"]
+        installable = catalog["installable"]
+        locked = catalog["locked"]
 
     if verbose:
         print(f"  Tier: {tier.upper()}")
@@ -223,7 +272,14 @@ def install_all_entitled(operators_dir: Optional[Path] = None,
         op_id = op.get("id", "")
         if verbose:
             print(f"  Installing {op_id}...")
-        result = install_operator(op_id, op.get("version", ""), operators_dir)
+        # Full manifest already in hand (local scan) — use manifest-only path
+        if "start_cmd" in op or operators_dir:
+            result = install_from_manifest(op)
+            if not result["ok"]:
+                # Fall through to package download if manifest-only fails
+                result = install_operator(op_id, op.get("version", ""), operators_dir)
+        else:
+            result = install_operator(op_id, op.get("version", ""), operators_dir)
         if result.get("ok"):
             installed.append(op_id)
             if verbose:
