@@ -55,8 +55,16 @@ def _get_entitlement() -> Dict[str, Any]:
 
 
 # CREW install endpoint — forward installs to the running CREW service
-CREW_PORT = int(os.environ.get('CREW_PORT', '8100'))
+CREW_PORT = int(os.environ.get('CREW_PORT', '5100'))
 CREW_URL = f'http://127.0.0.1:{CREW_PORT}'
+
+# Operator packages served from the operators dist/ directory
+_OPERATORS_DIST: Path = Path(
+    os.environ.get(
+        'CASCADIA_OPERATORS_DIR',
+        str(Path.home() / 'Zyrcon' / 'operators' / 'cascadia-os-operators'),
+    )
+) / 'dist'
 
 logging.basicConfig(
     level=logging.INFO,
@@ -305,6 +313,43 @@ class _DepotHandler(http.server.BaseHTTPRequestHandler):
             n = load_catalog()
             self._json(200, {'ok': True, 'loaded': n})
             return
+
+        # ── Package index ──
+        if path == '/v1/packages':
+            index_file = _OPERATORS_DIST / 'index.json'
+            if index_file.exists():
+                self._json(200, json.loads(index_file.read_text()))
+            else:
+                self._json(200, {'operators': [], 'count': 0,
+                                  'note': 'No packages built yet — run package_operators.py'})
+            return
+
+        # ── Package routes: /v1/packages/{op_id}/{version}/{action} ──
+        if path.startswith('/v1/packages/'):
+            parts = path[len('/v1/packages/'):].split('/')
+            if len(parts) == 3:
+                op_id, version, action = parts
+                if action == 'manifest':
+                    manifest_file = _OPERATORS_DIST / f'{op_id}-{version}.manifest.json'
+                    if manifest_file.exists():
+                        self._json(200, json.loads(manifest_file.read_text()))
+                    else:
+                        self._json(404, {'error': f'manifest not found: {op_id} v{version}'})
+                    return
+                elif action == 'download':
+                    zip_file = _OPERATORS_DIST / f'{op_id}-{version}.zip'
+                    if zip_file.exists():
+                        raw = zip_file.read_bytes()
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/zip')
+                        self.send_header('Content-Length', str(len(raw)))
+                        self.send_header('Content-Disposition',
+                                         f'attachment; filename="{zip_file.name}"')
+                        self.end_headers()
+                        self.wfile.write(raw)
+                    else:
+                        self._json(404, {'error': f'package not found: {op_id} v{version}'})
+                    return
 
         self._json(404, {'error': 'not found'})
 
