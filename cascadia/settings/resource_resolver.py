@@ -15,7 +15,7 @@ _CONNECTORS_DIR = Path(__file__).parent.parent / "connectors"
 _OPERATORS_DIR  = Path(__file__).parent.parent / "operators"
 
 # DEPOT API base (only queried when DEPOT service is reachable)
-_DEPOT_PORT = 6208
+_DEPOT_PORT = 6212
 
 # ── Fallback rules ────────────────────────────────────────────────────────────
 # Maps missing resource_id → suggested fallback resource_id
@@ -107,7 +107,7 @@ def resolve_resource(
     depot_ids = {op.get("id", "") for op in depot}
     if resource_id in depot_ids:
         return _status(resource_id, "depot_available",
-                       install_url=f"http://localhost:6208/#/store/{resource_id}")
+                       install_url=f"http://localhost:6212/#/store/{resource_id}")
 
     # Suggest fallback
     fallback = _FALLBACK_MAP.get(resource_id)
