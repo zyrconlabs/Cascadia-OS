@@ -1023,7 +1023,7 @@ class PrismService:
   <h1>Activate your license</h1>
   <p>Enter the license key from your welcome email to unlock your tier.</p>
   <label for="key">License key</label>
-  <input id="key" type="text" placeholder="zyrcon_pro_..." autocomplete="off" spellcheck="false">
+  <input id="key" type="text" placeholder="ZYRCON-PRO-A1B2C3D4E5F60001" autocomplete="off" spellcheck="false">
   <button onclick="activate()">Activate</button>
   <div id="msg"></div>
 </div>
