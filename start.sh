@@ -160,33 +160,33 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     fi
 fi
 
-# ── 3.5. License Gate (FLINT-managed — only if configured) ───────────────
-_LG_CONFIGURED=false
-if python3 -c "
-import json,sys
-try:
-    c=json.load(open('config.json'))
-    svcs=[s if isinstance(s,str) else s.get('name','') for s in c.get('services',[])]
-    sys.exit(0 if 'license_gate' in svcs else 1)
-except: sys.exit(1)
-" 2>/dev/null; then
-    _LG_CONFIGURED=true
-fi
-if [ "$_LG_CONFIGURED" = true ]; then
-    echo "▸ Waiting for License Gate..."
-    LG_WAIT=0
-    until curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; do
+# ── 3.5. License Gate ────────────────────────────────────────────────────
+# License Gate always starts — Lite mode is the safe default when no key
+# is configured. Missing License Gate = Lite tier, not a failure.
+# Started here (after FLINT is ready) so FLINT's orphan cleanup has
+# already completed and will not SIGKILL our process.
+if ! curl -sf http://127.0.0.1:6100/api/license/entitlement > /dev/null 2>&1; then
+    PYTHON="${REPO}/.venv/bin/python3"
+    [[ ! -f "$PYTHON" ]] && PYTHON="python3"
+    echo "▸ Starting License Gate (Lite mode default)..."
+    "$PYTHON" -m cascadia.licensing.license_gate \
+        >> data/logs/license_gate.log 2>&1 &
+    echo $! > data/runtime/pids/license_gate.pid
+    _LG_WAIT=0
+    until curl -sf http://127.0.0.1:6100/api/license/entitlement \
+        > /dev/null 2>&1 || [ $_LG_WAIT -ge 12 ]; do
         sleep 1
-        LG_WAIT=$((LG_WAIT + 1))
-        if [ $LG_WAIT -ge 30 ]; then
-            echo "✗ License Gate did not come up after 30s — check data/logs/license_gate.log"
-            break
-        fi
+        _LG_WAIT=$((_LG_WAIT + 1))
     done
-    curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1 \
-        && echo "✓ License Gate ready (port 6100)" || true
+fi
+if curl -sf http://127.0.0.1:6100/api/license/entitlement > /dev/null 2>&1; then
+    _TIER=$(curl -s http://127.0.0.1:6100/api/license/entitlement \
+        | python3 -c \
+        "import sys,json; print(json.load(sys.stdin).get('tier','lite'))" \
+        2>/dev/null || echo "lite")
+    echo "✓ License Gate ready — tier: $_TIER"
 else
-    echo "▸ License Gate not configured — skipping"
+    echo "⚠ License Gate slow to start — continuing as lite (not a failure)"
 fi
 
 # ── 4. PRISM Dashboard ────────────────────────────────────────────────────
