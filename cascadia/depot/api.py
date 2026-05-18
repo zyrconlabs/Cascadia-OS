@@ -7,7 +7,7 @@ Owns: marketplace browsing, operator manifest serving, purchase event handling,
 Does not own: payment processing (Stripe webhook), credential storage (Vault),
               operator runtime (FLINT), dashboard display (PRISM).
 
-Port: 6208
+Port: 6212
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from cascadia.depot.manifest_validator import (
 
 NAME = "depot-api"
 VERSION = "1.0.0"
-PORT = 6208
+PORT = int(os.environ.get('DEPOT_PORT', '6212'))
 
 _LG_ENTITLEMENT_URL = 'http://127.0.0.1:6100/api/license/entitlement'
 _LG_TIER_RANK = {'lite': 0, 'pro': 1, 'business': 2, 'enterprise': 3}
