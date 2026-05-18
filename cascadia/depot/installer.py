@@ -36,7 +36,7 @@ VERSION = "1.0.0"
 
 log = logging.getLogger('depot.installer')
 
-CREW_PORT = int(os.environ.get('CREW_PORT', '8100'))
+CREW_PORT = int(os.environ.get('CREW_PORT', '5100'))
 CREW_URL = f'http://127.0.0.1:{CREW_PORT}'
 
 HEALTH_POLL_TIMEOUT = 15   # seconds to poll health after start
