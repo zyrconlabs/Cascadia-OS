@@ -1,9 +1,12 @@
 """
+DEPRECATED — use cascadia.licensing.license_gate (port 6100) instead.
+This 49-line middleware shim has the same name as the real License Gate
+service, creating a maintenance hazard. It uses Format A HMAC validation
+while the rest of the stack uses Format C (ZYRCON-{TIER}-{16hex}).
+No active callers. Will be removed in next major version.
+
 cascadia/core/license_gate.py — Cascadia OS Sprint 3
 License gate middleware for service-level tier enforcement.
-Owns: validating license keys at request boundaries, returning structured
-      gate results that route handlers can act on.
-Does not own: key generation (billing/license_generator), storage, or email.
 """
 from __future__ import annotations
 
