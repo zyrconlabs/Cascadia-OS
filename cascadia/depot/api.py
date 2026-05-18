@@ -34,6 +34,26 @@ NAME = "depot-api"
 VERSION = "1.0.0"
 PORT = 6208
 
+_LG_ENTITLEMENT_URL = 'http://127.0.0.1:6100/api/license/entitlement'
+_LG_TIER_RANK = {'lite': 0, 'pro': 1, 'business': 2, 'enterprise': 3}
+_LG_LITE_PROFILE = {
+    'tier': 'lite',
+    'features': {'paid_operators': False},
+    'limits': {'max_operators': 2},
+}
+
+
+def _get_entitlement() -> Dict[str, Any]:
+    """Fetch entitlement profile from License Gate. Returns lite profile on failure."""
+    try:
+        with urllib.request.urlopen(_LG_ENTITLEMENT_URL, timeout=2) as resp:
+            if resp.status == 200:
+                return json.loads(resp.read().decode())
+    except Exception:
+        pass
+    return _LG_LITE_PROFILE
+
+
 # CREW install endpoint — forward installs to the running CREW service
 CREW_PORT = int(os.environ.get('CREW_PORT', '8100'))
 CREW_URL = f'http://127.0.0.1:{CREW_PORT}'
@@ -230,9 +250,31 @@ class _DepotHandler(http.server.BaseHTTPRequestHandler):
                 installed_only=qs.get('installed_only') == '1',
                 free_only=qs.get('free_only') == '1',
             )
+            profile = _get_entitlement()
+            paid_enabled = profile.get('features', {}).get('paid_operators', False)
+            current_tier = profile.get('tier', 'lite')
+            current_rank = _LG_TIER_RANK.get(current_tier, 0)
+            for op in entries:
+                op_tier = op.get('tier_required', 'lite')
+                op_rank = _LG_TIER_RANK.get(op_tier, 0)
+                if op_rank == 0:
+                    op['locked'] = False
+                    op['lock_reason'] = None
+                elif not paid_enabled:
+                    op['locked'] = True
+                    op['lock_reason'] = 'requires_paid_license'
+                    op['required_tier'] = op_tier
+                elif current_rank < op_rank:
+                    op['locked'] = True
+                    op['lock_reason'] = 'tier_insufficient'
+                    op['required_tier'] = op_tier
+                else:
+                    op['locked'] = False
+                    op['lock_reason'] = None
             self._json(200, {
                 'ok': True,
                 'count': len(entries),
+                'current_tier': current_tier,
                 'operators': entries,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
             })
