@@ -206,9 +206,9 @@ fi
 
 # ── 4.5. Purchase Webhook ─────────────────────────────────────────────────
 # FLINT starts purchase_webhook (tier 3) alongside PRISM.
-# Port 6210: 6209 reserved by health_alert, 6211 reserved by chief.
+# Port 6214: 6210=operator_manager, 6211=chief, 6212=depot_api, 6213=sync_publisher.
 PW_WAIT=0
-until curl -sf http://127.0.0.1:6210/health > /dev/null 2>&1; do
+until curl -sf http://127.0.0.1:6214/health > /dev/null 2>&1; do
     sleep 2
     PW_WAIT=$((PW_WAIT + 2))
     if [ $PW_WAIT -ge 30 ]; then
@@ -216,8 +216,8 @@ until curl -sf http://127.0.0.1:6210/health > /dev/null 2>&1; do
         break
     fi
 done
-if curl -sf http://127.0.0.1:6210/health > /dev/null 2>&1; then
-    echo "✓ Purchase Webhook ready (port 6210)"
+if curl -sf http://127.0.0.1:6214/health > /dev/null 2>&1; then
+    echo "✓ Purchase Webhook ready (port 6214)"
 fi
 
 # ── 5. Mission Manager ────────────────────────────────────────────────────

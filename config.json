@@ -168,7 +168,7 @@
         {
             "name": "purchase_webhook",
             "module": "cascadia.depot.purchase_webhook",
-            "port": 6210,
+            "port": 6214,
             "tier": 3,
             "pulse_file": "./data/runtime/purchase_webhook.pulse",
             "depends_on": [
