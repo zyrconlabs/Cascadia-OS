@@ -179,17 +179,17 @@ echo "▸ Starting License Gate..."
 set -a
 [ -f "$REPO/.env" ] && source "$REPO/.env" 2>/dev/null || true
 set +a
-if ! curl -sf http://127.0.0.1:6100/api/license/entitlement > /dev/null 2>&1; then
+if ! curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; then
     python3 -m cascadia.licensing.license_gate \
         >> "$REPO/data/logs/license_gate.log" 2>&1 &
     _LG_WAIT=0
-    until curl -sf http://127.0.0.1:6100/api/license/entitlement \
+    until curl -sf http://127.0.0.1:6100/api/health \
         >/dev/null 2>&1 || [ $_LG_WAIT -ge 15 ]; do
         sleep 1; _LG_WAIT=$((_LG_WAIT+1))
     done
 fi
-if curl -sf http://127.0.0.1:6100/api/license/entitlement >/dev/null 2>&1; then
-    _TIER=$(curl -s http://127.0.0.1:6100/api/license/entitlement \
+if curl -sf http://127.0.0.1:6100/api/health >/dev/null 2>&1; then
+    _TIER=$(curl -s http://127.0.0.1:6100/api/health \
         | python3 -c "import sys,json; print(json.load(sys.stdin).get('tier','lite'))" \
         2>/dev/null || echo "lite")
     echo "✓ License Gate ready — tier: $_TIER"
