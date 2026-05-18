@@ -161,33 +161,30 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
 fi
 
 # ── 3.5. License Gate ────────────────────────────────────────────────────
-# License Gate always starts — Lite mode is the safe default when no key
-# is configured. Missing License Gate = Lite tier, not a failure.
-# Started here (after FLINT is ready) so FLINT's orphan cleanup has
-# already completed and will not SIGKILL our process.
+# Sources .env so ZYRCON_LICENSE_KEY is visible
+# Always starts — returns lite if no key (no block)
+echo "▸ Starting License Gate..."
+set -a
+[ -f "$REPO/.env" ] && source "$REPO/.env" 2>/dev/null || true
+set +a
 if ! curl -sf http://127.0.0.1:6100/api/license/entitlement > /dev/null 2>&1; then
-    PYTHON="${REPO}/.venv/bin/python3"
-    [[ ! -f "$PYTHON" ]] && PYTHON="python3"
-    echo "▸ Starting License Gate (Lite mode default)..."
-    "$PYTHON" -m cascadia.licensing.license_gate \
-        >> data/logs/license_gate.log 2>&1 &
-    echo $! > data/runtime/pids/license_gate.pid
+    python3 -m cascadia.licensing.license_gate \
+        >> "$REPO/data/logs/license_gate.log" 2>&1 &
     _LG_WAIT=0
     until curl -sf http://127.0.0.1:6100/api/license/entitlement \
-        > /dev/null 2>&1 || [ $_LG_WAIT -ge 12 ]; do
-        sleep 1
-        _LG_WAIT=$((_LG_WAIT + 1))
+        >/dev/null 2>&1 || [ $_LG_WAIT -ge 15 ]; do
+        sleep 1; _LG_WAIT=$((_LG_WAIT+1))
     done
 fi
-if curl -sf http://127.0.0.1:6100/api/license/entitlement > /dev/null 2>&1; then
+if curl -sf http://127.0.0.1:6100/api/license/entitlement >/dev/null 2>&1; then
     _TIER=$(curl -s http://127.0.0.1:6100/api/license/entitlement \
-        | python3 -c \
-        "import sys,json; print(json.load(sys.stdin).get('tier','lite'))" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('tier','lite'))" \
         2>/dev/null || echo "lite")
     echo "✓ License Gate ready — tier: $_TIER"
 else
-    echo "⚠ License Gate slow to start — continuing as lite (not a failure)"
+    echo "⚠ License Gate slow — continuing as lite"
 fi
+# ─────────────────────────────────────────────────────
 
 # ── 4. PRISM Dashboard ────────────────────────────────────────────────────
 echo "▸ Waiting for PRISM (tier 3)..."
