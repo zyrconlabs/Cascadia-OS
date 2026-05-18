@@ -20,6 +20,24 @@ SENTINEL_PORT = 5102
 
 _HIGH_RISK = {'high', 'critical'}
 
+_LG_ENTITLEMENT_URL = 'http://127.0.0.1:6100/api/license/entitlement'
+_LG_LITE_PROFILE = {
+    'tier': 'lite',
+    'features': {'paid_operators': False},
+    'limits': {'max_operators': 2},
+}
+
+
+def _get_entitlement() -> Dict[str, Any]:
+    """Fetch entitlement profile from License Gate. Returns lite profile on failure."""
+    try:
+        with urllib.request.urlopen(_LG_ENTITLEMENT_URL, timeout=2) as resp:
+            if resp.status == 200:
+                return json.loads(resp.read().decode())
+    except Exception:
+        pass
+    return _LG_LITE_PROFILE
+
 
 def _http_post(url: str, data: Dict[str, Any], timeout: int = 5) -> Dict[str, Any]:
     body = json.dumps(data).encode()
@@ -118,6 +136,21 @@ class VantageService:
             return 400, {'error': 'operator_id and capability are required'}
         if not connector_port:
             return 400, {'error': 'connector_port is required'}
+
+        # Step 0: tier gate — check paid_operators entitlement
+        tier_required = payload.get('tier_required', 'lite')
+        if tier_required != 'lite':
+            profile = _get_entitlement()
+            if not profile.get('features', {}).get('paid_operators', False):
+                self._blocked_count += 1
+                self._log_vantage_call(operator_id, capability, 'low', 'blocked_tier', run_id)
+                return 403, {
+                    'verdict': 'blocked',
+                    'reason': 'tier_insufficient',
+                    'current_tier': profile.get('tier', 'lite'),
+                    'required_tier': tier_required,
+                    'upgrade_url': 'http://localhost:6300',
+                }
 
         # Step 1: validate declared capability in CREW
         crew_result = check_capability(operator_id, capability)
