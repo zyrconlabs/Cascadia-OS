@@ -116,20 +116,68 @@ def _poll_health(port: int, path: str = '/api/health', timeout_s: int = 10) -> b
     return False
 
 
-def _check_tier(config: dict, tier_required: str) -> tuple[bool, str]:
-    """Check license tier via LICENSE_GATE. Returns (ok, reason)."""
+_LG_ENTITLEMENT_URL = 'http://127.0.0.1:6100/api/license/entitlement'
+_LG_TIER_RANK = {'lite': 0, 'pro': 1, 'business': 2, 'enterprise': 3}
+_LG_LITE_PROFILE = {
+    'tier': 'lite',
+    'features': {'paid_operators': False},
+    'limits': {'max_operators': 2},
+}
+
+
+def _get_entitlement() -> dict:
+    """Fetch entitlement profile from License Gate. Returns lite profile on failure."""
     try:
-        body = json.dumps({'tier_required': tier_required}).encode()
-        req = _urllib_request.Request(
-            'http://127.0.0.1:6100/api/license/check_tier',
-            data=body, method='POST',
-            headers={'Content-Type': 'application/json'},
-        )
-        with _urllib_request.urlopen(req, timeout=3) as r:
-            data = json.loads(r.read().decode())
-            return data.get('ok', True), data.get('reason', '')
+        with _urllib_request.urlopen(_LG_ENTITLEMENT_URL, timeout=2) as r:
+            if r.status == 200:
+                return json.loads(r.read().decode())
     except Exception:
-        return True, ''  # fail-open if license_gate unavailable
+        pass
+    return _LG_LITE_PROFILE
+
+
+def _check_tier(config: dict, tier_required: str) -> tuple[bool, str]:
+    """Check license tier via entitlement profile. Returns (ok, reason)."""
+    if tier_required == 'lite':
+        return True, ''
+    try:
+        profile = _get_entitlement()
+        tier = profile.get('tier', 'lite')
+        current_rank = _LG_TIER_RANK.get(tier, 0)
+        required_rank = _LG_TIER_RANK.get(tier_required, 0)
+        if current_rank >= required_rank:
+            return True, tier
+        return False, f'tier_insufficient: have={tier} need={tier_required}'
+    except Exception:
+        # Paid tier check failed — fail closed
+        return False, 'license_gate_unreachable'
+
+
+def _check_operator_limit(config: dict) -> tuple[bool, str]:
+    """Check if adding another operator would exceed the tier limit."""
+    try:
+        profile = _get_entitlement()
+        max_ops = profile.get('limits', {}).get('max_operators', 2)
+        tier = profile.get('tier', 'lite')
+        reg_path = _registry_path(config)
+        reg = _load_registry(reg_path)
+        current = len(reg.get('operators', []))
+        if current >= max_ops:
+            return False, (
+                f'operator_limit_reached: limit={max_ops} '
+                f'current={current} tier={tier}'
+            )
+        return True, ''
+    except Exception:
+        # Safe fallback — allow up to 2
+        try:
+            reg_path = _registry_path(config)
+            reg = _load_registry(reg_path)
+            if len(reg.get('operators', [])) >= 2:
+                return False, 'operator_limit_reached'
+        except Exception:
+            pass
+        return True, ''
 
 
 def _start_removed_cleanup_daemon(operators_dir: Path) -> None:
@@ -290,9 +338,19 @@ class CrewService:
         # Normalize manifest key
         manifest.setdefault('operator_id', op_id)
 
+        # Operator count limit check
+        _cfg = getattr(self, '_config', {})
+        limit_ok, limit_msg = _check_operator_limit(_cfg)
+        if not limit_ok:
+            return 403, {
+                'error': 'operator_limit_reached',
+                'reason': limit_msg,
+                'upgrade_url': 'https://zyrcon.store',
+            }
+
         # Tier check
         tier_required = manifest.get('tier_required', 'lite')
-        tier_ok, tier_reason = _check_tier(getattr(self, '_config', {}), tier_required)
+        tier_ok, tier_reason = _check_tier(_cfg, tier_required)
         if not tier_ok:
             return 403, {
                 'error': 'tier_required',
@@ -832,27 +890,18 @@ class CrewService:
 
         # ── Step 7: Tier verification ───────────────────────────────────────
         tier_required = manifest.get("tier_required", "lite")
-        try:
-            body = json.dumps({"tier_required": tier_required}).encode()
-            req = _urllib_request.Request(
-                "http://127.0.0.1:6100/api/license/check_tier",
-                data=body, method="POST",
-                headers={"Content-Type": "application/json"},
-            )
-            with _urllib_request.urlopen(req, timeout=3) as r:
-                tier_data = json.loads(r.read().decode())
-                if not tier_data.get("ok", True):
-                    return 403, {
-                        "error": "tier_insufficient",
-                        "message": f"License tier insufficient for {tier_required!r}",
-                        "details": {"reason": tier_data.get("reason", "")},
-                    }
-        except Exception:
-            # LICENSE_GATE unreachable — fail closed
-            return 503, {
-                "error": "license_gate_unavailable",
-                "message": "LICENSE_GATE is unavailable; install aborted (fail closed)",
-                "details": {},
+        tier_ok, tier_reason = _check_tier(getattr(self, "_config", {}), tier_required)
+        if not tier_ok:
+            if tier_reason == "license_gate_unreachable":
+                return 503, {
+                    "error": "license_gate_unavailable",
+                    "message": "LICENSE_GATE is unavailable; install aborted (fail closed)",
+                    "details": {},
+                }
+            return 403, {
+                "error": "tier_insufficient",
+                "message": f"License tier insufficient for {tier_required!r}",
+                "details": {"reason": tier_reason},
             }
 
         # ── Step 8: Version compatibility ───────────────────────────────────
