@@ -66,6 +66,41 @@ if [[ -f "$STARTUP_LOG" ]] && [[ $(stat -f%z "$STARTUP_LOG" 2>/dev/null || echo 
 fi
 echo ""
 
+# ── NATS (must start before everything else) ─────────────────────────────
+echo "▸ Starting NATS..."
+if lsof -i :4222 >/dev/null 2>&1; then
+    echo "✓ NATS already running (port 4222)"
+else
+    if command -v nats-server >/dev/null 2>&1; then
+        _NATS="nats-server"
+    elif [ -f "$HOME/.local/bin/nats-server" ]; then
+        _NATS="$HOME/.local/bin/nats-server"
+    else
+        echo "  nats-server not found — downloading..."
+        _NVER="v2.10.18"
+        _NARCH="darwin-arm64"
+        [ "$(uname -m)" != "arm64" ] && _NARCH="darwin-amd64"
+        mkdir -p "$HOME/.local/bin"
+        curl -fsSL \
+            "https://github.com/nats-io/nats-server/releases/download/$_NVER/nats-server-$_NVER-$_NARCH.zip" \
+            -o /tmp/_nats.zip
+        unzip -q /tmp/_nats.zip -d /tmp/_nats_tmp
+        mv /tmp/_nats_tmp/*/nats-server "$HOME/.local/bin/nats-server"
+        chmod +x "$HOME/.local/bin/nats-server"
+        rm -rf /tmp/_nats.zip /tmp/_nats_tmp
+        _NATS="$HOME/.local/bin/nats-server"
+    fi
+    $_NATS -p 4222 >> "$REPO/data/logs/nats.log" 2>&1 &
+    _NW=0
+    until lsof -i :4222 >/dev/null 2>&1 || [ $_NW -ge 10 ]; do
+        sleep 1; _NW=$((_NW+1))
+    done
+    lsof -i :4222 >/dev/null 2>&1 \
+        && echo "✓ NATS ready (port 4222)" \
+        || echo "⚠ NATS not binding — check logs"
+fi
+# ─────────────────────────────────────────────────────────────────────────
+
 # ── 1. llama.cpp ──────────────────────────────────────────────────────────
 if curl -sf http://127.0.0.1:8080/health > /dev/null 2>&1; then
     echo "✓ llama.cpp already running"
@@ -94,30 +129,7 @@ fi
 # SIGKILL the orphan when FLINT boots, printing a spurious "Killed: 9" line.
 # We skip the direct start and let FLINT own it; health check runs post-FLINT.
 
-# ── 2.5 NATS message bus ──────────────────────────────────────────────────
-if command -v nats-server &> /dev/null; then
-    if ! curl -sf http://localhost:8222/healthz > /dev/null 2>&1; then
-        echo "▸ Starting NATS..."
-        if [ -f "config/nats.conf" ]; then
-            nats-server -c config/nats.conf &
-        else
-            nats-server -p 4222 -m 8222 >> data/logs/nats.log 2>&1 &
-        fi
-        NATS_PID=$!
-        echo $NATS_PID > data/runtime/pids/nats.pid
-        sleep 1
-        if curl -sf http://localhost:8222/healthz > /dev/null 2>&1; then
-            echo "✓ NATS ready on port 4222"
-        else
-            echo "⚠ NATS failed to start — check data/logs/nats.log"
-        fi
-    else
-        echo "✓ NATS already running on port 4222"
-    fi
-else
-    echo "⚠ NATS not installed — real-time events disabled"
-    echo "  Install with: bash ~/cascadia-os/install.sh"
-fi
+# NATS started before llama.cpp — see section below
 
 # ── 3. Cascadia OS ────────────────────────────────────────────────────────
 CASCADIA_RUNNING=false
