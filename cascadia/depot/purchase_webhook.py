@@ -34,7 +34,7 @@ from cascadia.depot.manifest_validator import validate_depot_manifest
 
 NAME = "purchase-webhook"
 VERSION = "1.0.0"
-PORT = int(os.environ.get('PURCHASE_WEBHOOK_PORT', '6209'))
+PORT = int(os.environ.get('PURCHASE_WEBHOOK_PORT', '6210'))
 
 # Stripe webhook signing secret — set via environment
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')

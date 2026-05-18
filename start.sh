@@ -204,6 +204,22 @@ if curl -sf http://127.0.0.1:6300/health > /dev/null 2>&1; then
     echo "✓ PRISM ready on port 6300"
 fi
 
+# ── 4.5. Purchase Webhook ─────────────────────────────────────────────────
+# FLINT starts purchase_webhook (tier 3) alongside PRISM.
+# Port 6210: 6209 reserved by health_alert, 6211 reserved by chief.
+PW_WAIT=0
+until curl -sf http://127.0.0.1:6210/health > /dev/null 2>&1; do
+    sleep 2
+    PW_WAIT=$((PW_WAIT + 2))
+    if [ $PW_WAIT -ge 30 ]; then
+        echo "⚠ Purchase Webhook not up after 30s — Stripe auto-install unavailable (check data/logs/purchase_webhook.log)"
+        break
+    fi
+done
+if curl -sf http://127.0.0.1:6210/health > /dev/null 2>&1; then
+    echo "✓ Purchase Webhook ready (port 6210)"
+fi
+
 # ── 5. Mission Manager ────────────────────────────────────────────────────
 echo "Running missions migration..."
 PYTHON="${REPO}/.venv/bin/python3"
@@ -285,7 +301,7 @@ fi
 # ── 8. Health Monitor (with auto-restart) ───────────────────────────────
 # Kill any existing health_monitor loops before starting a new one.
 # This prevents multiple loops accumulating across start.sh restarts,
-# which would cause port 6209 conflicts with FLINT's purchase_webhook.
+# which would cause multiple processes competing on port 6209.
 pkill -f "cascadia.monitoring.health_alert" 2>/dev/null; sleep 1
 echo "▸ Starting Health Monitor..."
 (
