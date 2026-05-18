@@ -43,6 +43,96 @@ OPERATOR_LIMITS: Dict[str, int] = {
     'enterprise': 999,
 }
 
+TIER_RANK: Dict[str, int] = {
+    'lite':       0,
+    'pro':        1,
+    'business':   2,
+    'enterprise': 3,
+}
+
+ENTITLEMENT_PROFILES: Dict[str, Any] = {
+    'lite': {
+        'tier': 'lite',
+        'features': {
+            'basic_prism':       True,
+            'crew':              True,
+            'vault':             True,
+            'depot':             True,
+            'paid_operators':    False,
+            'enterprise_prism':  False,
+            'multi_user':        False,
+            'advanced_audit':    False,
+            'workflow_sharing':  False,
+            'scheduled_reports': False,
+        },
+        'limits': {
+            'max_operators':         2,
+            'max_workflows_per_day': 10,
+            'max_connectors':        1,
+        },
+    },
+    'pro': {
+        'tier': 'pro',
+        'features': {
+            'basic_prism':       True,
+            'crew':              True,
+            'vault':             True,
+            'depot':             True,
+            'paid_operators':    True,
+            'enterprise_prism':  False,
+            'multi_user':        False,
+            'advanced_audit':    False,
+            'workflow_sharing':  False,
+            'scheduled_reports': False,
+        },
+        'limits': {
+            'max_operators':         6,
+            'max_workflows_per_day': 500,
+            'max_connectors':        5,
+        },
+    },
+    'business': {
+        'tier': 'business',
+        'features': {
+            'basic_prism':       True,
+            'crew':              True,
+            'vault':             True,
+            'depot':             True,
+            'paid_operators':    True,
+            'enterprise_prism':  False,
+            'multi_user':        True,
+            'advanced_audit':    True,
+            'workflow_sharing':  True,
+            'scheduled_reports': True,
+        },
+        'limits': {
+            'max_operators':         12,
+            'max_workflows_per_day': 5000,
+            'max_connectors':        20,
+        },
+    },
+    'enterprise': {
+        'tier': 'enterprise',
+        'features': {
+            'basic_prism':       True,
+            'crew':              True,
+            'vault':             True,
+            'depot':             True,
+            'paid_operators':    True,
+            'enterprise_prism':  True,
+            'multi_user':        True,
+            'advanced_audit':    True,
+            'workflow_sharing':  True,
+            'scheduled_reports': True,
+        },
+        'limits': {
+            'max_operators':         999,
+            'max_workflows_per_day': 100000,
+            'max_connectors':        999,
+        },
+    },
+}
+
 CACHE_TTL = 60  # seconds
 
 # ---------------------------------------------------------------------------
@@ -125,6 +215,14 @@ def _get_status() -> Dict[str, Any]:
     return result
 
 
+def _get_current_tier() -> str:
+    """Returns current tier string. Default is 'lite'. Never raises."""
+    try:
+        return _get_status()['tier']
+    except Exception:
+        return 'lite'
+
+
 # ---------------------------------------------------------------------------
 # CREW registration
 # ---------------------------------------------------------------------------
@@ -137,8 +235,10 @@ def _register_with_crew() -> None:
         'description': 'License validation and tier enforcement',
         'capabilities': ['license.read'],
         'routes': [
-            {'method': 'GET', 'path': '/api/license/status'},
-            {'method': 'GET', 'path': '/api/health'},
+            {'method': 'GET',  'path': '/api/license/status'},
+            {'method': 'GET',  'path': '/api/license/entitlement'},
+            {'method': 'POST', 'path': '/api/license/check_tier'},
+            {'method': 'GET',  'path': '/api/health'},
         ],
     }
     try:
@@ -172,7 +272,24 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split('?')[0]
         if path == '/api/license/status':
-            self._send_json(200, _get_status())
+            tier = _get_current_tier()
+            profile = ENTITLEMENT_PROFILES[tier]
+            status = _get_status()
+            self._send_json(200, {
+                **status,
+                'limits':   profile['limits'],
+                'features': profile['features'],
+            })
+        elif path == '/api/license/entitlement':
+            tier = _get_current_tier()
+            profile = ENTITLEMENT_PROFILES[tier]
+            key = _load_license_key()
+            status = _get_status()
+            self._send_json(200, {
+                **profile,
+                'key_present': bool(key),
+                'valid':       status['valid'] or not bool(key),
+            })
         elif path in ('/api/health', '/health'):
             status = _get_status()
             self._send_json(200, {
@@ -185,6 +302,40 @@ class _Handler(BaseHTTPRequestHandler):
             })
         else:
             self._send_json(404, {'error': f'unknown route: {path}'})
+
+    def do_POST(self) -> None:  # noqa: N802
+        path = self.path.split('?')[0]
+        if path == '/api/license/check_tier':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                body = json.loads(self.rfile.read(length)) if length else {}
+            except Exception:
+                body = {}
+            tier_required = body.get('tier_required', 'lite')
+            current_tier = _get_current_tier()
+            profile = ENTITLEMENT_PROFILES[current_tier]
+            allowed = (
+                TIER_RANK.get(current_tier, 0) >=
+                TIER_RANK.get(tier_required, 0)
+            )
+            self._send_json(200, {
+                'ok':            allowed,
+                'allowed':       allowed,
+                'tier':          current_tier,
+                'tier_required': tier_required,
+                'limit':         profile['limits']['max_operators'],
+                'features':      profile['features'],
+                'reason':        None if allowed else 'tier_insufficient',
+            })
+        else:
+            self._send_json(404, {'error': f'unknown route: {path}'})
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
 
     def log_message(self, fmt: str, *args: Any) -> None:
         logger.info(fmt, *args)
