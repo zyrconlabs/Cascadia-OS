@@ -72,7 +72,7 @@ check() {
   curl -sf --max-time 1 "http://127.0.0.1:$1$2" > /dev/null 2>&1 && echo "1" || echo "0"
 }
 
-COMPONENTS=(4011 5100 5101 5102 5103 6200 6201 6202 6203 6204 6205 6300 6207)
+COMPONENTS=(4011 5100 5101 5102 5103 6200 6201 6202 6203 6204 6205 6211 6300 6207)
 online=0
 total=${#COMPONENTS[@]}
 for port in "${COMPONENTS[@]}"; do
@@ -127,12 +127,12 @@ fi
 echo "---"
 echo "MISSIONS | color=#F5ECD7 font=Menlo-Bold size=11"
 
-chief_up=$(curl -sf --max-time 1 http://127.0.0.1:8006/api/health > /dev/null 2>&1 && echo "1" || echo "0")
+chief_up=$(curl -sf --max-time 1 http://127.0.0.1:6211/api/health > /dev/null 2>&1 && echo "1" || echo "0")
 social_up=$(curl -sf --max-time 1 http://127.0.0.1:8011/api/health > /dev/null 2>&1 && echo "1" || echo "0")
 mission_up=$(curl -sf --max-time 1 http://127.0.0.1:6207/healthz > /dev/null 2>&1 && echo "1" || echo "0")
 
 if [[ "$chief_up" == "1" ]]; then
-  echo "⬤ CHIEF :8006 | color=#00C853 font=Menlo size=12"
+  echo "⬤ CHIEF :6211 | color=#00C853 font=Menlo size=12"
 else
   echo "○ CHIEF offline | color=#FF3B30 font=Menlo size=12"
 fi
