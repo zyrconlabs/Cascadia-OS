@@ -181,6 +181,7 @@ def crew_register(manifest: Dict[str, Any]) -> bool:
             'health_hook':  manifest.get('health_hook', '/health'),
             'version':      manifest.get('version', ''),
             'name':         manifest.get('name', ''),
+            'port':         manifest.get('port'),
         })
         return bool(result and (result.get('registered') or result.get('ok')))
     except Exception:
