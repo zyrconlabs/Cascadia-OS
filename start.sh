@@ -198,6 +198,32 @@ else
 fi
 # ─────────────────────────────────────────────────────
 
+# ── 3.6. DEPOT Operator Catalog ──────────────────────────────────────────
+# FLINT-managed (tier 3, port 6212). This block is a fallback: if FLINT did
+# not start DEPOT within 30s, start it directly so operators are always reachable.
+echo "▸ Checking DEPOT (port 6212)..."
+_DEPOT_WAIT=0
+until curl -sf http://127.0.0.1:6212/health > /dev/null 2>&1 || \
+      [ $_DEPOT_WAIT -ge 30 ]; do
+    sleep 1; _DEPOT_WAIT=$((_DEPOT_WAIT+1))
+done
+if ! curl -sf http://127.0.0.1:6212/health > /dev/null 2>&1; then
+    echo "  DEPOT not up after 30s — starting directly..."
+    python3 -m cascadia.depot.depot_api \
+        >> "$REPO/data/logs/depot_api.log" 2>&1 &
+    _DEPOT_WAIT2=0
+    until curl -sf http://127.0.0.1:6212/health > /dev/null 2>&1 || \
+          [ $_DEPOT_WAIT2 -ge 15 ]; do
+        sleep 1; _DEPOT_WAIT2=$((_DEPOT_WAIT2+1))
+    done
+fi
+if curl -sf http://127.0.0.1:6212/health > /dev/null 2>&1; then
+    echo "✓ DEPOT ready on port 6212"
+else
+    echo "⚠ DEPOT not responding — operators may be unavailable"
+fi
+# ─────────────────────────────────────────────────────
+
 # ── 4. PRISM Dashboard ────────────────────────────────────────────────────
 echo "▸ Waiting for PRISM (tier 3)..."
 PRISM_WAIT=0
