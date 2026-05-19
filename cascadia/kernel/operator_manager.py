@@ -607,7 +607,10 @@ class OperatorManager:
 
         for attempt in range(10):
             try:
-                payload = json.dumps(manifest).encode()
+                payload = json.dumps({
+                    **manifest,
+                    "operator_id": manifest.get("id", op_id),
+                }).encode()
                 req = urllib.request.Request(
                     f"{CREW_URL}/register",
                     data=payload,
