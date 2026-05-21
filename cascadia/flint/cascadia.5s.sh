@@ -127,7 +127,7 @@ fi
 echo "---"
 echo "MISSIONS | color=#F5ECD7 font=Menlo-Bold size=11"
 
-chief_up=$(curl -sf --max-time 1 http://127.0.0.1:6211/api/health > /dev/null 2>&1 && echo "1" || echo "0")
+chief_up=$(curl -sf --max-time 1 http://127.0.0.1:6211/health > /dev/null 2>&1 && echo "1" || echo "0")
 social_up=$(curl -sf --max-time 1 http://127.0.0.1:8011/api/health > /dev/null 2>&1 && echo "1" || echo "0")
 mission_up=$(curl -sf --max-time 1 http://127.0.0.1:6207/healthz > /dev/null 2>&1 && echo "1" || echo "0")
 
