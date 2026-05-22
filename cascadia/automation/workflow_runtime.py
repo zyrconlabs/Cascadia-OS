@@ -197,7 +197,7 @@ class WorkflowRuntime:
                 started_at=_now(),
                 input_state=state,
             )
-            outcome = self._execute_step(run_id, idx, step.name, step.action, state)
+            outcome = self._execute_step(run_id, idx, step.name, step.action, state, step_operator=step.operator)
             if outcome['status'] == 'waiting_human':
                 self.store.update_run(run_id, run_state='waiting_human', process_state='ready', updated_at=_now())
                 self.store.trace_event(run_id, 'approval.waiting', idx, {
@@ -340,6 +340,7 @@ class WorkflowRuntime:
         step_name: str,
         action: str,
         state: Dict[str, Any],
+        step_operator: Optional[str] = None,
     ) -> Dict[str, Any]:
         # Non-side-effect steps skip SENTINEL check
         if step_name == 'parse_lead':
@@ -350,16 +351,23 @@ class WorkflowRuntime:
             return {'status': 'ok', 'state': self._draft_email_state(state), 'input_state': dict(state)}
 
         # Side-effect steps — check SENTINEL before executing
-        operator_id = state.get('sender', 'workflow_runtime')
-        sentinel_block = self._check_sentinel(run_id, action, operator_id)
+        sender = state.get('sender', 'workflow_runtime')
+        sentinel_block = self._check_sentinel(run_id, action, sender)
         if sentinel_block:
             return sentinel_block
 
-        if action == 'email.send':
-            return self._send_email(run_id, step_index, dict(state))
         if action == 'crm.write':
             return self._log_crm(run_id, step_index, dict(state))
-        return {'status': 'failed', 'reason': f'Unsupported step: {step_name}', 'state': state}
+        if not step_operator:
+            return {'status': 'failed', 'reason': f'no operator on step {step_name!r}', 'state': state}
+        return self._dispatch_to_operator(
+            run_id=run_id,
+            step_index=step_index,
+            step_name=step_name,
+            operator_id=step_operator,
+            action=action,
+            state=state,
+        )
 
     def _parse_lead_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
         content = (state.get('content') or '').strip()
@@ -409,56 +417,6 @@ class WorkflowRuntime:
             'draft_subject': subject,
             'draft_body': body,
             'draft_preview': preview,
-        }
-
-    def _send_email(self, run_id: str, step_index: int, state: Dict[str, Any]) -> Dict[str, Any]:
-        decision = self.policy.check(run_id=run_id, step_index=step_index, action='email.send')
-        if decision.decision == 'approval_required':
-            preview = state.get('draft_preview') or 'Draft ready. Waiting for approval before send.'
-            return {
-                'status': 'waiting_human',
-                'approval_id': decision.approval_id,
-                'preview': preview,
-                'state': state,
-            }
-        if decision.decision == 'denied':
-            return {'status': 'failed', 'reason': decision.reason, 'state': state}
-
-        recipient = state.get('lead_email') or 'unknown@example.com'
-        key = effect_key(run_id, step_index, 'email.send', recipient)
-        payload = {
-            'subject': state.get('draft_subject', ''),
-            'body': state.get('draft_body', ''),
-        }
-        registered = self.idem.register_planned(
-            run_id=run_id,
-            step_index=step_index,
-            effect_type='email.send',
-            effect_key=key,
-            target=recipient,
-            payload=payload,
-            created_at=_now(),
-        )
-        if registered:
-            self.store.trace_event(run_id, 'outbound.dispatched', step_index, {
-                'channel': 'email',
-                'mode': 'simulated',
-                'recipient': recipient,
-                'subject': payload['subject'],
-            }, _now())
-            self.idem.commit(key, _now())
-            delivery = 'simulated_sent'
-        else:
-            delivery = 'already_committed'
-        return {
-            'status': 'ok',
-            'state': {
-                **state,
-                'delivery_status': delivery,
-                'sent_to': recipient,
-                'sent_at': _now(),
-            },
-            'input_state': dict(state),
         }
 
     def _log_crm(self, run_id: str, step_index: int, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -519,7 +477,124 @@ class WorkflowRuntime:
 
     def _load_manifest(self, operator_id: str) -> Manifest:
         path = Path(__file__).resolve().parents[1] / 'operators' / f'{operator_id}.json'
-        return load_manifest(path)
+        try:
+            return load_manifest(path)
+        except Exception:
+            return Manifest(
+                id=operator_id,
+                name=operator_id,
+                version='0.0.0',
+                type='service',
+                capabilities=[],
+                required_dependencies=[],
+                requested_permissions=[],
+                autonomy_level='autonomous',
+                health_hook='/api/health',
+                description=f'Stub manifest for {operator_id} — no packaged file found.',
+            )
+
+    def _resolve_operator_port(self, operator_id: str) -> Optional[int]:
+        try:
+            with urllib.request.urlopen('http://127.0.0.1:5100/crew', timeout=2) as r:
+                data = json.loads(r.read().decode())
+            op = (data.get('operators') or {}).get(operator_id)
+            if op and op.get('port'):
+                return int(op['port'])
+        except Exception:
+            pass
+        try:
+            cfg_path = Path(__file__).resolve().parents[2] / 'config.json'
+            cfg = json.loads(cfg_path.read_text(encoding='utf-8'))
+            ops_dir = cfg.get('operators_dir')
+            if ops_dir:
+                mf = Path(ops_dir) / operator_id / 'manifest.json'
+                if mf.exists():
+                    m = json.loads(mf.read_text(encoding='utf-8'))
+                    if m.get('port'):
+                        return int(m['port'])
+        except Exception:
+            pass
+        return None
+
+    def _dispatch_to_operator(
+        self,
+        run_id: str,
+        step_index: int,
+        step_name: str,
+        operator_id: str,
+        action: str,
+        state: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        port = self._resolve_operator_port(operator_id)
+        if port is None:
+            return {
+                'status': 'failed',
+                'reason': f'no port resolved for operator {operator_id!r}',
+                'state': state,
+            }
+        reserved = {'task_id', 'mission_run_id', 'step_id', 'action', 'context'}
+        flat_state = {k: v for k, v in state.items()
+                      if isinstance(k, str) and k not in reserved}
+        payload = {
+            **flat_state,
+            'task_id': f'{run_id}:{step_index}',
+            'mission_run_id': run_id,
+            'step_id': step_name,
+            'action': action,
+            'context': state,
+        }
+        response = None
+        last_error: Optional[str] = None
+        for endpoint in ('/api/run', '/api/task'):
+            try:
+                req = urllib.request.Request(
+                    f'http://127.0.0.1:{port}{endpoint}',
+                    data=json.dumps(payload).encode(),
+                    method='POST',
+                    headers={'Content-Type': 'application/json'},
+                )
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    response = json.loads(resp.read().decode())
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    last_error = f'HTTP 404 at {endpoint}'
+                    continue
+                last_error = f'HTTP {exc.code} at {endpoint}: {exc.reason}'
+                break
+            except Exception as exc:
+                last_error = f'{type(exc).__name__} at {endpoint}: {exc}'
+                break
+        if response is None:
+            return {
+                'status': 'failed',
+                'reason': f'operator {operator_id!r} call failed: {last_error}',
+                'state': state,
+            }
+        if response.get('error'):
+            return {
+                'status': 'failed',
+                'reason': str(response.get('error')),
+                'state': state,
+            }
+        op_status = response.get('status')
+        if op_status in ('failed', 'error', 'denied'):
+            return {
+                'status': 'failed',
+                'reason': response.get('reason') or response.get('message')
+                          or f'operator returned status={op_status!r}',
+                'state': state,
+            }
+        if 'result' in response and isinstance(response['result'], dict):
+            result = response['result']
+        else:
+            result = {k: v for k, v in response.items()
+                      if k not in ('status', 'task_id', 'operator', 'action',
+                                   'mission_run_id', 'step_id')}
+        new_state = {**state, f'{step_name}_result': result}
+        if isinstance(result, dict):
+            new_state.update({k: v for k, v in result.items() if isinstance(k, str)})
+        return {'status': 'ok', 'state': new_state, 'input_state': dict(state)}
 
     def _extract_email(self, content: str) -> str:
         m = _EMAIL_RE.search(content or '')

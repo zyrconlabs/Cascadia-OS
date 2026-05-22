@@ -63,7 +63,7 @@ def _send_email_alert(name: str, down_since: str) -> None:
     """
     try:
         from cascadia.shared.config import load_config
-        config = load_config()
+        config = load_config("config.json")
 
         escalation       = config.get('escalation', {})
         primary_channel  = escalation.get('primary_channel', 'email')
