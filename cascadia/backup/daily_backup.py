@@ -23,7 +23,7 @@ def backup_database(db_path: str | None = None,
     if db_path is None or backup_dir is None:
         try:
             from cascadia.shared.config import load_config
-            config = load_config()
+            config = load_config("config.json")
             if db_path is None:
                 db_path = config.get('database_path', './data/runtime/cascadia.db')
             if backup_dir is None:

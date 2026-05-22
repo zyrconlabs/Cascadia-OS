@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading
 import urllib.request
 import uuid
 from datetime import datetime, timezone
@@ -101,8 +102,13 @@ class StitchMissionAdapter:
     def __init__(self, host: str = "127.0.0.1", port: int = STITCH_PORT) -> None:
         self._base = f"http://{host}:{port}"
 
-    def start_workflow(self, workflow_def: dict, payload: dict) -> str:
-        """Register and start a mission workflow via STITCH. Returns stitch run_id."""
+    def start_workflow(self, workflow_def: dict, payload: dict,
+                       on_done: Optional[Any] = None) -> str:
+        """Register and start a mission workflow via STITCH. Returns stitch run_id.
+
+        If on_done is provided, it is called with the /run/execute response dict
+        once execution finishes (or with {"error": ...} on transport failure).
+        """
         steps = [
             {
                 "name": s.get("id", ""),
@@ -124,7 +130,33 @@ class StitchMissionAdapter:
             "goal": workflow_def.get("name", ""),
             "input": payload,
         })
-        return result.get("run_id", "")
+        stitch_run_id = result.get("run_id", "")
+
+        execute_payload = {
+            "workflow_id": wf_id,
+            "goal": workflow_def.get("name", ""),
+            "input": payload,
+            "input_snapshot": payload,
+        }
+        base = self._base
+        def _trigger_execute() -> None:
+            try:
+                response = _http_post(base + "/run/execute", execute_payload, timeout=300)
+            except Exception as exc:
+                log.warning("STITCH /run/execute failed for %s: %s", stitch_run_id, exc)
+                response = {"error": str(exc), "run_state": "failed"}
+            if on_done is not None:
+                try:
+                    on_done(response)
+                except Exception as exc:
+                    log.warning("on_done callback failed for %s: %s", stitch_run_id, exc)
+        threading.Thread(
+            target=_trigger_execute,
+            daemon=True,
+            name=f"stitch-execute-{stitch_run_id or wf_id}",
+        ).start()
+
+        return stitch_run_id
 
     def resume_workflow(self, stitch_run_id: str, payload: dict) -> dict:
         """Try to resume a STITCH run. Returns {"supported": False} if unavailable."""
@@ -254,7 +286,9 @@ class MissionRunner:
 
         # No external actions — dispatch to STITCH
         try:
-            stitch_run_id = self._adapter.start_workflow(wf_def, payload or {})
+            stitch_run_id = self._adapter.start_workflow(
+                wf_def, payload or {}, on_done=self._make_on_done(run_id),
+            )
             self._update_run(run_id, {
                 "trigger_data": json.dumps({
                     "workflow_id": workflow_id,
@@ -378,7 +412,10 @@ class MissionRunner:
                     edited_payload = (
                         approval_decision.get("edited_payload") or td.get("input", {})
                     )
-                    stitch_run_id = self._adapter.start_workflow(wf_def, edited_payload)
+                    stitch_run_id = self._adapter.start_workflow(
+                        wf_def, edited_payload,
+                        on_done=self._make_on_done(mission_run_id),
+                    )
                     stitch_ok = bool(stitch_run_id)
                 except Exception as exc:
                     log.warning("STITCH start-after-approval failed for %s: %s",
@@ -646,6 +683,26 @@ class MissionRunner:
         except Exception as exc:
             log.error("Failed to insert mission_run %s: %s", run_id, exc)
             raise MissionRunError(f"Failed to create run record: {exc}") from exc
+
+    def _make_on_done(self, mission_run_id: str):
+        """Build a STITCH /run/execute completion callback bound to this mission_run."""
+        def _on_done(response: dict) -> None:
+            rs = (response or {}).get("run_state") or ""
+            if rs == "complete":
+                self.complete_mission(mission_run_id,
+                    output=(response or {}).get("state_snapshot") or {})
+            elif rs == "waiting_human":
+                self._update_run(mission_run_id, {
+                    "status": "waiting_approval",
+                    "updated_at": _now(),
+                })
+            elif rs == "failed" or (response or {}).get("error"):
+                self.fail_mission(mission_run_id,
+                    error=(response or {}).get("assistant_message")
+                          or (response or {}).get("error")
+                          or "workflow failed",
+                    failed_step=(response or {}).get("current_step"))
+        return _on_done
 
     def _update_run(self, run_id: str, updates: dict) -> None:
         if not updates:
