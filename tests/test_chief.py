@@ -39,7 +39,7 @@ class _FakeRuntime:
 _stub("cascadia.shared.config",
       load_config=lambda p: {"components": [], "log_dir": "/tmp"})
 _stub("cascadia.shared.service_runtime", ServiceRuntime=_FakeRuntime)
-_stub("cascadia.shared.logger", configure_logging=MagicMock())
+_stub("cascadia.shared.logger", configure_logging=MagicMock(), get_logger=MagicMock())
 
 # Now the real imports
 from cascadia.chief.models import TaskRequest, TaskResponse          # noqa: E402
