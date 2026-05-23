@@ -33,7 +33,7 @@ class _FakeRuntime:
     def start(self): pass
 
 _stub("cascadia.shared.service_runtime", ServiceRuntime=_FakeRuntime)
-_stub("cascadia.shared.logger", configure_logging=MagicMock())
+_stub("cascadia.shared.logger", configure_logging=MagicMock(), get_logger=MagicMock())
 
 # Real imports
 from cascadia.chief.intent_router import (  # noqa: E402
