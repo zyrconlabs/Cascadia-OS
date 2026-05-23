@@ -225,6 +225,11 @@ class WorkflowRuntime:
                     failure_reason=outcome['reason'],
                 )
                 self.store.update_run(run_id, run_state='failed', process_state='ready', updated_at=_now())
+                self.store.trace_event(run_id, 'step.failed', idx, {
+                    'step_name': step.name,
+                    'action': step.action,
+                    'reason': outcome.get('reason', 'unknown'),
+                }, _now())
                 return ExecutionResult(
                     run_id=run_id,
                     workflow_id=workflow_id,
