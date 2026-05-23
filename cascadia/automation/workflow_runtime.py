@@ -37,6 +37,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+_CONDITION_RE = re.compile(r"^\s*(\w[\w.]*)\s*(==|!=)\s*['\"]?([^'\"]*?)['\"]?\s*$")
 _EMAIL_RE = re.compile(r'([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})')
 _NAME_PATTERNS = (
     re.compile(r"\b(?:this is|i am|i'm|my name is|name[:\-]?)\s+([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})(?=\s+(?:from|at)\b|[,.]|$)", re.IGNORECASE),
@@ -183,6 +184,15 @@ class WorkflowRuntime:
                     preview=dependency_issue.get('human_message', 'Run blocked on dependency.'),
                 )
 
+            condition = getattr(step, 'condition', None)
+            if condition and not self._evaluate_condition(condition, state):
+                self.store.trace_event(run_id, 'step.skipped', idx, {
+                    'step_name': step.name,
+                    'action': step.action,
+                    'condition': condition,
+                }, _now())
+                continue
+
             self.store.update_run(
                 run_id,
                 current_step=step.name,
@@ -284,6 +294,19 @@ class WorkflowRuntime:
     # Step implementations
     # ------------------------------------------------------------------
 
+
+    def _evaluate_condition(self, condition: str, state: Dict[str, Any]) -> bool:
+        """Return True if the step should run. Fail-safe: malformed → True (run).
+
+        Supported syntax: `<state_key> == 'literal'` or `<state_key> != 'literal'`.
+        """
+        m = _CONDITION_RE.match(condition)
+        if not m:
+            return True
+        key, op, literal = m.group(1), m.group(2), m.group(3)
+        actual = state.get(key)
+        actual_str = '' if actual is None else str(actual)
+        return actual_str == literal if op == '==' else actual_str != literal
 
     def _check_sentinel(self, run_id: str, action: str, operator_id: str) -> Optional[Dict[str, Any]]:
         """

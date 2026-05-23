@@ -541,12 +541,14 @@ class WorkflowStep:
     """One step in a STITCH workflow. Owns step metadata. Does not own execution."""
 
     def __init__(self, name: str, operator: str, action: str,
-                 inputs: Optional[Dict] = None, on_failure: str = 'stop') -> None:
+                 inputs: Optional[Dict] = None, on_failure: str = 'stop',
+                 condition: Optional[str] = None) -> None:
         self.name = name
         self.operator = operator    # Which operator runs this step
         self.action = action        # What action the operator performs
         self.inputs = inputs or {}
         self.on_failure = on_failure  # 'stop' | 'skip' | 'retry'
+        self.condition = condition  # optional "<key> == 'literal'" / "<key> != 'literal'" guard
 
 
 class WorkflowDefinition:
@@ -846,6 +848,7 @@ class StitchService:
                     operator=s.get("operator", ""),
                     action=s.get("action", s.get("endpoint", "")),
                     on_failure=s.get("on_failure", "stop"),
+                    condition=s.get("condition"),
                 )
                 for s in wf_def.get("steps", [])
             ]
