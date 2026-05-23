@@ -35,6 +35,9 @@ except ImportError:
 
 NAME = "depot-sync"
 VERSION = "1.0.0"
+HEALTH_PORT = 6213
+
+_ready: bool = False
 
 log = logging.getLogger('depot.sync')
 
@@ -244,13 +247,15 @@ async def _serve_health(port: int) -> None:
 
 async def main(config_path: str = 'config.json', name: str = 'sync_publisher',
                catalog_fn: Optional[Callable[[], List[Dict[str, Any]]]] = None) -> None:
+    global _ready
     config = load_config(config_path)
     comp = next((c for c in config['components'] if c['name'] == name), {})
-    port = comp.get('port', 6213)
+    port = comp.get('port', HEALTH_PORT)
     asyncio.create_task(_serve_health(port))
 
     if not _NATS_AVAILABLE:
         log.warning('nats-py not installed — sync publisher in no-op mode')
+        _ready = True
         await asyncio.sleep(float('inf'))
         return
 

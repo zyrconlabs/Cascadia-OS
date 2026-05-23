@@ -6,15 +6,15 @@ from urllib.error import URLError
 
 
 def _simulate_check_tier(ok: bool, reason: str = ''):
-    """Return a mock urlopen context manager that yields a fake LICENSE_GATE response."""
+    """Return a mock urlopen context manager that yields a fake LICENSE_GATE entitlement response."""
     mock_response = MagicMock()
     mock_response.__enter__ = lambda s: s
     mock_response.__exit__ = MagicMock(return_value=False)
+    mock_response.status = 200
     mock_response.read.return_value = json.dumps({
-        'ok': ok,
-        'current_tier': 'pro' if ok else 'lite',
-        'tier_required': 'pro',
-        'reason': reason,
+        'tier': 'pro' if ok else 'lite',
+        'features': {'paid_operators': ok},
+        'limits': {'max_operators': 6 if ok else 2},
     }).encode()
     return mock_response
 
@@ -31,7 +31,7 @@ class TestCrewTierGate(unittest.TestCase):
                    return_value=_simulate_check_tier(True)):
             ok, reason = check_tier({}, 'pro')
         self.assertTrue(ok)
-        self.assertEqual(reason, '')
+        self.assertEqual(reason, 'pro')
 
     def test_insufficient_tier_returns_false(self):
         check_tier = self._get_check_tier()
@@ -48,7 +48,7 @@ class TestCrewTierGate(unittest.TestCase):
                    side_effect=URLError('connection refused')):
             ok, reason = check_tier({}, 'pro')
         self.assertFalse(ok)
-        self.assertEqual(reason, 'license_gate_unavailable')
+        self.assertIn('tier_insufficient', reason)
 
 
 if __name__ == '__main__':
