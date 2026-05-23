@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from cascadia.licensing.license_gate import _build_status, _TIER_RANK, _Handler, _ReusableServer
+from cascadia.licensing.license_gate import _build_status, TIER_RANK as _TIER_RANK, _Handler, _ReusableServer
 
 
 def _post_check_tier(tier_required: str, key: str | None = None):
