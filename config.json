@@ -260,7 +260,7 @@
     "stripe_webhook_secret": "whsec_REDACTED",
     "depot": {
         "webhook_port": 6214,
-        "install_endpoint": "http://127.0.0.1:6212/depot/install",
+        "install_endpoint": "http://127.0.0.1:6212/v1/operators/{operator_id}/install",
         "product_map": {
             "40": "recon",
             "41": "scout",

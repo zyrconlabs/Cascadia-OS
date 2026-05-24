@@ -106,6 +106,23 @@ def load_catalog(extra_dirs: Optional[List[Path]] = None) -> int:
     Returns the number of entries loaded.
     """
     roots = [Path(__file__).parent.parent / 'connectors']
+
+    # Also scan the operators directory from config.json so that purchased
+    # operators (recon, scout, quote…) appear in the catalog and can be
+    # resolved by proxy_install() without needing extra_dirs at startup.
+    _cfg_path = Path(__file__).parent.parent.parent / 'config.json'
+    if _cfg_path.exists():
+        try:
+            _cfg = json.loads(_cfg_path.read_text())
+            _ops = _cfg.get('operators_path') or _cfg.get('operators_dir', '')
+            if _ops:
+                _ops_path = Path(_ops).expanduser()
+                if _ops_path.exists():
+                    roots.append(_ops_path)
+                    log.debug('load_catalog: added operators dir %s', _ops_path)
+        except Exception as _exc:
+            log.warning('load_catalog: could not read operators_path from config: %s', _exc)
+
     if extra_dirs:
         roots.extend(extra_dirs)
 
