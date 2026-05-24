@@ -384,7 +384,7 @@ class _DepotHandler(http.server.BaseHTTPRequestHandler):
             result = proxy_install(operator_id,
                                    requester=data.get('requested_by', ''),
                                    options=data.get('options'))
-            status = 200 if result.get('ok') else 502
+            status = 200 if (result.get("ok") or result.get("installed")) else 502
             self._json(status, result)
             return
 
