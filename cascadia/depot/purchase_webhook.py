@@ -370,7 +370,7 @@ def get_operator_from_stripe_event(event: dict) -> Optional[str]:
 
 def _trigger_operator_install(operator_id: str,
                                customer_email: str = "",
-                               install_url: str = "http://127.0.0.1:6212/depot/install",
+                               install_url: str = "http://127.0.0.1:6212/v1/operators/{operator_id}/install",
                                ) -> dict:
     """Call the DEPOT API to install an operator after a confirmed purchase.
 
