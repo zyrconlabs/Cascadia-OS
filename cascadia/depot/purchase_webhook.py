@@ -370,21 +370,26 @@ def get_operator_from_stripe_event(event: dict) -> Optional[str]:
 
 def _trigger_operator_install(operator_id: str,
                                customer_email: str = "",
-                               install_url: str = "http://127.0.0.1:6212/v1/operators/{operator_id}/install",
+                               depot_api_base: str = "http://127.0.0.1:6212",
                                ) -> dict:
     """Call the DEPOT API to install an operator after a confirmed purchase.
 
-    Used as an HTTP-based fallback when the installer module is not available
-    in-process (e.g. purchase_webhook running standalone, decoupled from DEPOT).
+    Calls POST /v1/operators/{operator_id}/install on the depot API (port 6212).
+    Body format matches proxy_install() expectations:
+      requested_by — customer email, forwarded to CREW
+      options      — source/email/auto_start, merged into the CREW request
     """
     import urllib.request
     import urllib.error
 
+    install_url = f"{depot_api_base}/v1/operators/{operator_id}/install"
     payload = json.dumps({
-        "operator_id": operator_id,
-        "source": "purchase",
-        "customer_email": customer_email,
-        "auto_start": True,
+        "requested_by": customer_email,
+        "options": {
+            "source": "purchase",
+            "customer_email": customer_email,
+            "auto_start": True,
+        },
     }).encode()
 
     try:
