@@ -256,6 +256,11 @@ class _PurchaseWebhookHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = self.path.split('?')[0].rstrip('/')
 
+        # WordPress plugin bridge — no Stripe signature required
+        if path == '/depot/install-from-purchase':
+            self._handle_install_from_purchase()
+            return
+
         if path != '/webhook/stripe/purchase':
             self._json(404, {'error': 'not found'})
             return
@@ -283,6 +288,44 @@ class _PurchaseWebhookHandler(http.server.BaseHTTPRequestHandler):
         outcome = process_purchase(purchase, catalog_lookup=self.catalog_lookup)
         # Always return 200 to Stripe so it doesn't retry
         self._json(200, outcome)
+
+    def _handle_install_from_purchase(self) -> None:
+        """Handle POST /depot/install-from-purchase from the WordPress plugin.
+
+        Payload (JSON):
+          operator_id     — DEPOT operator slug (required)
+          customer_email  — buyer email (optional, logged)
+          order_id        — WooCommerce order ID (optional, echoed in response)
+          source          — caller tag, e.g. 'woocommerce' (optional)
+          auto_start      — forwarded to depot API (optional)
+        """
+        try:
+            data: Dict[str, Any] = json.loads(self._body())
+        except Exception:
+            self._json(400, {'ok': False, 'error': 'invalid JSON'})
+            return
+
+        operator_id: str = str(data.get('operator_id', '')).strip()
+        if not operator_id:
+            self._json(400, {'ok': False, 'error': 'missing operator_id'})
+            return
+
+        customer_email: str = str(data.get('customer_email', ''))
+        order_id: str = str(data.get('order_id', ''))
+        source: str = str(data.get('source', 'wordpress'))
+
+        log.info('[purchase-webhook] install-from-purchase: operator=%s order=%s '
+                 'source=%s email=%s', operator_id, order_id, source, customer_email)
+
+        result = _trigger_operator_install(operator_id, customer_email)
+
+        status = 200 if result.get('ok') else 500
+        self._json(status, {
+            'ok': result.get('ok', False),
+            'operator_id': operator_id,
+            'order_id': order_id,
+            'result': result,
+        })
 
     def log_message(self, *_args: Any) -> None:
         pass
