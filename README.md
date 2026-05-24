@@ -5,7 +5,7 @@
 > Architecturally compliant with EU AI Act Articles 8-15 for high-risk AI systems — by design, not by retrofit.
 > → [EU AI Act Compliance Reference](./docs/eu_ai_act_compliance.md)
 
-**Version:** 2026.5 · May 2026 · [Changelog](CHANGELOG.md) · ![Tests](https://img.shields.io/badge/tests-1242%20passing-green)
+**Version:** 2026.5.1 · May 2026 · [Changelog](CHANGELOG.md) · ![Tests](https://img.shields.io/badge/tests-1265%20passing-green) · [![PyPI](https://img.shields.io/pypi/v/cascadia-os)](https://pypi.org/project/cascadia-os/)
 
 ---
 
@@ -18,6 +18,17 @@ Decades later — after aerospace engineering, industrial automation, large-scal
 I didn't want a chatbot. I wanted an operator I could trust. Something that remembers, asks before acting, resumes after failure, and stays bounded when the stakes are real.
 
 **That's what this is.** → [Full story](./STORY.md)
+
+---
+
+## What's New in 2026.5.1
+
+- **Operator tier limits enforced** — Lite=2, Pro=6, Business=12, Enterprise=999. Installing beyond the cap returns HTTP 403 `operator_limit_reached` with `upgrade_url`.
+- **`step.failed` events** emitted to `run_trace` — PRISM run list now surfaces per-step failure reasons.
+- **Conditional step execution** — workflow runner supports step-level `condition` fields.
+- **PRISM failure visibility** — failed step reasons shown inline in the run timeline.
+- **`purchase_webhook` + `sync_publisher`** restored to FLINT supervision.
+- **PyPI package published** — `pip install cascadia-os` is now live.
 
 ---
 
@@ -103,6 +114,14 @@ On component failure: FailureEvent → NATS → supervisor → retry / escalate 
 
 ---
 
+## Zyrcon Grid
+
+Cascadia OS powers **Zyrcon Grid** — a multi-node AI compute network for deploying operator workloads across distributed hardware. Each Grid node runs a full Cascadia OS stack; the Grid layer handles routing, load balancing, and failover across nodes.
+
+→ [Zyrcon Grid](https://github.com/zyrconlabs/zyrcon-grid)
+
+---
+
 ## Local AI inference
 
 Cascadia OS runs inference locally via llama.cpp. On Apple Silicon (M1–M4) this uses the Metal GPU. No cloud API key required. No per-token cost. No data leaves your hardware.
@@ -132,6 +151,12 @@ Approvals sync instantly to PRISM. Background refresh keeps item counts current.
 ---
 
 ## Quick Start
+
+**PyPI (all platforms):**
+```bash
+pip install cascadia-os          # latest
+pip install cascadia-os==2026.5.1  # pinned
+```
 
 **macOS:**
 ```bash
@@ -241,6 +266,21 @@ High-risk actions (email sends, quote dispatch, invoice sends) are held at an ap
 342+ operators and connectors for Pro and Business tiers are available at [zyrcon.store](https://zyrcon.store).
 
 → [Connector documentation](./docs/connectors.md)
+
+---
+
+## Tiers & Operator Limits
+
+| Tier       | Max Operators | Price              |
+|------------|-------------:|--------------------|
+| Lite       |            2 | Free               |
+| Pro        |            6 | $49–99 / mo        |
+| Business   |           12 | $299–999 / mo      |
+| Enterprise |          999 | $25K+ / yr         |
+
+Installing more operators than your tier allows returns HTTP `403 operator_limit_reached` with an `upgrade_url`. Upgrade at [zyrcon.store](https://zyrcon.store).
+
+→ [Full tier comparison](./docs/tiers_and_pricing.md)
 
 ---
 
@@ -360,4 +400,4 @@ See [LICENSE](./LICENSE) for full terms.
 
 ---
 
-*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs) · 2026.5*
+*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs) · 2026.5.1*
