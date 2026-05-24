@@ -153,14 +153,21 @@ def _check_tier(config: dict, tier_required: str) -> tuple[bool, str]:
         return False, 'license_gate_unreachable'
 
 
-def _check_operator_limit(config: dict) -> tuple[bool, str]:
-    """Check if adding another operator would exceed the tier limit."""
+def _check_operator_limit(config: dict, op_id: str = '') -> tuple[bool, str]:
+    """Check if adding another operator would exceed the tier limit.
+
+    op_id: when provided, if the operator already exists in the registry this
+           is a reinstall/upgrade and does not consume a new slot.
+    """
     try:
         profile = _get_entitlement()
         max_ops = profile.get('limits', {}).get('max_operators', 2)
         tier = profile.get('tier', 'lite')
         reg_path = _registry_path(config)
         reg = _load_registry(reg_path)
+        # Reinstall: existing operator_id does not consume a new slot
+        if op_id and any(op.get('id') == op_id for op in reg.get('operators', [])):
+            return True, ''
         current = len(reg.get('operators', []))
         if current >= max_ops:
             return False, (
@@ -173,6 +180,8 @@ def _check_operator_limit(config: dict) -> tuple[bool, str]:
         try:
             reg_path = _registry_path(config)
             reg = _load_registry(reg_path)
+            if op_id and any(op.get('id') == op_id for op in reg.get('operators', [])):
+                return True, ''
             if len(reg.get('operators', [])) >= 2:
                 return False, 'operator_limit_reached'
         except Exception:
@@ -338,9 +347,9 @@ class CrewService:
         # Normalize manifest key
         manifest.setdefault('operator_id', op_id)
 
-        # Operator count limit check
+        # Operator count limit check (reinstall of same op_id does not count)
         _cfg = getattr(self, '_config', {})
-        limit_ok, limit_msg = _check_operator_limit(_cfg)
+        limit_ok, limit_msg = _check_operator_limit(_cfg, op_id)
         if not limit_ok:
             return 403, {
                 'error': 'operator_limit_reached',
