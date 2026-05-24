@@ -2877,8 +2877,12 @@ function runStateBadge(state) {
 
 function renderLiveRunRow(run) {
   const age = run.updated_at ? new Date(run.updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) : '';
+  const failLine = (run.run_state === 'failed' && run.failure_reason)
+    ? '<div style="font-size:11px;color:var(--red);margin-top:3px">' + esc(run.failure_reason) + '</div>'
+    : '';
   return '<div class="run-live-row"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--navy-800);margin-bottom:3px">' + esc(run.goal||'—') + '</div>'
     + '<div style="font-size:10px;color:var(--gray-400);font-family:var(--mono)">' + esc(run.run_id) + ' · step: ' + esc(run.current_step||'—') + ' · ' + age + '</div>'
+    + failLine
     + '</div>' + runStateBadge(run.run_state) + '</div>';
 }
 
