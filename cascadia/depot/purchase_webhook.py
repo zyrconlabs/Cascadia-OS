@@ -36,6 +36,14 @@ NAME = "purchase-webhook"
 VERSION = "1.0.0"
 PORT = int(os.environ.get('PURCHASE_WEBHOOK_PORT', '6214'))
 
+# WooCommerce product ID → Cascadia DEPOT operator mapping
+# Used when Stripe metadata contains product_id instead of operator_id directly
+PRODUCT_OPERATOR_MAP: dict[int, str] = {
+    40: "recon",   # RECON — Research Intelligence  $49
+    41: "scout",   # SCOUT — Lead Qualification     $29
+    42: "quote",   # QUOTE — Quote Generator        $39
+}
+
 # Stripe webhook signing secret — set via environment
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 
@@ -278,6 +286,84 @@ class _PurchaseWebhookHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *_args: Any) -> None:
         pass
+
+
+# ── WooCommerce / product-ID bridge ──────────────────────────────────────────
+
+def get_operator_from_stripe_event(event: dict) -> Optional[str]:
+    """Extract operator ID from a Stripe checkout.session.completed event.
+
+    Falls back to PRODUCT_OPERATOR_MAP when metadata.operator_id is absent —
+    WooCommerce sends product_id in session metadata rather than operator_id.
+    """
+    try:
+        data = event.get("data", {}).get("object", {})
+        metadata = data.get("metadata", {})
+
+        # Prefer explicit operator_id (standard Cascadia path)
+        if metadata.get("operator_id"):
+            return metadata["operator_id"]
+
+        # WooCommerce bridge: product_id in session metadata
+        if "product_id" in metadata:
+            pid = int(metadata["product_id"])
+            return PRODUCT_OPERATOR_MAP.get(pid)
+
+        # Fallback: wc_product_id in line-item price metadata (expanded sessions)
+        items = data.get("line_items", {}).get("data", [])
+        for item in items:
+            pid_str = (item.get("price", {})
+                          .get("product_data", {})
+                          .get("metadata", {})
+                          .get("wc_product_id"))
+            if pid_str:
+                op = PRODUCT_OPERATOR_MAP.get(int(pid_str))
+                if op:
+                    return op
+        return None
+    except Exception:
+        return None
+
+
+def _trigger_operator_install(operator_id: str,
+                               customer_email: str = "",
+                               install_url: str = "http://127.0.0.1:6212/depot/install",
+                               ) -> dict:
+    """Call the DEPOT API to install an operator after a confirmed purchase.
+
+    Used as an HTTP-based fallback when the installer module is not available
+    in-process (e.g. purchase_webhook running standalone, decoupled from DEPOT).
+    """
+    import urllib.request
+    import urllib.error
+
+    payload = json.dumps({
+        "operator_id": operator_id,
+        "source": "purchase",
+        "customer_email": customer_email,
+        "auto_start": True,
+    }).encode()
+
+    try:
+        req = urllib.request.Request(
+            install_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+            log.info("[purchase-webhook] installed %s via depot API: %s",
+                     operator_id, result)
+            return {"ok": True, "operator_id": operator_id, "result": result}
+    except urllib.error.HTTPError as e:
+        log.error("[purchase-webhook] depot install HTTP error %s → %s: %s",
+                  operator_id, e.code, e)
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        log.error("[purchase-webhook] depot install error → %s: %s",
+                  operator_id, e)
+        return {"ok": False, "error": str(e)}
 
 
 # ── Server factory ────────────────────────────────────────────────────────────
