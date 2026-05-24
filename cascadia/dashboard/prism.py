@@ -1398,9 +1398,12 @@ document.getElementById('key').addEventListener('keydown', function(e){
             store = RunStore(self.config['database_path'])
             with store.connection() as conn:
                 rows = conn.execute(
-                    'SELECT run_id, goal, run_state, current_step, retry_count, '
-                    'blocked_reason, blocking_entity, created_at, updated_at '
-                    'FROM runs ORDER BY updated_at DESC LIMIT 20'
+                    'SELECT r.run_id, r.goal, r.run_state, r.current_step, r.retry_count, '
+                    'r.blocked_reason, r.blocking_entity, r.created_at, r.updated_at, '
+                    '(SELECT s.failure_reason FROM steps s '
+                    ' WHERE s.run_id = r.run_id AND s.failure_reason IS NOT NULL '
+                    ' ORDER BY s.step_index DESC LIMIT 1) AS failure_reason '
+                    'FROM runs r ORDER BY r.updated_at DESC LIMIT 20'
                 ).fetchall()
             return [dict(r) for r in rows]
         except Exception:
