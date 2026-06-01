@@ -108,6 +108,8 @@ class ChiefService:
         self.runtime.register_route("POST", "/task",            self.handle_task)
         self.runtime.register_route("GET",  "/tasks/{task_id}", self.get_task)
         self.runtime.register_route("GET",  "/tasks",           self.list_tasks)
+        self.runtime.register_route("POST", "/outreach/approval/request",
+                                    self._handle_outreach_approval_request)
 
     # ------------------------------------------------------------------
     # Health
@@ -933,6 +935,85 @@ class ChiefService:
             self._save_approvals(data)
 
     # ------------------------------------------------------------------
+    # Pending outreach store (mirror of the quote store, separate file)
+    # ------------------------------------------------------------------
+
+    def _load_outreach_approvals(self) -> dict:
+        from pathlib import Path
+        path = Path(self._OUTREACH_FILE)
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            return {}
+
+    def _save_outreach_approvals(self, data: dict) -> None:
+        from pathlib import Path
+        Path(self._OUTREACH_FILE).write_text(json.dumps(data, indent=2))
+
+    def _handle_outreach_approval_request(
+        self, payload: Dict[str, Any]
+    ) -> tuple[int, Dict[str, Any]]:
+        """Inbound from RECON: stage an outreach draft, post the approval
+        prompt to Telegram. The actual email send happens later on /approve_N.
+        """
+        from datetime import datetime, timezone
+
+        row_id = str(payload.get("row_id", "")).strip()
+        if not row_id:
+            return 400, {"ok": False, "error": "row_id required"}
+
+        biz     = payload.get("business_name", f"lead #{row_id}")
+        email   = payload.get("email", "")
+        btype   = payload.get("business_type", "contractor")
+        city    = payload.get("city", "")
+        subject = payload.get("subject", "")
+        body    = payload.get("body", "")
+        chat_id = str(payload.get("chat_id", ""))
+
+        entry = {
+            "row_id":        row_id,
+            "business_name": biz,
+            "email":         email,
+            "business_type": btype,
+            "city":          city,
+            "subject":       subject,
+            "body":          body,
+            "chat_id":       chat_id,
+            "created_at":    datetime.now(timezone.utc).isoformat(),
+        }
+        with self._outreach_lock:
+            data = self._load_outreach_approvals()
+            data[row_id] = entry
+            self._save_outreach_approvals(data)
+
+        msg = (
+            "📋 OUTREACH DRAFT — approval needed\n\n"
+            f"🏢 {biz}\n"
+            f"🔧 {btype} | {city}\n"
+            f"📧 {email}\n\n"
+            f"Subject: {subject}\n\n"
+            f"{body}\n\n"
+            "──────────────────────────\n"
+            f"/approve_{row_id} ✅ Send this email\n"
+            f"/reject_{row_id} ❌ Skip this lead"
+        )
+        if chat_id:
+            try:
+                _http_post(
+                    f"{TELEGRAM_URL}/send",
+                    {"chat_id": chat_id, "text": msg},
+                    timeout=5,
+                )
+            except Exception as exc:
+                self.runtime.logger.warning(
+                    "CHIEF outreach approval Telegram post failed: %s", exc
+                )
+
+        return 200, {"ok": True, "queued": True, "row_id": row_id}
+
+    # ------------------------------------------------------------------
     # Quote generation + approval
     # ------------------------------------------------------------------
 
@@ -1044,11 +1125,85 @@ class ChiefService:
             f"/approve_{row_id} ✅ Send  |  /reject_{row_id} ❌ Discard"
         )
 
+    def _handle_outreach_decision(
+        self, action: str, row_id: str, entry: dict, chat_id: str
+    ) -> str:
+        """Handle /approve_N or /reject_N for a staged OUTREACH draft.
+        On approve: send via the email operator, then tell RECON to mark the
+        lead contacted. On reject: tell RECON the lead was skipped.
+        """
+        biz   = entry.get("business_name", f"lead #{row_id}")
+        email = entry.get("email", "")
+
+        def _drop() -> None:
+            with self._outreach_lock:
+                data = self._load_outreach_approvals()
+                data.pop(row_id, None)
+                self._save_outreach_approvals(data)
+
+        if action == "reject":
+            try:
+                _http_post(
+                    f"{self._RECON_URL}/api/outreach/skipped",
+                    {"row_id": row_id},
+                    timeout=10,
+                )
+            except Exception as exc:
+                self.runtime.logger.warning(
+                    "CHIEF outreach skipped callback failed: %s", exc
+                )
+            _drop()
+            return f"⏭ Skipped {biz}"
+
+        # approve — send the email
+        if not email:
+            return f"❌ No email address for {biz} — cannot send."
+        try:
+            send_result = _http_post(
+                "http://127.0.0.1:8010/api/task",
+                {
+                    "to":       email,
+                    "subject":  entry.get("subject", ""),
+                    "body":     entry.get("body", ""),
+                    "reply_to": "hello@zyrcon.ai",
+                },
+                timeout=20,
+            )
+        except Exception as exc:
+            return f"❌ Email operator unreachable: {exc}"
+        if not send_result.get("ok"):
+            return f"❌ Email send failed: {send_result.get('error', 'unknown')}"
+
+        try:
+            _http_post(
+                f"{self._RECON_URL}/api/outreach/approved",
+                {"row_id": row_id},
+                timeout=10,
+            )
+        except Exception as exc:
+            self.runtime.logger.warning(
+                "CHIEF outreach approved callback failed: %s", exc
+            )
+        _drop()
+        return f"✅ Email sent to {biz} ({email})"
+
     def _handle_approval(self, action: str, row_id: str, chat_id: str) -> str:
-        """Handle /approve_N or /reject_N. Returns reply text."""
+        """Handle /approve_N or /reject_N. Returns reply text.
+
+        Outreach drafts and quote proposals share the row_id keyspace, so check
+        the outreach store FIRST; if the row_id isn't there, fall through to the
+        quote-approval logic below.
+        """
         import csv
         from pathlib import Path
         from datetime import datetime, timezone
+
+        with self._outreach_lock:
+            outreach_entry = self._load_outreach_approvals().get(row_id)
+        if outreach_entry is not None:
+            return self._handle_outreach_decision(
+                action, row_id, outreach_entry, chat_id
+            )
 
         with self._approvals_lock:
             data  = self._load_approvals()
