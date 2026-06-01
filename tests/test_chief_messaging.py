@@ -18,6 +18,7 @@ Messages are sent to chat_id 1535010257 via the live @ZyrconBot.
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.request
 import urllib.error
@@ -25,10 +26,12 @@ from datetime import datetime
 from pathlib import Path
 
 WEBHOOK_URL = "http://127.0.0.1:9000/webhook"
-SENT_FILE   = Path(
-    "/Users/andy/Zyrcon/operators/cascadia-os-operators/telegram/data/telegram_sent.json"
+SENT_FILE   = (
+    Path.home() / "Zyrcon" / "operators" / "cascadia-os-operators"
+    / "telegram" / "data" / "telegram_sent.json"
 )
-TEST_CHAT_ID    = 1535010257
+# Owner chat for the live-bot messaging test; override via env on other hosts.
+TEST_CHAT_ID    = int(os.environ.get("TELEGRAM_OWNER_CHAT_ID", "1535010257"))
 # Use time-based offset so re-runs never collide with dedup cache
 _RUN_OFFSET     = int(time.time()) % 1_000_000
 BASE_UPDATE_ID  = 9_000_000 + _RUN_OFFSET
