@@ -952,6 +952,25 @@ class ChiefService:
         from pathlib import Path
         Path(self._OUTREACH_FILE).write_text(json.dumps(data, indent=2))
 
+    def _is_outreach_actioned(self, row_id: str) -> bool:
+        """True if the lead at row_id in outreach_ready.csv has a non-empty
+        'contacted' value (yes/skipped/exhausted/pending) — i.e. it was already
+        handled, so an approve/reject for it is a no-op rather than a quote."""
+        import csv
+        try:
+            idx = int(row_id)
+        except (TypeError, ValueError):
+            return False
+        path = os.path.join(self._OUTPUT_DIR, "outreach_ready.csv")
+        try:
+            with open(path, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+        except Exception:
+            return False
+        if 0 <= idx < len(rows):
+            return bool((rows[idx].get("contacted") or "").strip())
+        return False
+
     def _handle_outreach_approval_request(
         self, payload: Dict[str, Any]
     ) -> tuple[int, Dict[str, Any]]:
@@ -1210,8 +1229,13 @@ class ChiefService:
             entry = data.get(row_id)
 
         if not entry:
+            if self._is_outreach_actioned(row_id):
+                return (
+                    f"ℹ️ Lead #{row_id} was already handled "
+                    "(outreach previously approved or skipped)."
+                )
             return (
-                f"⚠️ No pending quote for lead #{row_id}. "
+                f"⚠️ No pending item for lead #{row_id}. "
                 "It may have already been sent or discarded."
             )
 
