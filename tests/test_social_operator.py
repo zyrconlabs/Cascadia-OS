@@ -3,7 +3,7 @@ tests/test_social_operator.py
 Social Media Campaign Operator — 20+ tests covering:
   campaign_db, quality_check, generator, server endpoints.
 
-Run from /Users/andy/Zyrcon/cascadia-os:
+Run from ~/Zyrcon/cascadia-os:
     python3 -m pytest tests/test_social_operator.py -v
 """
 from __future__ import annotations

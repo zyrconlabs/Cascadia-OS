@@ -350,9 +350,9 @@ class TestTelegramDeduplication(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestQuoteBriefNotRegisteredAsChief(unittest.TestCase):
     def test_quote_brief_not_registered_as_chief(self):
-        manifest_path = Path(
-            "/Users/andy/Zyrcon/operators/cascadia-os-operators/"
-            "quote_brief/manifest.json"
+        manifest_path = (
+            Path.home() / "Zyrcon" / "operators" / "cascadia-os-operators"
+            / "quote_brief" / "manifest.json"
         )
         if not manifest_path.exists():
             self.skipTest("quote_brief manifest not found")
