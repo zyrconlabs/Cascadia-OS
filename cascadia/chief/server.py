@@ -990,6 +990,11 @@ class ChiefService:
         subject = payload.get("subject", "")
         body    = payload.get("body", "")
         chat_id = str(payload.get("chat_id", ""))
+        # Originating operator gets the approve/reject callback. Defaults to
+        # RECON for backward compatibility (first-touch outreach). PULSE passes
+        # its own URL so follow-up bookkeeping runs in PULSE, not RECON.
+        source_url = (payload.get("source_url") or self._RECON_URL).rstrip("/")
+        kind       = payload.get("kind") or "outreach"
 
         entry = {
             "row_id":        row_id,
@@ -1000,6 +1005,8 @@ class ChiefService:
             "subject":       subject,
             "body":          body,
             "chat_id":       chat_id,
+            "source_url":    source_url,
+            "kind":          kind,
             "created_at":    datetime.now(timezone.utc).isoformat(),
         }
         with self._outreach_lock:
@@ -1007,8 +1014,12 @@ class ChiefService:
             data[row_id] = entry
             self._save_outreach_approvals(data)
 
+        header = (
+            "🔁 FOLLOW-UP DRAFT — approval needed" if kind == "followup"
+            else "📋 OUTREACH DRAFT — approval needed"
+        )
         msg = (
-            "📋 OUTREACH DRAFT — approval needed\n\n"
+            f"{header}\n\n"
             f"🏢 {biz}\n"
             f"🔧 {btype} | {city}\n"
             f"📧 {email}\n\n"
@@ -1153,6 +1164,9 @@ class ChiefService:
         """
         biz   = entry.get("business_name", f"lead #{row_id}")
         email = entry.get("email", "")
+        # Call back the originating operator (RECON for first-touch, PULSE for
+        # follow-ups). Falls back to RECON for entries staged before this field.
+        source_url = (entry.get("source_url") or self._RECON_URL).rstrip("/")
 
         def _drop() -> None:
             with self._outreach_lock:
@@ -1163,7 +1177,7 @@ class ChiefService:
         if action == "reject":
             try:
                 _http_post(
-                    f"{self._RECON_URL}/api/outreach/skipped",
+                    f"{source_url}/api/outreach/skipped",
                     {"row_id": row_id},
                     timeout=10,
                 )
@@ -1195,7 +1209,7 @@ class ChiefService:
 
         try:
             _http_post(
-                f"{self._RECON_URL}/api/outreach/approved",
+                f"{source_url}/api/outreach/approved",
                 {"row_id": row_id},
                 timeout=10,
             )
