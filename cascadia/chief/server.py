@@ -755,11 +755,19 @@ class ChiefService:
     # Pipeline snapshot + outreach dispatch
     # ------------------------------------------------------------------
 
-    _CSV_PATH       = "/Users/andy/Zyrcon/operators/cascadia-os-operators/recon/output/houston_contractors.csv"
-    _REPLIES_PATH   = "/Users/andy/Zyrcon/operators/cascadia-os-operators/recon/output/replies.json"
-    _APPROVALS_FILE = "/Users/andy/Zyrcon/operators/cascadia-os-operators/recon/output/pending_quotes.json"
+    # Resolve paths from the runtime user's home so this works on any host
+    # (was hardcoded to /Users/andy, which does not exist on every node).
+    _OUTPUT_DIR     = os.path.join(
+        os.path.expanduser("~"),
+        "Zyrcon", "operators", "cascadia-os-operators", "recon", "output",
+    )
+    _CSV_PATH       = os.path.join(_OUTPUT_DIR, "houston_contractors.csv")
+    _REPLIES_PATH   = os.path.join(_OUTPUT_DIR, "replies.json")
+    _APPROVALS_FILE = os.path.join(_OUTPUT_DIR, "pending_quotes.json")
+    _OUTREACH_FILE  = os.path.join(_OUTPUT_DIR, "pending_outreach.json")
     _RECON_URL      = "http://127.0.0.1:8002"
     _approvals_lock = threading.Lock()
+    _outreach_lock  = threading.Lock()
 
     def _pipeline_snapshot(self) -> str:
         """Read houston_contractors.csv and return a formatted pipeline snapshot."""
