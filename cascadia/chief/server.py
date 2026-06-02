@@ -241,6 +241,31 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text="👁 Generating preview — stand by...",
                 ).to_dict()
+            if cmd == "/approve_all":
+                if not chat_id:
+                    return 200, TaskResponse(
+                        ok=False, task_id=task_id, selected_type="none",
+                        reply_text="❌ /approve_all requires a Telegram chat_id.",
+                    ).to_dict()
+                n_out = len(self._load_outreach_approvals())
+                n_q   = len(self._load_approvals())
+                if n_out + n_q == 0:
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text="✅ Nothing pending — queue is empty.",
+                    ).to_dict()
+                threading.Thread(
+                    target=self._approve_all_and_notify,
+                    args=(chat_id,),
+                    daemon=True,
+                    name=f"chief-approveall-{task_id[:8]}",
+                ).start()
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=f"⚙️ Approving {n_out + n_q} pending item(s)... Stand by.",
+                ).to_dict()
             if cmd == "/outreach":
                 if not chat_id:
                     return 200, TaskResponse(
@@ -1423,6 +1448,54 @@ class ChiefService:
             "This is a preview only — nothing has been queued.\n"
             "To queue this lead for approval run /outreach"
         )
+
+    def _approve_all_and_notify(self, chat_id: str) -> None:
+        """Background: approve every pending outreach draft (then every pending
+        quote), posting one Telegram message per item plus a final summary.
+        One failure is logged and skipped — the batch continues."""
+        import time as _time
+
+        def _tg(text: str) -> None:
+            try:
+                _http_post(f"{TELEGRAM_URL}/send",
+                           {"chat_id": chat_id, "text": text}, timeout=5)
+            except Exception:
+                pass
+
+        approved: list[str] = []
+
+        # Outreach first (snapshot keys; each decision pops its own entry).
+        with self._outreach_lock:
+            outreach = dict(self._load_outreach_approvals())
+        for row_id, entry in outreach.items():
+            biz = entry.get("business_name", f"lead #{row_id}")
+            try:
+                _tg(self._handle_outreach_decision("approve", row_id, entry, chat_id))
+                approved.append(biz)
+            except Exception as exc:
+                self.runtime.logger.error("approve_all outreach %s failed: %s", row_id, exc)
+                _tg(f"❌ Failed to approve {biz}: {exc}")
+            _time.sleep(0.5)
+
+        # Quotes next (outreach store now drained, so _handle_approval routes
+        # these to the quote branch).
+        with self._approvals_lock:
+            quotes = dict(self._load_approvals())
+        for row_id, entry in quotes.items():
+            biz = entry.get("business_name", f"quote #{row_id}")
+            try:
+                _tg(self._handle_approval("approve", row_id, chat_id))
+                approved.append(biz)
+            except Exception as exc:
+                self.runtime.logger.error("approve_all quote %s failed: %s", row_id, exc)
+                _tg(f"❌ Failed to approve {biz}: {exc}")
+            _time.sleep(0.5)
+
+        if approved:
+            _tg("✅ Approved {} item(s):\n{}".format(
+                len(approved), "\n".join(f"• {b}" for b in approved)))
+        else:
+            _tg("✅ Nothing pending — queue is empty.")
 
     def _run_outreach_and_notify(self, chat_id: str) -> None:
         """Background: POST to RECON /api/outreach with chat_id."""
