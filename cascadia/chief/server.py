@@ -224,6 +224,23 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._pipeline_snapshot(),
                 ).to_dict()
+            if cmd == "/preview":
+                if not chat_id:
+                    return 200, TaskResponse(
+                        ok=False, task_id=task_id, selected_type="none",
+                        reply_text="❌ /preview requires a Telegram chat_id.",
+                    ).to_dict()
+                threading.Thread(
+                    target=self._preview_and_notify,
+                    args=(chat_id,),
+                    daemon=True,
+                    name=f"chief-preview-{task_id[:8]}",
+                ).start()
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text="👁 Generating preview — stand by...",
+                ).to_dict()
             if cmd == "/outreach":
                 if not chat_id:
                     return 200, TaskResponse(
@@ -704,7 +721,52 @@ class ChiefService:
             lines.append(f"  Operators registered: {n}")
         except Exception:
             pass
+
+        stats = self._read_pipeline_stats()
+        if stats:
+            lines.append(
+                "\n📋 OUTREACH PIPELINE\n"
+                f"  Leads ready:    {stats['total']}\n"
+                f"  Contacted:      {stats['contacted']}\n"
+                f"  Pending:        {stats['pending']}\n"
+                f"  Follow-ups due: {stats['followups_due']}\n"
+                f"  Skipped:        {stats['skipped']}\n"
+                f"  Exhausted:      {stats['exhausted']}"
+            )
+        else:
+            lines.append("\n📋 Pipeline data unavailable")
         return "\n".join(lines)
+
+    def _read_pipeline_stats(self) -> dict | None:
+        """Read outreach_ready.csv → pipeline KPIs. None on any error."""
+        import csv
+        from datetime import datetime, timezone
+        csv_path = os.path.join(self._OUTPUT_DIR, "outreach_ready.csv")
+        try:
+            with open(csv_path, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+        except Exception:
+            return None
+
+        def _n(v):
+            return sum(1 for r in rows if (r.get("contacted") or "").strip() == v)
+
+        now = datetime.now(timezone.utc)
+        due = 0
+        for r in rows:
+            d = (r.get("followup_due_at") or "").strip()
+            if not d or (r.get("contacted") or "").strip() != "yes":
+                continue
+            try:
+                if datetime.fromisoformat(d) <= now:
+                    due += 1
+            except ValueError:
+                pass
+        return {
+            "total": len(rows), "contacted": _n("yes"), "pending": _n("pending"),
+            "skipped": _n("skipped"), "exhausted": _n("exhausted"),
+            "followups_due": due,
+        }
 
     def _missions_summary(self) -> str:
         try:
@@ -1331,6 +1393,36 @@ class ChiefService:
         except Exception as exc:
             self.runtime.logger.error("CHIEF: mark_contacted failed: %s", exc)
             return f"❌ Could not reach RECON to mark lead: {exc}"
+
+    def _preview_and_notify(self, chat_id: str) -> None:
+        """Background: GET a draft preview from RECON and post it to Telegram.
+        Read-only — RECON's /api/preview stages nothing and marks nothing."""
+        def _tg(text: str) -> None:
+            try:
+                _http_post(f"{TELEGRAM_URL}/send",
+                           {"chat_id": chat_id, "text": text}, timeout=5)
+            except Exception:
+                pass
+        try:
+            result = _http_post(f"{self._RECON_URL}/api/preview", {}, timeout=45)
+        except Exception as exc:
+            _tg(f"❌ Preview unavailable: {exc}")
+            return
+        if not result.get("ok"):
+            _tg("No leads available for preview. "
+                "RECON is finding more — check back soon.")
+            return
+        _tg(
+            "👁 OUTREACH PREVIEW\n\n"
+            f"Business: {result.get('business_name','')}\n"
+            f"Type: {result.get('business_type','')} | {result.get('city','')}\n"
+            f"To: {result.get('email','')}\n\n"
+            f"Subject: {result.get('subject','')}\n\n"
+            f"{result.get('body','')}\n\n"
+            "──────────────────────────\n"
+            "This is a preview only — nothing has been queued.\n"
+            "To queue this lead for approval run /outreach"
+        )
 
     def _run_outreach_and_notify(self, chat_id: str) -> None:
         """Background: POST to RECON /api/outreach with chat_id."""
