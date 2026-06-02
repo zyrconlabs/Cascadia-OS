@@ -12,6 +12,7 @@ COMMANDS: dict[str, dict] = {
     "/leads":     {"operator": "recon",       "description": "Show lead report"},
     "/quote":     {"operator": "quote_brief", "description": "Draft a proposal or quote"},
     "/scout":     {"operator": "scout",       "description": "Qualify an inbound lead"},
+    "/preview":       {"operator": None, "description": "Preview the next outreach draft (no send, no queue)"},
     "/outreach":      {"operator": None, "description": "Brief top 5 uncontacted leads for outreach"},
     "/send_outreach": {"operator": None, "description": "Draft AND send outreach emails to top leads"},
     "/followups":     {"operator": None, "description": "Show pending follow-ups due today"},
