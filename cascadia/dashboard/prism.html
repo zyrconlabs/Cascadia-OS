@@ -1188,7 +1188,7 @@ function showAct(id, label, badges) { S.activity[id]={label,badges:badges||[]}; 
 function clearAct(id) { delete S.activity[id]; renderMain(); }
 
 /* ═══ COMMANDS ═══ */
-const BCMDS=[{cmd:'/status',label:'Status'},{cmd:'/health',label:'Health'},{cmd:'/costs',label:'Costs'}];
+const BCMDS=[{cmd:'/status',label:'Status'},{cmd:'/pipeline',label:'Pipeline'},{cmd:'/preview',label:'Preview'},{cmd:'/outreach',label:'Outreach'},{cmd:'/approve_all',label:'Approve All'},{cmd:'/replies',label:'Replies'},{cmd:'/followups',label:'Follow-ups'},{cmd:'/help',label:'Help'},{cmd:'/health',label:'Health'},{cmd:'/costs',label:'Costs'}];
 const WCMDS=[{cmd:'/status',label:'Status'},{cmd:'/recent-tasks',label:'Recent'},{cmd:'/logs',label:'Logs'},{cmd:'/stop',label:'Stop'}];
 const CCMDS=[{cmd:'/detailed-status',label:'Details'},{cmd:'/recent-tasks',label:'Recent'},{cmd:'/logs',label:'Logs'}];
 const DC={active:'sc-dot--g',standby:'sc-dot--y',offline:'sc-dot--r'};
@@ -1332,6 +1332,25 @@ async function handleCommand(id, cmd) {
       byWorker+=`• ${cc.name}: $${wCost.toFixed(6)} (${(S.runs[cc.id]||[]).length} runs)\n`;
     }
     S.messages[id].push({time:t,type:'agent',text:`Cost Report (session)\n\n${byWorker||'• No runs yet\n'}\nTotal: $${totalCost.toFixed(6)}\n\n→ Observability for full metrics breakdown`});
+    await Vault.saveMessages(id,S.messages[id]); renderMain(); scrollChat(); return;
+  }
+
+  // CHIEF orchestrator commands: proxy any unrecognized beacon command to
+  // CHIEF /task (same-origin via PRISM) and show its reply_text — same surface
+  // as Telegram (/pipeline /preview /outreach /approve_all /replies /followups /help).
+  if (id==='beacon') {
+    showAct(id,'Asking CHIEF…');
+    try {
+      const r = await fetch(PRISM_URL + '/api/prism/chief', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({text:cmd})
+      });
+      const d = await r.json(); clearAct(id);
+      S.messages[id].push({time:t,type:'agent',text:(d&&d.reply_text)?d.reply_text:'No response from CHIEF.'});
+    } catch(e) {
+      clearAct(id);
+      S.messages[id].push({time:t,type:'agent',text:'CHIEF unreachable: '+e.message});
+    }
     await Vault.saveMessages(id,S.messages[id]); renderMain(); scrollChat(); return;
   }
 
