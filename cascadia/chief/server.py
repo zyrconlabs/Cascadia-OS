@@ -72,6 +72,18 @@ def _http_get(url: str, timeout: int = 5) -> dict:
         return json.loads(r.read().decode())
 
 
+def _get_source(metadata: dict | None) -> str:
+    """Source channel from task metadata ('prism', 'telegram', ...)."""
+    return metadata.get("source", "") if metadata else ""
+
+
+def _is_prism(metadata: dict | None) -> bool:
+    """True when the task originated from the PRISM dashboard chat bar.
+    PRISM expects full results returned synchronously in reply_text rather
+    than pushed to Telegram."""
+    return _get_source(metadata) == "prism"
+
+
 class ChiefService:
     """
     CHIEF - Task orchestrator.
@@ -225,6 +237,12 @@ class ChiefService:
                     reply_text=self._pipeline_snapshot(),
                 ).to_dict()
             if cmd == "/preview":
+                if _is_prism(req.metadata):
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._preview_sync_for_prism(),
+                    ).to_dict()
                 if not chat_id:
                     return 200, TaskResponse(
                         ok=False, task_id=task_id, selected_type="none",
@@ -242,6 +260,12 @@ class ChiefService:
                     reply_text="👁 Generating preview — stand by...",
                 ).to_dict()
             if cmd == "/approve_all":
+                if _is_prism(req.metadata):
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._approve_all_sync_for_prism(),
+                    ).to_dict()
                 if not chat_id:
                     return 200, TaskResponse(
                         ok=False, task_id=task_id, selected_type="none",
@@ -267,6 +291,12 @@ class ChiefService:
                     reply_text=f"⚙️ Approving {n_out + n_q} pending item(s)... Stand by.",
                 ).to_dict()
             if cmd == "/outreach":
+                if _is_prism(req.metadata):
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._outreach_sync_for_prism(),
+                    ).to_dict()
                 if not chat_id:
                     return 200, TaskResponse(
                         ok=False, task_id=task_id, selected_type="none",
@@ -1401,6 +1431,143 @@ class ChiefService:
         except Exception as exc:
             self.runtime.logger.error("CHIEF: mark_contacted failed: %s", exc)
             return f"❌ Could not reach RECON to mark lead: {exc}"
+
+    # ------------------------------------------------------------------
+    # PRISM synchronous variants (source=="prism")
+    # Same work as the Telegram threaded handlers, but the full result is
+    # returned to the caller as a string instead of pushed to Telegram.
+    # ------------------------------------------------------------------
+
+    def _preview_sync_for_prism(self) -> str:
+        """Sync /preview for PRISM: GET a draft preview from RECON (read-only —
+        stages nothing, marks nothing) and return it as text."""
+        try:
+            result = _http_post(f"{self._RECON_URL}/api/preview", {}, timeout=45)
+        except Exception as exc:
+            return f"❌ Preview unavailable: {exc}"
+        if not result.get("ok"):
+            return ("No leads available for preview. "
+                    "RECON is finding more — check back soon.")
+        return (
+            "👁 OUTREACH PREVIEW\n\n"
+            f"Business: {result.get('business_name','')}\n"
+            f"Type: {result.get('business_type','')} | {result.get('city','')}\n"
+            f"To: {result.get('email','')}\n\n"
+            f"Subject: {result.get('subject','')}\n\n"
+            f"{result.get('body','')}\n\n"
+            "──────────────────────────\n"
+            "This is a preview only.\n"
+            "To queue for approval run /outreach"
+        )
+
+    def _outreach_sync_for_prism(self) -> str:
+        """Sync /outreach for PRISM: trigger RECON to draft + stage one outreach
+        lead, wait for RECON's callback to land the draft in pending_outreach.json,
+        then return the staged draft as text. RECON drafts asynchronously, so we
+        poll for the new entry (LLM draft + callback take a few seconds)."""
+        with self._outreach_lock:
+            before = set(self._load_outreach_approvals().keys())
+        try:
+            _http_post(
+                f"{self._RECON_URL}/api/outreach",
+                {"chat_id": "prism", "limit": 1},
+                timeout=10,
+            )
+        except Exception as exc:
+            self.runtime.logger.error("CHIEF prism outreach dispatch failed: %s", exc)
+            return f"❌ Could not start outreach: {exc}"
+
+        # Poll for the newly staged draft. Kept under the PRISM proxy's 30s
+        # request timeout.
+        deadline = time.time() + 20
+        new_entry = None
+        while time.time() < deadline:
+            with self._outreach_lock:
+                data = self._load_outreach_approvals()
+            new_keys = set(data.keys()) - before
+            if new_keys:
+                row_id    = sorted(new_keys)[0]
+                new_entry = {**data[row_id], "row_id": row_id}
+                break
+            time.sleep(1)
+
+        if not new_entry:
+            return (
+                "📋 Outreach started, but no draft was staged yet — RECON may "
+                "still be drafting or no eligible leads were available. "
+                "Try /preview or run /outreach again shortly."
+            )
+
+        row_id = new_entry.get("row_id", "")
+        return (
+            "📋 DRAFT QUEUED FOR APPROVAL\n\n"
+            f"Business: {new_entry.get('business_name','')}\n"
+            f"Type: {new_entry.get('business_type','')} | {new_entry.get('city','')}\n"
+            f"To: {new_entry.get('email','')}\n\n"
+            f"Subject: {new_entry.get('subject','')}\n\n"
+            f"{new_entry.get('body','')}\n\n"
+            "──────────────────────────\n"
+            "Draft is queued.\n"
+            f"Type /approve_all to send or /reject_{row_id} to skip."
+        )
+
+    def _approve_all_sync_for_prism(self) -> str:
+        """Sync /approve_all for PRISM: approve every pending outreach draft, then
+        every pending quote, synchronously. No thread spawn, no Telegram pushes —
+        a summary string is returned. One failure is logged and skipped."""
+        with self._outreach_lock:
+            outreach = dict(self._load_outreach_approvals())
+        with self._approvals_lock:
+            quotes = dict(self._load_approvals())
+
+        if not outreach and not quotes:
+            return "✅ Nothing pending — queue is empty."
+
+        approved: list[str] = []
+        failed:   list[str] = []
+
+        # Outreach first (each decision pops its own entry from the store).
+        for row_id, entry in outreach.items():
+            biz = entry.get("business_name", f"lead #{row_id}")
+            try:
+                res = self._handle_outreach_decision("approve", row_id, entry, "prism")
+                if res.startswith("✅"):
+                    approved.append(biz)
+                else:
+                    failed.append(f"{biz}: {res}")
+            except Exception as exc:
+                self.runtime.logger.error(
+                    "prism approve_all outreach %s failed: %s", row_id, exc
+                )
+                failed.append(f"{biz}: {exc}")
+
+        # Quotes next (outreach store now drained, so _handle_approval routes
+        # these to the quote branch).
+        for row_id, entry in quotes.items():
+            biz = entry.get("business_name", f"quote #{row_id}")
+            try:
+                res = self._handle_approval("approve", row_id, "prism")
+                if res.startswith("✅"):
+                    approved.append(biz)
+                else:
+                    failed.append(f"{biz}: {res}")
+            except Exception as exc:
+                self.runtime.logger.error(
+                    "prism approve_all quote %s failed: %s", row_id, exc
+                )
+                failed.append(f"{biz}: {exc}")
+
+        lines: list[str] = []
+        if approved:
+            lines.append(f"✅ Approved {len(approved)} item(s):")
+            lines.extend(f"• {b}" for b in approved)
+        else:
+            lines.append("⚠️ Nothing was approved.")
+        if failed:
+            lines.append("")
+            lines.append(f"⚠️ {len(failed)} failed:")
+            lines.extend(f"• {f}" for f in failed)
+        return "\n".join(lines)
 
     def _preview_and_notify(self, chat_id: str) -> None:
         """Background: GET a draft preview from RECON and post it to Telegram.
