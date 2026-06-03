@@ -918,57 +918,40 @@ class ChiefService:
         return "\n".join(lines)
 
     def _followups_snapshot(self) -> str:
-        """Read CSV and return a formatted follow-up status summary."""
+        """Read outreach_ready.csv and list contacted leads whose follow-up is
+        due now (contacted==yes AND followup_due_at <= now)."""
         import csv as _csv
+        import os
         from datetime import datetime, timezone
-        from pathlib import Path
+        path = os.path.join(self._OUTPUT_DIR, "outreach_ready.csv")
         try:
-            rows = list(_csv.DictReader(
-                open(self._CSV_PATH, newline="", encoding="utf-8")))
+            rows = list(_csv.DictReader(open(path, newline="", encoding="utf-8")))
         except Exception as exc:
-            return f"📬 Could not read lead data: {exc}"
+            return f"📬 Could not read outreach_ready.csv: {exc}"
 
         now = datetime.now(timezone.utc)
-        due_now: list[dict] = []
-        sent: list[dict] = []
-        upcoming: list[dict] = []
-
+        due: list[tuple[dict, str]] = []
         for r in rows:
-            due_str  = (r.get("followup_due_at") or "").strip()
-            sent_str = (r.get("followup_sent_at") or "").strip()
-            reply    = (r.get("reply_received") or "").strip().lower()
+            if (r.get("contacted") or "").strip().lower() != "yes":
+                continue
+            due_str = (r.get("followup_due_at") or "").strip()
             if not due_str:
                 continue
-            if sent_str:
-                sent.append(r)
-                continue
-            if reply == "yes":
-                continue
             try:
-                due = datetime.fromisoformat(due_str)
+                if datetime.fromisoformat(due_str) <= now:
+                    due.append((r, due_str))
             except ValueError:
                 continue
-            if due <= now:
-                due_now.append(r)
-            else:
-                upcoming.append(r)
 
-        lines = [f"📬 Follow-up Status\n",
-                 f"Overdue / due now:  {len(due_now)}",
-                 f"Sent:               {len(sent)}",
-                 f"Upcoming:           {len(upcoming)}"]
+        if not due:
+            return "✅ No follow-ups due right now.\nPULSE checks daily at 9am."
 
-        if due_now:
-            lines.append("\nDue now (sequencer will send at next 30-min check):")
-            for r in due_now[:5]:
-                lines.append(f"• {r.get('business_name','')} | {r.get('email','')}")
-        if upcoming:
-            lines.append("\nUpcoming (next 3 days):")
-            for r in upcoming[:3]:
-                due_str = r.get("followup_due_at","")[:10]
-                lines.append(f"• {r.get('business_name','')} — due {due_str}")
-        if not due_now and not upcoming and not sent:
-            lines.append("\nNo follow-ups scheduled yet. Run /send_outreach to start.")
+        lines = ["⏰ FOLLOW-UPS DUE\n"]
+        for r, due_str in due:
+            lines.append(f"• {r.get('business_name','')} ({r.get('city','')})")
+            lines.append(f"  Due: {due_str[:10]}")
+        lines.append("──────────────────")
+        lines.append("Run /outreach to queue follow-up drafts for approval.")
         return "\n".join(lines)
 
     def _replies_snapshot(self) -> str:
