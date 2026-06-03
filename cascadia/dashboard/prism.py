@@ -137,6 +137,7 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/prism/workflows',   self.workflow_list)
         self.runtime.register_route('GET',  '/api/prism/sentinel',    self.sentinel_status)
         self.runtime.register_route('POST', '/api/prism/approve',    self.approve_action)
+        self.runtime.register_route('POST', '/api/prism/chief',      self.chief_command)
         self.runtime.register_route('GET',  '/api/prism/models',     self.models_list)
         self.runtime.register_route('GET',  '/api/prism/operators',  self.operator_status)
         self.runtime.register_route('GET',  '/setup-complete',        self.serve_setup)
@@ -1187,6 +1188,21 @@ document.getElementById('key').addEventListener('keydown', function(e){
             'count': len(models),
             'generated_at': _now(),
         }
+
+    def chief_command(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/chief — proxy a slash command from the PRISM CHIEF
+        chat bar to the CHIEF orchestrator (:6211 /task) and return reply_text.
+        Same-origin proxy so the browser never has to reach :6211 directly."""
+        text = (payload.get('text') or payload.get('task') or '').strip()
+        if not text:
+            return 200, {'reply_text': 'No command provided.'}
+        # CHIEF orchestrator is on 6211 (NOT the 8006 surface in the ports map).
+        resp = _http_post(6211, '/task', {
+            'task': text,
+            'source_channel': 'prism',
+            'metadata': {'chat_id': 'prism', 'source': 'prism'},
+        }, timeout=30) or {}
+        return 200, {'reply_text': resp.get('reply_text', 'No response from CHIEF.')}
 
     def approve_action(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """
