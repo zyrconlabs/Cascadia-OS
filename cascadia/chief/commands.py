@@ -10,6 +10,8 @@ COMMANDS: dict[str, dict] = {
     "/recon":     {"operator": "recon",       "description": "Run a RECON lead scan"},
     "/scan":      {"operator": "recon",       "description": "Alias for /recon"},
     "/leads":     {"operator": "recon",       "description": "Show lead report"},
+    "/recon_start": {"operator": None,        "description": "Start the RECON lead-scraping worker"},
+    "/recon_stop":  {"operator": None,        "description": "Stop the RECON lead-scraping worker"},
     "/quote":     {"operator": "quote_brief", "description": "Draft a proposal or quote"},
     "/scout":     {"operator": "scout",       "description": "Qualify an inbound lead"},
     "/preview":       {"operator": None, "description": "Preview the next outreach draft (no send, no queue)"},

@@ -236,6 +236,18 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._pipeline_snapshot(),
                 ).to_dict()
+            if cmd == "/recon_start":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._recon_start(),
+                ).to_dict()
+            if cmd == "/recon_stop":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._recon_stop(),
+                ).to_dict()
             if cmd == "/preview":
                 if _is_prism(req.metadata):
                     return 200, TaskResponse(
@@ -1431,6 +1443,56 @@ class ChiefService:
         except Exception as exc:
             self.runtime.logger.error("CHIEF: mark_contacted failed: %s", exc)
             return f"❌ Could not reach RECON to mark lead: {exc}"
+
+    # ------------------------------------------------------------------
+    # RECON worker control (/recon_start, /recon_stop)
+    # Fast synchronous calls to RECON's /api/start and /api/stop. Same
+    # response works from both Telegram and PRISM — no source branch needed.
+    # ------------------------------------------------------------------
+
+    def _recon_start(self) -> str:
+        try:
+            result = _http_post(f"{self._RECON_URL}/api/start", {}, timeout=10)
+        except Exception as exc:
+            self.runtime.logger.error("CHIEF recon_start failed: %s", exc)
+            return (
+                f"❌ Could not start RECON:\n{exc}\n"
+                "Check logs at port 8002."
+            )
+        if not result.get("ok"):
+            return (
+                f"❌ Could not start RECON:\n{result.get('message', 'unknown error')}\n"
+                "Check logs at port 8002."
+            )
+        if result.get("already_running"):
+            return (
+                "▶️ RECON is already running.\n"
+                "Currently scraping leads.\n"
+                "Use /status to check progress."
+            )
+        return (
+            "▶️ RECON started.\n"
+            "Scraping Houston HVAC and plumbing leads. Use /status to monitor."
+        )
+
+    def _recon_stop(self) -> str:
+        try:
+            result = _http_post(f"{self._RECON_URL}/api/stop", {}, timeout=10)
+        except Exception as exc:
+            self.runtime.logger.error("CHIEF recon_stop failed: %s", exc)
+            return f"❌ Could not stop RECON:\n{exc}"
+        if not result.get("ok"):
+            return f"❌ Could not stop RECON:\n{result.get('message', 'unknown error')}"
+        if result.get("already_stopped") or result.get("not_running"):
+            return (
+                "⏹ RECON is not running.\n"
+                "Run /recon_start to begin scraping leads."
+            )
+        return (
+            "⏹️ RECON stopped.\n"
+            "Lead data is preserved.\n"
+            "Run /recon_start to resume."
+        )
 
     # ------------------------------------------------------------------
     # PRISM synchronous variants (source=="prism")
