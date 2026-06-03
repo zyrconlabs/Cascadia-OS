@@ -20,6 +20,7 @@ COMMANDS: dict[str, dict] = {
     "/approve_all":   {"operator": None, "description": "Approve all pending outreach drafts and quotes at once"},
     "/followups":     {"operator": None, "description": "Show pending follow-ups due today"},
     "/replies":       {"operator": None, "description": "Show recent lead replies from inbox"},
+    "/archive":       {"operator": None, "description": "Archive completed (exhausted/skipped) leads to contacted_list"},
     "/pipeline":  {"operator": None,          "description": "Show lead pipeline snapshot"},
     "/status":    {"operator": None,          "description": "Show system status"},
     "/missions":  {"operator": None,          "description": "Recent mission runs"},

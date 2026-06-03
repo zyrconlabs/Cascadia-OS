@@ -248,6 +248,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._recon_stop(),
                 ).to_dict()
+            if cmd == "/archive":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._archive_leads(),
+                ).to_dict()
             if cmd == "/preview":
                 if _is_prism(req.metadata):
                     return 200, TaskResponse(
@@ -1493,6 +1499,35 @@ class ChiefService:
             "Lead data is preserved.\n"
             "Run /recon_start to resume."
         )
+
+    _PULSE_URL = "http://127.0.0.1:8012"
+
+    def _archive_leads(self) -> str:
+        """Trigger PULSE to move completed (exhausted/skipped) leads out of
+        outreach_ready.csv into contacted_list.csv. Works from Telegram + PRISM."""
+        try:
+            result = _http_post(f"{self._PULSE_URL}/api/archive", {}, timeout=10)
+        except Exception as exc:
+            self.runtime.logger.error("CHIEF archive failed: %s", exc)
+            return f"❌ Could not reach PULSE to archive:\n{exc}"
+        n = result.get("archived", 0)
+        if result.get("skipped_reason"):
+            return (
+                "📁 Archival deferred — approvals are still in flight.\n"
+                "Try again once pending follow-ups are approved or rejected."
+            )
+        if not n:
+            return (
+                "📁 Nothing to archive.\n"
+                "All leads still in active follow-up."
+            )
+        names = result.get("names") or []
+        lines = [f"📁 ARCHIVED {n} completed lead(s):"]
+        lines.extend(f"• {b}" for b in names)
+        lines.append("")
+        lines.append("Moved to contacted_list.csv.")
+        lines.append(f"outreach_ready.csv has {result.get('remaining', '?')} leads remaining.")
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # PRISM synchronous variants (source=="prism")
