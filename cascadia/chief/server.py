@@ -886,6 +886,17 @@ class ChiefService:
             )
         else:
             lines.append("\n📋 Pipeline data unavailable")
+
+        recon = self._read_recon_stats()
+        icon = "🟢" if recon["status"] == "running" else "🔴"
+        lines.append(
+            "\n🔍 RECON STATUS\n"
+            f"  {icon} {str(recon['status']).upper()} — cycle {recon['cycle']}\n"
+            f"  Task:    {recon['task']}\n"
+            f"  Master:  {recon['master_rows']} leads total\n"
+            f"  Current: {recon['task_rows']} rows / {recon['task_emails']} emails "
+            f"({recon['email_rate']}% email rate)"
+        )
         return "\n".join(lines)
 
     def _read_pipeline_stats(self) -> dict | None:
@@ -918,6 +929,51 @@ class ChiefService:
             "skipped": _n("skipped"), "exhausted": _n("exhausted"),
             "followups_due": due,
         }
+
+    def _read_recon_stats(self) -> dict:
+        """RECON state for /status: task, status, cycle, master-CSV row count, and
+        the current task folder's rows + email rate. Best-effort — each field stays
+        at its default if a read fails."""
+        import csv, glob, json
+        result = {"task": "?", "status": "?", "cycle": 0,
+                  "master_rows": 0, "task_rows": 0, "task_emails": 0, "email_rate": 0}
+        output_dir = self._OUTPUT_DIR
+        recon_dir  = os.path.dirname(output_dir)  # state.json lives in recon/, not output/
+
+        try:
+            with open(os.path.join(recon_dir, "state.json"), encoding="utf-8") as f:
+                s = json.load(f)
+            result["task"]   = s.get("task_name", "?")
+            result["status"] = s.get("status", "?")
+            result["cycle"]  = s.get("cycle", 0)
+        except Exception:
+            pass
+
+        try:
+            with open(os.path.join(output_dir, "houston_contractors.csv"),
+                      newline="", encoding="utf-8") as f:
+                result["master_rows"] = max(sum(1 for _ in f) - 1, 0)
+        except Exception:
+            pass
+
+        task = result.get("task", "")
+        if task and task != "?":
+            try:
+                rows = []
+                for fp in glob.glob(os.path.join(output_dir, task, "**", "*.csv"),
+                                    recursive=True):
+                    with open(fp, newline="", encoding="utf-8") as fh:
+                        rows.extend(list(csv.DictReader(fh)))
+                emails = [r for r in rows
+                          if (r.get("email") or "").strip()
+                          and "@" in r.get("email", "")
+                          and "*" not in r.get("email", "")]
+                result["task_rows"]   = len(rows)
+                result["task_emails"] = len(emails)
+                result["email_rate"]  = len(emails) * 100 // max(len(rows), 1)
+            except Exception:
+                pass
+        return result
 
     def _missions_summary(self) -> str:
         try:
