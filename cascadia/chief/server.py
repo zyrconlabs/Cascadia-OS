@@ -309,11 +309,20 @@ class ChiefService:
                     reply_text=f"⚙️ Approving {n_out + n_q} pending item(s)... Stand by.",
                 ).to_dict()
             if cmd == "/outreach":
+                # Optional limit: "/outreach" → 3 (default), "/outreach 5" → 5,
+                # capped at 10. Non-numeric arg falls back to the default.
+                limit = 3
+                arg = (parsed_cmd.get("args") or "").strip()
+                if arg:
+                    try:
+                        limit = min(max(int(arg.split()[0]), 1), 10)
+                    except (ValueError, IndexError):
+                        limit = 3
                 if _is_prism(req.metadata):
                     return 200, TaskResponse(
                         ok=True, task_id=task_id,
                         selected_type="status", selected_target=cmd,
-                        reply_text=self._outreach_sync_for_prism(),
+                        reply_text=self._outreach_sync_for_prism(limit),
                     ).to_dict()
                 if not chat_id:
                     return 200, TaskResponse(
@@ -322,14 +331,14 @@ class ChiefService:
                     ).to_dict()
                 threading.Thread(
                     target=self._run_outreach_and_notify,
-                    args=(chat_id,),
+                    args=(chat_id, limit),
                     daemon=True,
                     name=f"chief-outreach-{task_id[:8]}",
                 ).start()
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
                     selected_type="status", selected_target=cmd,
-                    reply_text="📋 Pulling top leads for outreach. Stand by...",
+                    reply_text=f"📋 Pulling top {limit} lead(s) for outreach. Stand by...",
                 ).to_dict()
             if cmd == "/send_outreach":
                 if not chat_id:
@@ -1557,56 +1566,53 @@ class ChiefService:
             "To queue for approval run /outreach"
         )
 
-    def _outreach_sync_for_prism(self) -> str:
-        """Sync /outreach for PRISM: trigger RECON to draft + stage one outreach
-        lead, wait for RECON's callback to land the draft in pending_outreach.json,
-        then return the staged draft as text. RECON drafts asynchronously, so we
-        poll for the new entry (LLM draft + callback take a few seconds)."""
+    def _outreach_sync_for_prism(self, limit: int = 3) -> str:
+        """Sync /outreach for PRISM: trigger RECON to draft + stage up to `limit`
+        outreach leads, wait for RECON's callbacks to land them in
+        pending_outreach.json, then return a summary. RECON drafts asynchronously
+        (one per few seconds), so we poll until `limit` new entries appear or the
+        budget runs out — kept under the PRISM proxy's 30s request timeout."""
         with self._outreach_lock:
             before = set(self._load_outreach_approvals().keys())
         try:
             _http_post(
                 f"{self._RECON_URL}/api/outreach",
-                {"chat_id": "prism", "limit": 1},
+                {"chat_id": "prism", "limit": limit},
                 timeout=10,
             )
         except Exception as exc:
             self.runtime.logger.error("CHIEF prism outreach dispatch failed: %s", exc)
             return f"❌ Could not start outreach: {exc}"
 
-        # Poll for the newly staged draft. Kept under the PRISM proxy's 30s
-        # request timeout.
-        deadline = time.time() + 20
-        new_entry = None
+        # Poll until `limit` drafts are staged or the budget runs out.
+        deadline = time.time() + 25
+        new_entries: list[dict] = []
         while time.time() < deadline:
             with self._outreach_lock:
                 data = self._load_outreach_approvals()
-            new_keys = set(data.keys()) - before
-            if new_keys:
-                row_id    = sorted(new_keys)[0]
-                new_entry = {**data[row_id], "row_id": row_id}
+            new_keys = sorted(set(data.keys()) - before)
+            new_entries = [{**data[k], "row_id": k} for k in new_keys]
+            if len(new_entries) >= limit:
                 break
             time.sleep(1)
 
-        if not new_entry:
+        if not new_entries:
             return (
-                "📋 Outreach started, but no draft was staged yet — RECON may "
+                "📋 Outreach started, but no drafts were staged yet — RECON may "
                 "still be drafting or no eligible leads were available. "
                 "Try /preview or run /outreach again shortly."
             )
 
-        row_id = new_entry.get("row_id", "")
-        return (
-            "📋 DRAFT QUEUED FOR APPROVAL\n\n"
-            f"Business: {new_entry.get('business_name','')}\n"
-            f"Type: {new_entry.get('business_type','')} | {new_entry.get('city','')}\n"
-            f"To: {new_entry.get('email','')}\n\n"
-            f"Subject: {new_entry.get('subject','')}\n\n"
-            f"{new_entry.get('body','')}\n\n"
-            "──────────────────────────\n"
-            "Draft is queued.\n"
-            f"Type /approve_all to send or /reject_{row_id} to skip."
-        )
+        lines = [f"📋 QUEUED {len(new_entries)} DRAFT(S) FOR APPROVAL\n"]
+        for e in new_entries:
+            lines.append(
+                f"• {e.get('business_name','')} "
+                f"({e.get('business_type','')} | {e.get('city','')})\n"
+                f"  To: {e.get('email','')} — /reject_{e.get('row_id','')} to skip"
+            )
+        lines.append("\n──────────────────────────")
+        lines.append("Type /approve_all to send all, or /reject_<id> to skip one.")
+        return "\n".join(lines)
 
     def _approve_all_sync_for_prism(self) -> str:
         """Sync /approve_all for PRISM: approve every pending outreach draft, then
@@ -1744,12 +1750,12 @@ class ChiefService:
         else:
             _tg("✅ Nothing pending — queue is empty.")
 
-    def _run_outreach_and_notify(self, chat_id: str) -> None:
-        """Background: POST to RECON /api/outreach with chat_id."""
+    def _run_outreach_and_notify(self, chat_id: str, limit: int = 3) -> None:
+        """Background: POST to RECON /api/outreach with chat_id and lead limit."""
         try:
             result = _http_post(
                 f"{self._RECON_URL}/api/outreach",
-                {"chat_id": chat_id, "limit": 5},
+                {"chat_id": chat_id, "limit": limit},
                 timeout=10,
             )
             self.runtime.logger.info("CHIEF outreach started: %s", result)

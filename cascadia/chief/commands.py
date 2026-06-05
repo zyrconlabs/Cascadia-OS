@@ -15,7 +15,7 @@ COMMANDS: dict[str, dict] = {
     "/quote":     {"operator": "quote_brief", "description": "Draft a proposal or quote"},
     "/scout":     {"operator": "scout",       "description": "Qualify an inbound lead"},
     "/preview":       {"operator": None, "description": "Preview the next outreach draft (no send, no queue)"},
-    "/outreach":      {"operator": None, "description": "Brief top 5 uncontacted leads for outreach"},
+    "/outreach":      {"operator": None, "description": "[N] queue N outreach drafts for approval (default 3, max 10)"},
     "/send_outreach": {"operator": None, "description": "Draft AND send outreach emails to top leads"},
     "/approve_all":   {"operator": None, "description": "Approve all pending outreach drafts and quotes at once"},
     "/followups":     {"operator": None, "description": "Show pending follow-ups due today"},
