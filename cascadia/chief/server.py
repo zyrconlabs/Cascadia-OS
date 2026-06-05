@@ -111,6 +111,9 @@ _SAFE_TRADE_WORDS = {
     "plumbing", "hvac", "air", "heating", "cooling", "services", "service",
     "company", "co", "corp", "ltd", "inc", "llc", "repair", "and", "the", "of",
 }
+# Off-target org types — never owner-operated contractor prospects.
+_SAFE_SCHOOL_WORDS = ("school", "university", "college", "training",
+                      "institute", "academy")
 
 
 def _outreach_safety_reason(business_name: str, email: str) -> str | None:
@@ -128,7 +131,11 @@ def _outreach_safety_reason(business_name: str, email: str) -> str | None:
     if any(d in domain for d in _SAFE_BAD_DOMAINS):
         return "scraper/non-prospect domain"
 
-    # 2. National chain — check business name (word boundary) and email domain
+    # 2. Off-target org type (school / training / etc.)
+    if any(k in n for k in _SAFE_SCHOOL_WORDS):
+        return "off-target (school/training)"
+
+    # 3. National chain — check business name (word boundary) and email domain
     dom_root = domain.split(".")[0]
     if any(re.search(r"\b" + re.escape(c) + r"\b", n) for c in _SAFE_CHAIN_NAME):
         return "national chain"
