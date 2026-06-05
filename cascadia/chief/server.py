@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import threading
 import time
 import urllib.request
@@ -82,6 +83,67 @@ def _is_prism(metadata: dict | None) -> bool:
     PRISM expects full results returned synchronously in reply_text rather
     than pushed to Telegram."""
     return _get_source(metadata) == "prism"
+
+
+# ── Outreach send-time safety gate ───────────────────────────────────────────
+# Final check before any outreach email leaves CHIEF. Catches bad drafts that
+# entered the queue before the promote/scrape filters existed: masked/role/
+# scraper emails, national chains, and cross-attributed domains. Mirrors the
+# operator-side filters (recon/outreach.py) since CHIEF is a separate package.
+_SAFE_BAD_PREFIXES = ("noreply", "no-reply", "privacy", "donotreply",
+                      "postmaster", "mailer-daemon", "abuse", "spam")
+_SAFE_BAD_DOMAINS  = ("council.bbb.org", "bbb.org", "contactout.com", "hunter.io",
+                      "rocketreach.co", "apollo.io", "zoominfo.com", "lusha.com")
+# (name token, domain token) — name matched on word boundary, domain on substring.
+_SAFE_CHAIN_NAME   = ("one hour", "one-hour", "ars rescue", "roto-rooter",
+                      "roto rooter", "benjamin franklin", "mr. rooter", "mr rooter",
+                      "homeadvisor", "servicemaster", "comfort systems",
+                      "sears home", "homeserve")
+_SAFE_CHAIN_DOMAIN = ("onehour", "rotorooter", "benjaminfranklin", "mrrooter",
+                      "homeadvisor", "servicemaster", "comfortsystems",
+                      "searshome", "homeserve")
+_SAFE_GENERIC_DOMAINS = {"gmail", "yahoo", "aol", "hotmail", "outlook", "icloud", "mail"}
+# Trade/legal/connector words removed by EXACT word match (not substring) when
+# extracting the significant tokens of a business name. Geo words (houston, katy,
+# texas...) are intentionally kept significant so a cross-attributed domain still
+# trips the check. Word-match avoids the " co" ⊂ "conditioning" class of bug.
+_SAFE_TRADE_WORDS = {
+    "plumbing", "hvac", "air", "heating", "cooling", "services", "service",
+    "company", "co", "corp", "ltd", "inc", "llc", "repair", "and", "the", "of",
+}
+
+
+def _outreach_safety_reason(business_name: str, email: str) -> str | None:
+    """Return a human-readable block reason if this draft should NOT be emailed,
+    else None. Final gate before SMTP."""
+    e = (email or "").strip().lower()
+    n = (business_name or "").strip().lower()
+
+    # 1. Email validity
+    if "@" not in e or "*" in e:
+        return "invalid/masked email"
+    local, _, domain = e.partition("@")
+    if any(local.startswith(p) for p in _SAFE_BAD_PREFIXES):
+        return "role/no-reply email"
+    if any(d in domain for d in _SAFE_BAD_DOMAINS):
+        return "scraper/non-prospect domain"
+
+    # 2. National chain — check business name (word boundary) and email domain
+    dom_root = domain.split(".")[0]
+    if any(re.search(r"\b" + re.escape(c) + r"\b", n) for c in _SAFE_CHAIN_NAME):
+        return "national chain"
+    if any(t in dom_root for t in _SAFE_CHAIN_DOMAIN):
+        return "national chain"
+
+    # 3. Domain consistency — a significant name word should appear in the domain
+    #    (generic mailbox providers can't be verified, so they pass)
+    tokens = re.split(r"[^a-z0-9]+", n)
+    words = [w for w in tokens if w and len(w) >= 3 and w not in _SAFE_TRADE_WORDS]
+    if words and dom_root not in _SAFE_GENERIC_DOMAINS \
+            and not any(w in dom_root for w in words):
+        return f"domain mismatch ({domain})"
+
+    return None
 
 
 class ChiefService:
@@ -1318,6 +1380,35 @@ class ChiefService:
         # approve — send the email
         if not email:
             return f"❌ No email address for {biz} — cannot send."
+
+        # ── SAFETY RE-CHECK (final gate before SMTP) ──────────────────────────
+        # Block drafts that slipped into the queue before the promote/scrape
+        # filters existed (chains, cross-attributed domains, masked/role emails).
+        blocked = _outreach_safety_reason(biz, email)
+        if blocked:
+            self.runtime.logger.warning(
+                "CHIEF send-safety BLOCKED %s (%s) — reason: %s", biz, email, blocked
+            )
+            # Tell the originating operator the lead was skipped, then drop it.
+            try:
+                _http_post(
+                    f"{source_url}/api/outreach/skipped",
+                    {"row_id": row_id},
+                    timeout=10,
+                )
+            except Exception as exc:
+                self.runtime.logger.warning(
+                    "CHIEF safety-skip callback failed: %s", exc
+                )
+            _drop()
+            return (
+                f"⚠️ BLOCKED (safety check): {biz}\n"
+                f"Reason: {blocked}\n"
+                f"Email: {email}\n"
+                f"Lead removed from queue — not sent."
+            )
+        # ── END SAFETY RE-CHECK ───────────────────────────────────────────────
+
         try:
             send_result = _http_post(
                 "http://127.0.0.1:8010/api/task",
