@@ -14,6 +14,10 @@ export CASCADIA_OPERATORS_DIR
 # Load environment variables (VAULT_ENCRYPTION_KEY, etc.) so all child processes inherit them.
 [[ -f "$REPO/.env" ]] && set -a && source "$REPO/.env" && set +a
 
+# Fail-fast after env is loaded — exits non-zero on any unhandled failure
+# so LaunchAgent retries rather than accepting a silent partial start.
+set -e
+
 # Clear intentional-stop flag so LaunchAgent resumes normal KeepAlive
 rm -f "$REPO/data/runtime/cascadia.stopped"
 
@@ -337,7 +341,7 @@ fi
 # Kill any existing health_monitor loops before starting a new one.
 # This prevents multiple loops accumulating across start.sh restarts,
 # which would cause multiple processes competing on port 6209.
-pkill -f "cascadia.monitoring.health_alert" 2>/dev/null; sleep 1
+pkill -f "cascadia.monitoring.health_alert" 2>/dev/null || true; sleep 1
 echo "▸ Starting Health Monitor..."
 (
     while true; do
@@ -371,3 +375,26 @@ echo "  Mission Manager  →  http://localhost:6207/healthz"
 echo ""
 echo "  Run demo:  bash demo.sh"
 echo ""
+
+# ── Core services health check ───────────────────────────────────────────
+echo "Verifying core services..."
+_CHECKS=0
+for _PORT in 6211 6300 8002; do
+    for _I in 1 2 3 4 5; do
+        if curl -s --connect-timeout 2 \
+            "http://127.0.0.1:${_PORT}/health" \
+            2>/dev/null | \
+            grep -qE "ok|ready|healthy"; then
+            echo "✅ Port ${_PORT} OK"
+            _CHECKS=$((_CHECKS + 1))
+            break
+        fi
+        sleep 3
+    done
+done
+if [ "$_CHECKS" -lt 2 ]; then
+    echo "❌ Core services failed — LaunchAgent will retry"
+    exit 1
+fi
+echo "✅ Cascadia OS started successfully"
+exit 0
