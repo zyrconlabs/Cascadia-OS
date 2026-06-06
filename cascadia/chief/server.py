@@ -191,6 +191,8 @@ class ChiefService:
         self.runtime.register_route("GET",  "/tasks",           self.list_tasks)
         self.runtime.register_route("POST", "/outreach/approval/request",
                                     self._handle_outreach_approval_request)
+        self.runtime.register_route("GET",  "/api/startup_report",
+                                    self.startup_report)
 
     # ------------------------------------------------------------------
     # Health
@@ -205,6 +207,129 @@ class ChiefService:
             "crew_url": CREW_URL,
             "beacon_url": BEACON_URL,
         }
+
+    # ------------------------------------------------------------------
+    # Startup report
+    # ------------------------------------------------------------------
+
+    def startup_report(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/startup_report — build full health report and push to Telegram owner."""
+        report = self._build_startup_report()
+        try:
+            _http_post(
+                f"{TELEGRAM_URL}/send",
+                {"chat_id": "1535010257", "text": report},
+                timeout=10,
+            )
+        except Exception as exc:
+            self.runtime.logger.warning(
+                "CHIEF startup_report Telegram post failed: %s", exc
+            )
+        return 200, {"ok": True, "report": report}
+
+    def _build_startup_report(self) -> str:
+        """Build a formatted system health report for post-boot Telegram delivery."""
+        import socket
+        from datetime import datetime, timezone, timedelta
+
+        try:
+            from zoneinfo import ZoneInfo
+            ct  = ZoneInfo("America/Chicago")
+            now = datetime.now(timezone.utc).astimezone(ct).strftime(
+                "%Y-%m-%d %H:%M CDT"
+            )
+        except Exception:
+            now = datetime.now(timezone(timedelta(hours=-5))).strftime(
+                "%Y-%m-%d %H:%M CDT"
+            )
+
+        def _check(port: int) -> bool:
+            for path in ("/health", "/api/health"):
+                try:
+                    with urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}{path}", timeout=2
+                    ) as r:
+                        body = r.read().decode()
+                        if any(k in body for k in
+                               ("ok", "ready", "healthy", "online")):
+                            return True
+                except Exception:
+                    pass
+            if port == 4222:
+                try:
+                    s = socket.create_connection(("127.0.0.1", 4222), timeout=2)
+                    s.close()
+                    return True
+                except Exception:
+                    pass
+            return False
+
+        CORE = {
+            "NATS":   4222, "CREW":   5100, "BEACON": 6200,
+            "CHIEF":  6211, "PRISM":  6300, "LLM":    8080,
+        }
+        OPERATORS = {
+            "RECON":     8002, "EMAIL":    8010, "PULSE":    8012,
+            "SCHEDULER": 8014, "SCOUT":    7002, "TELEGRAM": 9000,
+            "SOCIAL":    8011, "QUOTE":    8007,
+        }
+
+        issues: list[str] = []
+        lines  = ["🚀 CASCADIA OS — STARTUP REPORT", now, ""]
+
+        lines.append("CORE SERVICES")
+        for name, port in CORE.items():
+            ok   = _check(port)
+            icon = "✅" if ok else "❌"
+            lines.append(f"  {icon} {name:<10} ({port})")
+            if not ok:
+                issues.append(f"{name} ({port})")
+
+        lines.append("")
+        lines.append("OPERATORS")
+        for name, port in OPERATORS.items():
+            ok   = _check(port)
+            icon = "✅" if ok else "❌"
+            lines.append(f"  {icon} {name:<10} ({port})")
+            if not ok:
+                issues.append(f"{name} ({port})")
+
+        try:
+            pipeline = self._read_pipeline_stats()
+            if pipeline:
+                lines += [
+                    "",
+                    "PIPELINE",
+                    f"  Leads ready:    {pipeline.get('total', 0)}",
+                    f"  Follow-ups due: {pipeline.get('followups_due', 0)}",
+                    f"  Contacted:      {pipeline.get('contacted', 0)}",
+                ]
+        except Exception:
+            pass
+
+        try:
+            recon = self._read_recon_stats()
+            icon  = "🟢" if recon.get("status") == "running" else "🔴"
+            lines += [
+                "",
+                "RECON",
+                f"  {icon} {str(recon.get('status', '?')).upper()} — "
+                f"cycle {recon.get('cycle', 0)}",
+                f"  Task:  {recon.get('task', '?')}",
+                f"  Leads: {recon.get('master_rows', 0)}",
+            ]
+        except Exception:
+            pass
+
+        lines.append("")
+        if issues:
+            lines.append(f"⚠️ {len(issues)} issue(s):")
+            for issue in issues:
+                lines.append(f"  • {issue}")
+        else:
+            lines.append("✅ All systems nominal")
+
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Task dispatch
@@ -322,6 +447,22 @@ class ChiefService:
                     ok=True, task_id=task_id,
                     selected_type="status", selected_target=cmd,
                     reply_text=self._archive_leads(),
+                ).to_dict()
+            if cmd == "/startup_report":
+                report = self._build_startup_report()
+                if not _is_prism(req.metadata) and chat_id:
+                    try:
+                        _http_post(
+                            f"{TELEGRAM_URL}/send",
+                            {"chat_id": chat_id, "text": report},
+                            timeout=10,
+                        )
+                    except Exception:
+                        pass
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=report,
                 ).to_dict()
             if cmd == "/preview":
                 if _is_prism(req.metadata):
