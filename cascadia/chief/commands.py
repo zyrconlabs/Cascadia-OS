@@ -26,6 +26,7 @@ COMMANDS: dict[str, dict] = {
     "/missions":  {"operator": None,          "description": "Recent mission runs"},
     "/operators": {"operator": None,          "description": "List available operators"},
     "/help":      {"operator": None,          "description": "Show all commands"},
+    "/startup_report": {"operator": None,    "description": "Full system health report → Telegram"},
 }
 
 
