@@ -579,6 +579,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._replies_snapshot(),
                 ).to_dict()
+            if cmd == "/inbox_check":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._inbox_check(),
+                ).to_dict()
             if parsed_cmd["operator"]:
                 target = parsed_cmd["operator"]
                 self.runtime.logger.info(
@@ -1282,26 +1288,59 @@ class ChiefService:
         from pathlib import Path
         path = Path(self._REPLIES_PATH)
         if not path.exists():
-            return "📩 No replies yet. Leads appear here when they reply to outreach emails."
+            return (
+                "📭 No replies yet.\n"
+                "Inbox is monitored every 5 minutes.\n"
+                "Run /inbox_check to poll now."
+            )
         try:
             records = json.loads(path.read_text())
         except Exception as exc:
             return f"📩 Could not load replies: {exc}"
         if not records:
-            return "📩 No replies yet."
-        lines = [f"📩 Inbox Replies ({len(records)} total)\n"]
+            return (
+                "📭 No replies yet.\n"
+                "Inbox is monitored every 5 minutes.\n"
+                "Run /inbox_check to poll now."
+            )
+        lines = [f"📬 REPLIES RECEIVED ({len(records)} total)\n"]
         for r in reversed(records[-10:]):
-            ts    = (r.get("detected_at") or "")[:16].replace("T", " ")
-            biz   = r.get("business_name", "?")
-            email = r.get("from_email", "")
-            subj  = (r.get("subject") or "")[:60]
-            idx   = r.get("row_idx", "")
-            lines.append(f"• {biz} <{email}>")
-            lines.append(f"  \"{subj}\"  {ts} UTC")
+            ts      = (r.get("detected_at") or "")[:16].replace("T", " ")
+            biz     = r.get("business_name", "?")
+            addr    = r.get("from_email", "")
+            subj    = (r.get("subject") or "")[:60]
+            preview = (r.get("body_preview") or "")[:100].strip()
+            idx     = r.get("row_idx", "")
+            lines.append(f"• {biz}")
+            lines.append(f"  From:     {addr}")
+            lines.append(f"  Subject:  {subj}")
+            lines.append(f"  Received: {ts} UTC")
+            if preview:
+                lines.append(f"  Preview:  {preview}{'...' if len(r.get('body_preview','')) > 100 else ''}")
             if idx != "":
                 lines.append(f"  → /quote_{idx} to draft a proposal")
-            lines.append("")
+            lines.append("  ──────────────────")
         return "\n".join(lines).strip()
+
+    def _inbox_check(self) -> str:
+        """Trigger an immediate IMAP poll via the EMAIL operator."""
+        import urllib.request as _ur
+        try:
+            req = _ur.Request(
+                "http://127.0.0.1:8010/api/inbox/check",
+                data=b"{}",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with _ur.urlopen(req, timeout=15) as r:
+                data = json.loads(r.read())
+            new = data.get("new_replies", 0)
+            total = data.get("total_replies", 0)
+            if new > 0:
+                return f"🔍 Inbox checked. Found {new} new reply(ies).\nTotal replies: {total}\nRun /replies to view them."
+            return f"🔍 Inbox checked — no new replies.\nTotal replies on record: {total}"
+        except Exception as exc:
+            return f"🔍 Inbox check failed: {exc}"
 
     # ------------------------------------------------------------------
     # Pending quote store
