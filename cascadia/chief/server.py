@@ -309,7 +309,7 @@ class ChiefService:
 
         try:
             recon = self._read_recon_stats()
-            icon  = "🟢" if recon.get("status") == "running" else "🔴"
+            icon  = "🟢" if recon.get("worker_process", recon.get("status") == "running") else "🔴"
             lines += [
                 "",
                 "RECON",
@@ -1035,7 +1035,7 @@ class ChiefService:
             lines.append("\n📋 Pipeline data unavailable")
 
         recon = self._read_recon_stats()
-        icon = "🟢" if recon["status"] == "running" else "🔴"
+        icon = "🟢" if recon.get("worker_process", recon["status"] == "running") else "🔴"
         lines.append(
             "\n🔍 RECON STATUS\n"
             f"  {icon} {str(recon['status']).upper()} — cycle {recon['cycle']}\n"
@@ -1090,11 +1090,20 @@ class ChiefService:
         try:
             with open(os.path.join(recon_dir, "state.json"), encoding="utf-8") as f:
                 s = json.load(f)
-            result["task"]   = s.get("task_name", "?")
-            result["status"] = s.get("status", "?")
-            result["cycle"]  = s.get("cycle", 0)
+            result["task"]  = s.get("task_name", "?")
+            result["cycle"] = s.get("cycle", 0)
         except Exception:
             pass
+
+        try:
+            import subprocess as _sp
+            proc = _sp.run(["pgrep", "-f", "recon_worker.py"],
+                           capture_output=True, text=True)
+            worker_alive = bool(proc.stdout.strip())
+        except Exception:
+            worker_alive = False
+        result["status"]         = "running" if worker_alive else "stopped"
+        result["worker_process"] = worker_alive
 
         try:
             with open(os.path.join(output_dir, "houston_contractors.csv"),
