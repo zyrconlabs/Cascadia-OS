@@ -839,6 +839,24 @@ class OperatorManager:
                 "restart_count": om._restart_counts.get(op_id, 0),
             })
 
+        @api.route("/operators", methods=["GET"])
+        def operators_list():
+            result = {}
+            for op_id, op in om.operators.items():
+                worker_running = (
+                    op.worker_proc is not None and op.worker_proc.poll() is None
+                )
+                result[op_id] = {
+                    "status": op.status,
+                    "port": op.port,
+                    "lifecycle": op.manifest.get("lifecycle", "on_demand"),
+                    "worker_running": worker_running,
+                    "worker_intent": om._get_worker_intent(op_id),
+                    "has_work": om._check_operator_has_work(op),
+                    "restart_count": om._restart_counts.get(op_id, 0),
+                }
+            return jsonify({"ok": True, "operators": result})
+
         @api.route("/health", methods=["GET"])
         def health():
             return jsonify({"ok": True, "service": "operator_manager"})
