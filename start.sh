@@ -361,6 +361,43 @@ else
     echo "⚠ Health Monitor starting — check health_monitor.log"
 fi
 
+# ── 8.5. Memory pressure watchdog ────────────────────────────────────────
+# Stops idle operators if swap activates. Checks every 5 minutes.
+# Safe to re-run: kills any prior watchdog via PID file before starting.
+_MW_PID_FILE="$REPO/data/runtime/pids/memwatch.pid"
+if [ -f "$_MW_PID_FILE" ]; then
+    _OLD_MW=$(cat "$_MW_PID_FILE" 2>/dev/null || echo "")
+    [ -n "$_OLD_MW" ] && kill "$_OLD_MW" 2>/dev/null || true
+    rm -f "$_MW_PID_FILE"
+fi
+echo "▸ Starting memory pressure watchdog..."
+(
+    _IDLE_OPS="aurelia debrief collect brief social jr-programmer competition-researcher"
+    while true; do
+        sleep 300
+        _SWAP=$(sysctl vm.swapusage 2>/dev/null \
+            | awk -F'used = ' 'NR==1{print $2}' \
+            | awk '{print $1}' | tr -d 'M')
+        if [ -n "$_SWAP" ] && [ "$_SWAP" != "0.00" ]; then
+            _TS=$(date '+%Y-%m-%d %H:%M:%S')
+            echo "[$_TS] [memwatch] Swap active (${_SWAP}M) — stopping idle operators" \
+                >> "$REPO/data/logs/memwatch.log"
+            _UID=$(id -u)
+            for _OP in $_IDLE_OPS; do
+                _LPID=$(launchctl list 2>/dev/null \
+                    | awk -v s="ai.zyrcon.$_OP" '$3==s && $1~/^[0-9]/{print $1}')
+                if [ -n "$_LPID" ]; then
+                    launchctl bootout "gui/$_UID/ai.zyrcon.$_OP" 2>/dev/null \
+                        && echo "[$_TS] [memwatch] bootout $_OP" \
+                        >> "$REPO/data/logs/memwatch.log"
+                fi
+            done
+        fi
+    done
+) &
+echo $! > "$_MW_PID_FILE"
+echo "✓ Memory watchdog started (PID $(cat "$_MW_PID_FILE"))"
+
 echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo " Cascadia OS stack is up."
