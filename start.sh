@@ -392,6 +392,17 @@ echo "▸ Starting memory pressure watchdog..."
                         >> "$REPO/data/logs/memwatch.log"
                 fi
             done
+            # Alert via Telegram when swap exceeds 800 MB
+            _SWAP_ALERT_THRESHOLD=800
+            _SWAP_INT=${_SWAP%.*}
+            if [ "${_SWAP_INT:-0}" -gt "$_SWAP_ALERT_THRESHOLD" ]; then
+                echo "[$_TS] [memwatch] ⚠️ Swap ${_SWAP}MB — sending Telegram alert" \
+                    >> "$REPO/data/logs/memwatch.log"
+                curl -s -X POST http://127.0.0.1:6211/task \
+                    -H "Content-Type: application/json" \
+                    -d "{\"task\":\"SYSTEM ALERT\\n\\n🔴 SWAP MEMORY HIGH\\nSwap used: ${_SWAP} MB\\nThreshold: ${_SWAP_ALERT_THRESHOLD} MB\\n\\nRun /ram for full details.\\nConsider restarting idle services.\",\"metadata\":{\"chat_id\":\"1535010257\",\"source\":\"memwatch\",\"bypass_llm\":true}}" \
+                    --connect-timeout 3 --silent 2>/dev/null || true
+            fi
         fi
     done
 ) &

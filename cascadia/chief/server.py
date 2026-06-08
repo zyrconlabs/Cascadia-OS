@@ -464,6 +464,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=report,
                 ).to_dict()
+            if cmd == "/ram":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._ram_status(),
+                ).to_dict()
             if cmd == "/preview":
                 if _is_prism(req.metadata):
                     return 200, TaskResponse(
@@ -2190,6 +2196,72 @@ class ChiefService:
                 )
             except Exception:
                 pass
+
+    # ------------------------------------------------------------------
+    # RAM / swap status
+    # ------------------------------------------------------------------
+
+    def _ram_status(self) -> str:
+        import subprocess
+        import re
+        try:
+            swap_out = subprocess.run(
+                ["sysctl", "vm.swapusage"],
+                capture_output=True, text=True,
+            ).stdout.strip()
+
+            total_m = re.search(r'total = ([\d.]+)M', swap_out)
+            used_m  = re.search(r'used = ([\d.]+)M',  swap_out)
+            free_m  = re.search(r'free = ([\d.]+)M',  swap_out)
+
+            total_mb = float(total_m.group(1)) if total_m else 0
+            used_mb  = float(used_m.group(1))  if used_m  else 0
+            free_mb  = float(free_m.group(1))  if free_m  else 0
+            pct      = (used_mb / total_mb * 100) if total_mb > 0 else 0
+
+            vm = subprocess.run(
+                ["vm_stat"], capture_output=True, text=True,
+            ).stdout
+
+            page_size = 16384  # 16 KB pages on Apple Silicon
+
+            def pages(label: str) -> int:
+                m = re.search(label + r'[^:]*:\s+([\d]+)', vm)
+                return int(m.group(1)) if m else 0
+
+            free_gb       = pages("Pages free")       * page_size / 1e9
+            active_gb     = pages("Pages active")     * page_size / 1e9
+            wired_gb      = pages("Pages wired down") * page_size / 1e9
+            compressed_gb = pages("Pages occupied by compressor") * page_size / 1e9
+
+            if used_mb < 500:
+                swap_icon, swap_status = "✅", "healthy"
+            elif used_mb < 800:
+                swap_icon, swap_status = "⚠️", "elevated"
+            else:
+                swap_icon, swap_status = "🔴", "CRITICAL"
+
+            if used_mb >= 800:
+                note = "🔴 SWAP CRITICAL — restart recommended"
+            elif used_mb >= 500:
+                note = "⚠️ Swap elevated — monitor closely"
+            else:
+                note = "✅ System healthy"
+
+            return (
+                f"🖥️ RAM STATUS\n\n"
+                f"SWAP {swap_icon} {swap_status}\n"
+                f"  Used:  {used_mb:.0f} MB / {total_mb:.0f} MB ({pct:.0f}%)\n"
+                f"  Free:  {free_mb:.0f} MB\n\n"
+                f"MEMORY\n"
+                f"  Free:       {free_gb:.1f} GB\n"
+                f"  Active:     {active_gb:.1f} GB\n"
+                f"  Wired:      {wired_gb:.1f} GB\n"
+                f"  Compressed: {compressed_gb:.1f} GB\n\n"
+                f"{note}"
+            )
+        except Exception as exc:
+            return f"❌ RAM check failed: {exc}"
 
     # ------------------------------------------------------------------
     # CREW self-registration
