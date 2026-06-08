@@ -251,7 +251,7 @@ class ChiefService:
                     ) as r:
                         body = r.read().decode()
                         if any(k in body for k in
-                               ("ok", "ready", "healthy", "online")):
+                               ("ok", "ready", "healthy", "online", "degraded")):
                             return True
                 except Exception:
                     pass
@@ -269,9 +269,9 @@ class ChiefService:
             "CHIEF":  6211, "PRISM":  6300, "LLM":    8080,
         }
         OPERATORS = {
-            "RECON":     8002, "EMAIL":    8010, "PULSE":    8012,
-            "SCHEDULER": 8014, "SCOUT":    7002, "TELEGRAM": 9000,
-            "SOCIAL":    8011, "QUOTE":    8007,
+            "RECON":       8002, "EMAIL":      8010, "PULSE":    8012,
+            "SCHEDULER":   8014, "SCOUT":      7002, "TELEGRAM": 9000,
+            "SOCIAL":      8011, "QUOTE-BRIEF": 8006,
         }
 
         issues: list[str] = []
@@ -309,12 +309,11 @@ class ChiefService:
 
         try:
             recon = self._read_recon_stats()
-            icon  = "🟢" if recon.get("worker_process", recon.get("status") == "running") else "🔴"
+            icon, label = self._recon_icon_and_label(recon)
             lines += [
                 "",
                 "RECON",
-                f"  {icon} {str(recon.get('status', '?')).upper()} — "
-                f"cycle {recon.get('cycle', 0)}",
+                f"  {icon} {label} — cycle {recon.get('cycle', 0)}",
                 f"  Task:  {recon.get('task', '?')}",
                 f"  Leads: {recon.get('master_rows', 0)}",
             ]
@@ -1048,10 +1047,10 @@ class ChiefService:
             lines.append("\n📋 Pipeline data unavailable")
 
         recon = self._read_recon_stats()
-        icon = "🟢" if recon.get("worker_process", recon["status"] == "running") else "🔴"
+        icon, label = self._recon_icon_and_label(recon)
         lines.append(
             "\n🔍 RECON STATUS\n"
-            f"  {icon} {str(recon['status']).upper()} — cycle {recon['cycle']}\n"
+            f"  {icon} {label} — cycle {recon['cycle']}\n"
             f"  Task:    {recon['task']}\n"
             f"  Master:  {recon['master_rows']} leads total\n"
             f"  Current: {recon['task_rows']} rows / {recon['task_emails']} emails "
@@ -1089,6 +1088,21 @@ class ChiefService:
             "skipped": _n("skipped"), "exhausted": _n("exhausted"),
             "followups_due": due,
         }
+
+    def _recon_icon_and_label(self, recon_stats: dict) -> tuple[str, str]:
+        """Three-state RECON: 🟢 RUNNING / ⏸️ STANDBY / ❌ DOWN."""
+        worker_alive = recon_stats.get("worker_process", False)
+        if worker_alive:
+            return "🟢", "RUNNING"
+        dashboard_up = False
+        try:
+            urllib.request.urlopen("http://127.0.0.1:8002/api/health", timeout=2)
+            dashboard_up = True
+        except Exception:
+            pass
+        if dashboard_up:
+            return "⏸️", "STANDBY"
+        return "❌", "DOWN"
 
     def _read_recon_stats(self) -> dict:
         """RECON state for /status: task, status, cycle, master-CSV row count, and
