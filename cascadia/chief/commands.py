@@ -29,6 +29,8 @@ COMMANDS: dict[str, dict] = {
     "/help":      {"operator": None,          "description": "Show all commands"},
     "/startup_report": {"operator": None,    "description": "Full system health report → Telegram"},
     "/ram":            {"operator": None,    "description": "Show RAM and swap usage"},
+    "/social":         {"operator": None,    "description": "Start a social media campaign"},
+    "/campaign":       {"operator": None,    "description": "Alias for /social"},
 }
 
 
