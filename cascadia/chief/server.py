@@ -1339,30 +1339,30 @@ class ChiefService:
         return "\n".join(lines).strip()
 
     def _inbox_check(self, n: int = 1) -> str:
-        """Trigger an immediate IMAP poll and show last N emails from the log."""
+        """Show last N emails from the log; trigger IMAP poll in the background."""
         from pathlib import Path
         from datetime import datetime, timedelta
-        # Trigger immediate poll — ignore errors, don't block display
-        try:
-            req = urllib.request.Request(
-                "http://127.0.0.1:8010/api/inbox/check",
-                data=b"{}",
-                method="POST",
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=15):
+        # Fire poll as daemon — never block the response waiting for IMAP
+        def _trigger_poll() -> None:
+            try:
+                req = urllib.request.Request(
+                    "http://127.0.0.1:8010/api/inbox/check",
+                    data=b"{}",
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(req, timeout=15)
+            except Exception:
                 pass
-        except Exception:
-            pass
+        threading.Thread(target=_trigger_poll, daemon=True,
+                         name="inbox-poll-trigger").start()
 
         email_log = Path(os.path.expanduser("~")) / \
             "Zyrcon/operators/cascadia-os-operators/email/data/email_log.json"
-        emails = []
-        if email_log.exists():
-            try:
-                emails = json.loads(email_log.read_text())
-            except Exception:
-                pass
+        try:
+            emails = json.loads(email_log.read_text()) if email_log.exists() else []
+        except Exception as exc:
+            return f"🔍 Inbox check failed: {str(exc)[:100]}"
 
         if not emails:
             return (
