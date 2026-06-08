@@ -580,10 +580,17 @@ class ChiefService:
                     reply_text=self._replies_snapshot(),
                 ).to_dict()
             if cmd == "/inbox_check":
+                n = 1
+                arg = (parsed_cmd.get("args") or "").strip()
+                if arg:
+                    try:
+                        n = min(max(int(arg.split()[0]), 1), 20)
+                    except (ValueError, IndexError):
+                        n = 1
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
                     selected_type="status", selected_target=cmd,
-                    reply_text=self._inbox_check(),
+                    reply_text=self._inbox_check(n),
                 ).to_dict()
             if parsed_cmd["operator"]:
                 target = parsed_cmd["operator"]
@@ -1331,25 +1338,76 @@ class ChiefService:
             lines.append("  ──────────────────")
         return "\n".join(lines).strip()
 
-    def _inbox_check(self) -> str:
-        """Trigger an immediate IMAP poll via the EMAIL operator."""
-        import urllib.request as _ur
+    def _inbox_check(self, n: int = 1) -> str:
+        """Trigger an immediate IMAP poll and show last N emails from the log."""
+        from pathlib import Path
+        from datetime import datetime, timedelta
+        # Trigger immediate poll — ignore errors, don't block display
         try:
-            req = _ur.Request(
+            req = urllib.request.Request(
                 "http://127.0.0.1:8010/api/inbox/check",
                 data=b"{}",
                 method="POST",
                 headers={"Content-Type": "application/json"},
             )
-            with _ur.urlopen(req, timeout=15) as r:
-                data = json.loads(r.read())
-            new = data.get("new_replies", 0)
-            total = data.get("total_replies", 0)
-            if new > 0:
-                return f"🔍 Inbox checked. Found {new} new reply(ies).\nTotal replies: {total}\nRun /replies to view them."
-            return f"🔍 Inbox checked — no new replies.\nTotal replies on record: {total}"
-        except Exception as exc:
-            return f"🔍 Inbox check failed: {exc}"
+            with urllib.request.urlopen(req, timeout=15):
+                pass
+        except Exception:
+            pass
+
+        email_log = Path(os.path.expanduser("~")) / \
+            "Zyrcon/operators/cascadia-os-operators/email/data/email_log.json"
+        emails = []
+        if email_log.exists():
+            try:
+                emails = json.loads(email_log.read_text())
+            except Exception:
+                pass
+
+        if not emails:
+            return (
+                "🔍 Inbox checked — no emails on record.\n"
+                "Monitor is active and polling every 5 minutes."
+            )
+
+        def to_ct(utc_str: str) -> str:
+            try:
+                dt = datetime.strptime(utc_str[:19], "%Y-%m-%dT%H:%M:%S")
+                ct = dt - timedelta(hours=5)
+                return ct.strftime("%-m/%-d %-I:%M %p CT")
+            except Exception:
+                return utc_str[:16]
+
+        total  = len(emails)
+        recent = emails[:n]   # newest first (log inserts at index 0)
+
+        if n == 1:
+            e       = recent[0]
+            preview = (e.get("body_preview") or "")[:100]
+            lines = [
+                "🔍 Inbox checked",
+                "",
+                "Last message:",
+                f"From:    {e.get('from', '?')}",
+                f"Subject: {e.get('subject', '?')}",
+                f"Time:    {to_ct(e.get('received_at', ''))}",
+                f"Preview: {preview}",
+                "",
+                "──────────────────",
+                f"Total emails on record: {total}",
+                "Run /inbox_check 10 to see more.",
+            ]
+            return "\n".join(lines)
+
+        lines = [f"🔍 Inbox — last {n} messages", ""]
+        for i, e in enumerate(recent, 1):
+            lines.append(f"{i}. {e.get('subject', '?')}")
+            lines.append(f"   From: {e.get('from', '?')}")
+            lines.append(f"   {to_ct(e.get('received_at', ''))}")
+            if i < len(recent):
+                lines.append("")
+        lines += ["", "──────────────────", f"Total emails on record: {total}"]
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Pending quote store
