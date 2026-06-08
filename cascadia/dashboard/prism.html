@@ -1188,7 +1188,7 @@ function showAct(id, label, badges) { S.activity[id]={label,badges:badges||[]}; 
 function clearAct(id) { delete S.activity[id]; renderMain(); }
 
 /* ═══ COMMANDS ═══ */
-const BCMDS=[{cmd:'/status',label:'Status'},{cmd:'/pipeline',label:'Pipeline'},{cmd:'/preview',label:'Preview'},{cmd:'/outreach 3',label:'Outreach'},{cmd:'/approve_all',label:'Approve All'},{cmd:'/replies',label:'Replies'},{cmd:'/inbox_check',label:'Inbox Check'},{cmd:'/followups',label:'Follow-ups'},{cmd:'/help',label:'Help'},{cmd:'/archive',label:'Archive'},{cmd:'/recon_start',label:'Recon Start'},{cmd:'/recon_stop',label:'Recon Stop'},{cmd:'/health',label:'Health'},{cmd:'/costs',label:'Costs'},{cmd:'/startup_report',label:'Boot Report'}];
+const BCMDS=[{cmd:'/status',label:'Status'},{cmd:'/ram',label:'RAM'},{cmd:'/pipeline',label:'Pipeline'},{cmd:'/preview',label:'Preview'},{cmd:'/outreach 3',label:'Outreach'},{cmd:'/approve_all',label:'Approve All'},{cmd:'/replies',label:'Replies'},{cmd:'/inbox_check',label:'Inbox Check'},{cmd:'/followups',label:'Follow-ups'},{cmd:'/help',label:'Help'},{cmd:'/archive',label:'Archive'},{cmd:'/recon_start',label:'Recon Start'},{cmd:'/recon_stop',label:'Recon Stop'},{cmd:'/health',label:'Health'},{cmd:'/costs',label:'Costs'},{cmd:'/startup_report',label:'Boot Report'}];
 const WCMDS=[{cmd:'/status',label:'Status'},{cmd:'/recent-tasks',label:'Recent'},{cmd:'/logs',label:'Logs'},{cmd:'/stop',label:'Stop'}];
 const CCMDS=[{cmd:'/detailed-status',label:'Details'},{cmd:'/recent-tasks',label:'Recent'},{cmd:'/logs',label:'Logs'}];
 const DC={active:'sc-dot--g',standby:'sc-dot--y',offline:'sc-dot--r'};
