@@ -469,6 +469,13 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._ram_status(),
                 ).to_dict()
+            if cmd in ("/social", "/campaign"):
+                topic = cmd_parsed.get("args", "").strip() or "daily social campaign"
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="social", selected_target="social",
+                    reply_text=self._social_start(topic, chat_id),
+                ).to_dict()
             if cmd == "/preview":
                 if _is_prism(req.metadata):
                     return 200, TaskResponse(
@@ -2214,6 +2221,27 @@ class ChiefService:
     # ------------------------------------------------------------------
     # RAM / swap status
     # ------------------------------------------------------------------
+
+    def _social_start(self, topic: str, chat_id: str | None) -> str:
+        try:
+            payload = json.dumps({"topic": topic, "campaign_duration": "daily"})
+            req = urllib.request.Request(
+                "http://127.0.0.1:8011/start",
+                data=payload.encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+            session_id = data.get("session_id", "?")
+            return (
+                f"📱 Social campaign started\n\n"
+                f"Topic: {topic}\n"
+                f"Session: {session_id}\n"
+                f"Status: generating — check /session/{session_id} for results."
+            )
+        except Exception as exc:
+            return f"❌ Social operator unreachable: {exc}"
 
     def _ram_status(self) -> str:
         import subprocess

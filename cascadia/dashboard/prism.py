@@ -188,6 +188,8 @@ class PrismService:
         self.runtime.register_route('GET',  '/campaigns',                                            self.serve_campaigns)
         self.runtime.register_route('GET',  '/api/campaigns',                                       self.campaigns_list)
         self.runtime.register_route('GET',  '/api/campaigns/{campaign_id}/posts',                   self.campaign_posts_list)
+        self.runtime.register_route('GET',  '/api/operators/social/campaigns',                      self.campaigns_list)
+        self.runtime.register_route('GET',  '/api/operators/social/campaigns/{campaign_id}/posts',  self.campaign_posts_list)
         self.runtime.register_route('POST', '/api/campaigns/{campaign_id}/posts/{post_id}/approve', self.campaign_post_approve)
         self.runtime.register_route('POST', '/api/campaigns/{campaign_id}/posts/{post_id}/reject',  self.campaign_post_reject)
         self.runtime.register_route('POST', '/api/campaigns/{campaign_id}/approve_all',             self.campaign_approve_all)
