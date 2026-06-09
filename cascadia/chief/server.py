@@ -458,15 +458,6 @@ class ChiefService:
                 ).to_dict()
             if cmd == "/startup_report":
                 report = self._build_startup_report()
-                if not _is_prism(req.metadata) and chat_id:
-                    try:
-                        _http_post(
-                            f"{TELEGRAM_URL}/send",
-                            {"chat_id": chat_id, "text": report},
-                            timeout=10,
-                        )
-                    except Exception:
-                        pass
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
                     selected_type="status", selected_target=cmd,
