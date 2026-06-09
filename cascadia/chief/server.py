@@ -57,6 +57,9 @@ OM_URL     = os.environ.get("OM_URL", "http://127.0.0.1:6210")
 
 _WAKE_WAIT = 35  # seconds to wait for operator health after wake (covers OM's 30s poll cycle)
 
+_last_startup_report_at: float = 0.0
+_STARTUP_REPORT_COOLDOWN: int = 300  # 5 minutes — suppresses duplicate scheduler fires
+
 
 def _http_post(url: str, payload: dict, timeout: int = 30) -> dict:
     body = json.dumps(payload).encode()
@@ -214,6 +217,12 @@ class ChiefService:
 
     def startup_report(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """GET /api/startup_report — build full health report and push to Telegram owner."""
+        global _last_startup_report_at
+        now = time.time()
+        if now - _last_startup_report_at < _STARTUP_REPORT_COOLDOWN:
+            self.runtime.logger.debug("startup_report: cooldown active, skipping Telegram")
+            return 200, {"ok": True, "skipped": True, "reason": "cooldown"}
+        _last_startup_report_at = now
         report = self._build_startup_report()
         try:
             _http_post(
@@ -269,7 +278,7 @@ class ChiefService:
             "CHIEF":  6211, "PRISM":  6300, "LLM":    8080,
         }
         OPERATORS = {
-            "RECON":       8002, "EMAIL":      8010, "PULSE":    8012,
+            "RECON":       8002, "EMAIL":      8010, "PULSE":    8016,
             "SCHEDULER":   8014, "SCOUT":      7002, "TELEGRAM": 9000,
             "SOCIAL":      8011, "QUOTE-BRIEF": 8006,
         }
