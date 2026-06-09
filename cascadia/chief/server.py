@@ -1231,10 +1231,10 @@ class ChiefService:
     _outreach_lock  = threading.Lock()
 
     def _pipeline_snapshot(self) -> str:
-        """Read houston_contractors.csv and return a formatted pipeline snapshot."""
+        """Read outreach_ready.csv and return a formatted pipeline snapshot."""
         import csv
         from pathlib import Path
-        csv_path = Path(self._CSV_PATH)
+        csv_path = Path(self._OUTPUT_DIR) / "outreach_ready.csv"
         if not csv_path.exists():
             return "📊 No lead data found — run /recon first."
         try:
@@ -1271,7 +1271,7 @@ class ChiefService:
         email_none     = total - email_high - email_medium - email_inferred
 
         lines = [
-            "📊 Lead Pipeline — Houston Contractors\n",
+            "📊 Lead Pipeline — HVAC / Plumbing Outreach\n",
             f"Total: {total} | High confidence: {high} | Medium: {medium}\n",
             f"✅ Contacted:        {contacted}",
             f"❌ Not interested:   {not_interested}",
@@ -1314,6 +1314,14 @@ class ChiefService:
                     due.append((r, due_str))
             except ValueError:
                 continue
+
+        # Dedup by business name (case-insensitive); keep earliest due_at
+        seen: dict[str, tuple[dict, str]] = {}
+        for r, due_str in due:
+            key = (r.get("business_name") or "").strip().lower()
+            if key not in seen or due_str < seen[key][1]:
+                seen[key] = (r, due_str)
+        due = list(seen.values())
 
         if not due:
             return "✅ No follow-ups due right now.\nPULSE checks daily at 9am."
