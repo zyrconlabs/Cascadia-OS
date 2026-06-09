@@ -14,6 +14,12 @@ import json
 from typing import Any, Dict, Optional
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
+import logging as _logging
+import subprocess as _subprocess
+import threading as _threading
+import time as _time
+from datetime import datetime as _datetime
+from pathlib import Path as _Path
 
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
@@ -33,6 +39,175 @@ _CAPABILITY_MAP: Dict[str, str] = {
     'file.delete':      'files.write',
     'shell.exec':       'shell.exec',
 }
+
+# ── MEMORY GOVERNOR ──────────────────────────────────────────────────────────
+_MG_CONFIG: Dict[str, Any] = {
+    'poll_interval':       30,     # seconds between pressure checks
+    'threshold_moderate': 200,     # MB swap → sleep tier1 + tier2
+    'threshold_critical': 600,     # MB swap → sleep tier3, alert owner
+    'never_sleep': [
+        'nats', 'crew', 'chief', 'beacon',
+        'llm', 'postgres', 'telegram', 'email_operator',
+    ],
+    'tier1': ['crm', 'quote', 'debrief', 'aurelia'],
+    'tier2': ['social', 'scout', 'brief', 'collect'],
+    'tier3': ['recon'],
+    'missions': {
+        'growth_desk': ['social'],
+        'outreach':    ['recon', 'email_operator'],
+        'lead_intake': ['scout', 'collect', 'brief'],
+        'quoting':     ['quote', 'quote_brief'],
+    },
+}
+
+_OM_URL        = 'http://127.0.0.1:6210'
+_TELEGRAM_URL  = 'http://127.0.0.1:9000/send'
+_OWNER_CHAT_ID = '1535010257'
+_INTENT_FILE   = _Path(__file__).parent.parent.parent / 'data' / 'runtime' / 'operator_intent.json'
+
+_governor_slept:  set             = set()
+_active_mission:  Optional[str]   = None
+_last_pressure:   str             = 'ok'
+_last_check_time: Optional[str]   = None
+
+_mg_log = _logging.getLogger('beacon')
+
+
+def _mg_get_pressure() -> Dict[str, Any]:
+    """Read vm_stat and return current memory pressure metrics."""
+    try:
+        out = _subprocess.check_output(['vm_stat'], text=True)
+        pages: Dict[str, int] = {}
+        for line in out.splitlines():
+            for key in ('Pages swapped out', 'Pages free',
+                        'Pages occupied by compressor'):
+                if line.startswith(key):
+                    pages[key] = int(line.split(':')[1].strip().rstrip('.'))
+        page_bytes    = 16384  # Apple Silicon page size
+        swap_used_mb  = pages.get('Pages swapped out', 0) * page_bytes // (1024 * 1024)
+        free_mb       = pages.get('Pages free', 0)                    * page_bytes // (1024 * 1024)
+        compressed_mb = pages.get('Pages occupied by compressor', 0)  * page_bytes // (1024 * 1024)
+        if swap_used_mb >= _MG_CONFIG['threshold_critical']:
+            pressure = 'critical'
+        elif swap_used_mb >= _MG_CONFIG['threshold_moderate']:
+            pressure = 'moderate'
+        else:
+            pressure = 'ok'
+        return {
+            'swap_used_mb':  swap_used_mb,
+            'free_mb':       free_mb,
+            'compressed_mb': compressed_mb,
+            'pressure':      pressure,
+        }
+    except Exception as exc:
+        _mg_log.warning('GOVERNOR: _mg_get_pressure error: %s', exc)
+        return {'swap_used_mb': 0, 'free_mb': 0, 'compressed_mb': 0, 'pressure': 'ok'}
+
+
+def _mg_get_intent(op_id: str) -> str:
+    """Return worker_intent for op_id from operator_intent.json, or 'unknown'."""
+    try:
+        if _INTENT_FILE.exists():
+            data = json.loads(_INTENT_FILE.read_text())
+            return data.get(op_id, {}).get('worker_intent', 'unknown')
+    except Exception:
+        pass
+    return 'unknown'
+
+
+def _mg_sleep(op_id: str, reason: str) -> None:
+    """PUT operator to sleep via OM. Skips never_sleep list and already-sleeping ops."""
+    if op_id in _MG_CONFIG['never_sleep']:
+        return
+    if _mg_get_intent(op_id) == 'sleeping':
+        return
+    try:
+        body = json.dumps({'reason': reason}).encode()
+        req = urllib_request.Request(
+            f'{_OM_URL}/operators/{op_id}/sleep',
+            data=body, method='POST',
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib_request.urlopen(req, timeout=5):
+            pass
+        _mg_log.info('GOVERNOR: sleeping %s — %s', op_id, reason)
+        _governor_slept.add(op_id)
+    except Exception as exc:
+        _mg_log.warning('GOVERNOR: could not sleep %s: %s', op_id, exc)
+
+
+def _mg_wake(op_id: str, reason: str) -> None:
+    """Wake operator via OM."""
+    try:
+        body = json.dumps({'reason': reason}).encode()
+        req = urllib_request.Request(
+            f'{_OM_URL}/operators/{op_id}/wake',
+            data=body, method='POST',
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib_request.urlopen(req, timeout=5):
+            pass
+        _mg_log.info('GOVERNOR: waking %s — %s', op_id, reason)
+    except Exception as exc:
+        _mg_log.warning('GOVERNOR: could not wake %s: %s', op_id, exc)
+
+
+def _mg_alert(text: str) -> None:
+    """Send Telegram alert to owner. Never crashes."""
+    try:
+        body = json.dumps({'chat_id': _OWNER_CHAT_ID, 'text': text}).encode()
+        req = urllib_request.Request(
+            _TELEGRAM_URL, data=body, method='POST',
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib_request.urlopen(req, timeout=10):
+            pass
+    except Exception as exc:
+        _mg_log.warning('GOVERNOR: Telegram alert failed: %s', exc)
+
+
+def _mg_governor_loop() -> None:
+    """Daemon thread: poll memory pressure every poll_interval seconds."""
+    global _last_pressure, _last_check_time
+    while True:
+        try:
+            mem = _mg_get_pressure()
+            _last_check_time = _datetime.utcnow().isoformat()
+            _last_pressure   = mem['pressure']
+
+            if mem['pressure'] == 'ok':
+                _mg_log.debug('GOVERNOR: ok (swap=%dMB free=%dMB)',
+                              mem['swap_used_mb'], mem['free_mb'])
+
+            elif mem['pressure'] == 'moderate':
+                for op in _MG_CONFIG['tier1'] + _MG_CONFIG['tier2']:
+                    _mg_sleep(op, 'RAM moderate pressure')
+
+            elif mem['pressure'] == 'critical':
+                for op in (_MG_CONFIG['tier1'] + _MG_CONFIG['tier2']
+                           + _MG_CONFIG['tier3']):
+                    _mg_sleep(op, 'RAM critical pressure')
+                _mg_alert(
+                    f'\U0001f534 RAM CRITICAL\n'
+                    f'Swap: {mem["swap_used_mb"]}MB\n'
+                    f'Free: {mem["free_mb"]}MB\n'
+                    f'Governor slept: {list(_governor_slept)}\n'
+                    f'System stable — monitoring.'
+                )
+                mem2 = _mg_get_pressure()
+                if mem2['pressure'] == 'critical':
+                    _mg_alert(
+                        '⚠️ RAM still critical after sleeping '
+                        'all non-essential operators. '
+                        'Manual review needed.'
+                    )
+
+        except Exception as exc:
+            _mg_log.warning('GOVERNOR loop error: %s', exc)
+        finally:
+            _time.sleep(_MG_CONFIG['poll_interval'])
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class BeaconService:
@@ -63,7 +238,10 @@ class BeaconService:
         self.runtime.register_route('POST', '/handoff',    self.handoff)
         self.runtime.register_route('POST', '/forward',    self.forward)
         self.runtime.register_route('GET',  '/registry',   self.registry)
-        self.runtime.register_route('POST', '/escalation', self.escalation_handler)
+        self.runtime.register_route('POST', '/escalation',        self.escalation_handler)
+        self.runtime.register_route('GET',  '/api/memory',         self.memory_status)
+        self.runtime.register_route('POST', '/api/mission/start',  self.mission_start)
+        self.runtime.register_route('POST', '/api/mission/end',    self.mission_end)
 
     # ------------------------------------------------------------------
     # Capability validation
@@ -431,9 +609,72 @@ class BeaconService:
             *base,
         ]
 
+    # ------------------------------------------------------------------
+    # Memory governor endpoints
+    # ------------------------------------------------------------------
+
+    def memory_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/memory — current RAM pressure and governor state."""
+        mem = _mg_get_pressure()
+        return 200, {
+            **mem,
+            'active_mission': _active_mission,
+            'governor_slept': list(_governor_slept),
+            'last_check':     _last_check_time,
+        }
+
+    def mission_start(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/mission/start — wake required operators, free RAM for mission."""
+        global _active_mission
+        mission = payload.get('mission', '')
+        if mission not in _MG_CONFIG['missions']:
+            return 400, {'ok': False, 'error': f'unknown mission: {mission}'}
+        required = _MG_CONFIG['missions'][mission]
+        woke: list = []
+        slept: list = []
+        for op in required:
+            _mg_wake(op, f'mission {mission} start')
+            woke.append(op)
+        for op in _MG_CONFIG['tier1']:
+            if op not in required:
+                _mg_sleep(op, f'mission {mission} freeing RAM')
+                slept.append(op)
+        _active_mission = mission
+        self.runtime.logger.info(
+            'BEACON: mission %s started — woke=%s slept=%s', mission, woke, slept
+        )
+        return 200, {'ok': True, 'mission': mission, 'woke': woke, 'slept': slept}
+
+    def mission_end(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/mission/end — restore governor-slept operators to sleeping."""
+        global _active_mission
+        mission = payload.get('mission', _active_mission or '')
+        restored: list = []
+        for op in list(_governor_slept):
+            intent = _mg_get_intent(op)
+            if intent not in ('sleeping', 'stopped'):
+                _mg_sleep(op, 'mission end — restoring state')
+                restored.append(op)
+        _governor_slept.clear()
+        _active_mission = None
+        self.runtime.logger.info(
+            'BEACON: mission %s ended — restored=%s', mission, restored
+        )
+        return 200, {'ok': True, 'restored': restored}
+
     def start(self) -> None:
         self.runtime.logger.info(
             'BEACON active — %d components registered', len(self._port_map)
+        )
+        _gov = _threading.Thread(
+            target=_mg_governor_loop, daemon=True, name='memory-governor',
+        )
+        _gov.start()
+        self.runtime.logger.info(
+            'BEACON: memory governor started (poll=%ds, moderate=%dMB, critical=%dMB)',
+            _MG_CONFIG['poll_interval'],
+            _MG_CONFIG['threshold_moderate'],
+            _MG_CONFIG['threshold_critical'],
         )
         self.runtime.start()
 

@@ -3210,6 +3210,46 @@ async function renderHealthSurface() {
   await refreshHealth();
 }
 
+async function refreshMemoryGovernor() {
+  const grid = document.getElementById('hgrid');
+  if (!grid) return;
+  try {
+    const r = await fetch('http://localhost:6200/api/memory');
+    const mem = await r.json();
+    const pressure = mem.pressure || 'ok';
+    const badgeCls = pressure === 'critical' ? 'hcb-err' : pressure === 'moderate' ? 'hcb-warn' : 'hcb-ok';
+    const badgeLbl = pressure === 'critical' ? 'Critical' : pressure === 'moderate' ? 'Moderate' : 'OK';
+    const icoEl = pressure === 'critical'
+      ? `<div class="hc-ico hc-err"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`
+      : pressure === 'moderate'
+      ? `<div class="hc-ico hc-warn"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/></svg></div>`
+      : `<div class="hc-ico hc-ok"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>`;
+    const mission = mem.active_mission || 'none';
+    const sleptArr = mem.governor_slept || [];
+    const sleptStr = sleptArr.length ? sleptArr.join(', ') : 'none';
+    grid.insertAdjacentHTML('beforeend', `
+      <div class="hc-group">Memory Governor</div>
+      <div class="hc">${icoEl}
+        <div>
+          <div class="hc-lbl">RAM Pressure</div>
+          <div class="hc-det">Swap: ${mem.swap_used_mb}MB &nbsp;Free: ${mem.free_mb}MB &nbsp;|&nbsp; Mission: ${mission} &nbsp;|&nbsp; Slept: ${sleptStr}</div>
+        </div>
+        <span class="hc-badge ${badgeCls}">${badgeLbl}</span>
+      </div>
+    `);
+  } catch (_e) {
+    const g2 = document.getElementById('hgrid');
+    if (g2) g2.insertAdjacentHTML('beforeend', `
+      <div class="hc-group">Memory Governor</div>
+      <div class="hc">
+        <div class="hc-ico hc-warn"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/></svg></div>
+        <div><div class="hc-lbl">Memory Governor</div><div class="hc-det" style="color:var(--gray-400)">BEACON unreachable</div></div>
+        <span class="hc-badge" style="background:var(--gray-100);color:var(--gray-500)">—</span>
+      </div>
+    `);
+  }
+}
+
 async function refreshHealth() {
   try {
     const d = await prismFetch('/api/prism/health-check');
@@ -3259,6 +3299,7 @@ async function refreshHealth() {
         return `<div class="hc">${ico}<div><div class="hc-lbl">${c.label}</div><div class="hc-det">${c.detail||''}</div></div><span class="hc-badge hcb-${cls}">${lbl}</span></div>`;
       }).join('')}
     `).join('');
+    await refreshMemoryGovernor();
   } catch(e) { console.error('refreshHealth error:', e); }
 }
 
