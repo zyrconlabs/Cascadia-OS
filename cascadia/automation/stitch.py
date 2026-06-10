@@ -961,9 +961,10 @@ class StitchService:
             return 404, {'error': f'workflow not found: {workflow_id}'}
         db_path = self.config.get('database_path', './data/runtime/cascadia.db')
         try:
-            # policy_rules={} — STITCH runs are dispatched after external approval;
-            # the internal WorkflowRuntime gate must not fire a second time.
-            runtime = WorkflowRuntime(db_path, policy_rules={})
+            # policy_rules={} workaround removed — MissionRunner no longer calls
+            # execute_run for missions (direct WorkflowRuntime path via runner.py).
+            # WorkflowRuntime uses default policy rules for all remaining callers.
+            runtime = WorkflowRuntime(db_path)
             result = runtime.execute(workflow_id, definition, payload)
             return 200, result.to_dict()
         except Exception as exc:
