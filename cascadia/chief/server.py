@@ -13,6 +13,7 @@ CHIEF is how a task finds the right worker.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -22,6 +23,7 @@ import urllib.request
 import urllib.error
 import uuid
 from typing import Any, Dict
+from zoneinfo import ZoneInfo
 
 from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
@@ -59,6 +61,27 @@ _WAKE_WAIT = 35  # seconds to wait for operator health after wake (covers OM's 3
 
 _last_startup_report_at: float = 0.0
 _STARTUP_REPORT_COOLDOWN: int = 300  # 5 minutes — suppresses duplicate scheduler fires
+
+# ── Business hours gate (Mon-Sat 08:15–16:00 CT) ──────────────────────────
+_SEND_TZ    = ZoneInfo("America/Chicago")
+_SEND_START = datetime.time(8, 15)
+_SEND_END   = datetime.time(16, 0)
+_SEND_DAYS  = {0, 1, 2, 3, 4, 5}  # Mon=0, Sat=5
+
+def _is_business_hours() -> bool:
+    now = datetime.datetime.now(_SEND_TZ)
+    return now.weekday() in _SEND_DAYS and _SEND_START <= now.time() < _SEND_END
+
+def _next_send_window() -> datetime.datetime:
+    now  = datetime.datetime.now(_SEND_TZ)
+    cand = now.replace(hour=8, minute=15, second=0, microsecond=0)
+    if now.weekday() in _SEND_DAYS and cand > now:
+        return cand
+    cand += datetime.timedelta(days=1)
+    while cand.weekday() not in _SEND_DAYS:
+        cand += datetime.timedelta(days=1)
+    return cand
+# ── End business hours gate ───────────────────────────────────────────────
 
 
 def _http_post(url: str, payload: dict, timeout: int = 30) -> dict:
@@ -1753,6 +1776,52 @@ class ChiefService:
                 f"Lead removed from queue — not sent."
             )
         # ── END SAFETY RE-CHECK ───────────────────────────────────────────────
+
+        # ── BUSINESS HOURS GATE ───────────────────────────────────────────────
+        if not _is_business_hours():
+            next_window = _next_send_window()
+            window_str  = next_window.strftime("%b %d %I:%M %p CT")
+
+            def _deferred() -> None:
+                while not _is_business_hours():
+                    self.runtime.logger.info(
+                        "CHIEF: outside business hours — holding send for %s until %s",
+                        biz, window_str,
+                    )
+                    time.sleep(60)
+                try:
+                    res = _http_post(
+                        "http://127.0.0.1:8010/api/task",
+                        {"to": email, "subject": entry.get("subject", ""),
+                         "body": entry.get("body", ""), "reply_to": "hello@zyrcon.ai"},
+                        timeout=20,
+                    )
+                except Exception as exc:
+                    self.runtime.logger.error("CHIEF deferred send failed: %s", exc)
+                    return
+                if res.get("ok"):
+                    try:
+                        _http_post(f"{source_url}/api/outreach/approved",
+                                   {"row_id": row_id}, timeout=10)
+                    except Exception as exc:
+                        self.runtime.logger.warning(
+                            "CHIEF approved callback (deferred) failed: %s", exc)
+                    _drop()
+                    try:
+                        _http_post(f"{TELEGRAM_URL}/send",
+                                   {"chat_id": chat_id,
+                                    "text": f"✅ Email sent to {biz} ({email})"},
+                                   timeout=5)
+                    except Exception:
+                        pass
+                else:
+                    self.runtime.logger.error(
+                        "CHIEF deferred send failed for %s: %s", biz, res)
+
+            threading.Thread(target=_deferred, daemon=True,
+                             name=f"deferred-send-{row_id}").start()
+            return f"✅ Queued — sending at {window_str}"
+        # ── END BUSINESS HOURS GATE ──────────────────────────────────────────
 
         try:
             send_result = _http_post(
