@@ -1,3 +1,5 @@
+# DEPRECATED: functionality merged into CHIEF (see chief/server.py)
+# This file will be removed in the next cleanup pass.
 """
 bell/bell.py - Cascadia OS 2026.5
 BELL: Inbound chat interface and human-in-the-loop handler.
