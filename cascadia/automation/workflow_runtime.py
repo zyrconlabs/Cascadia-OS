@@ -396,6 +396,9 @@ class WorkflowRuntime:
         if policy_decision.decision == 'denied':
             return {'status': 'failed', 'reason': policy_decision.reason, 'state': state}
 
+        if step_name == 'send_email':
+            return self._send_email_state(run_id, step_index, state)
+
         if action == 'crm.write':
             return self._log_crm(run_id, step_index, dict(state))
         if not step_operator:
@@ -457,6 +460,31 @@ class WorkflowRuntime:
             'draft_subject': subject,
             'draft_body': body,
             'draft_preview': preview,
+        }
+
+    def _send_email_state(self, run_id: str, step_index: int, state: Dict[str, Any]) -> Dict[str, Any]:
+        target = state.get('lead_email') or state.get('email') or 'unknown'
+        key = effect_key(run_id, step_index, 'email.send', target)
+        payload = {
+            'to': target,
+            'subject': state.get('draft_subject', ''),
+            'body': state.get('draft_body', ''),
+        }
+        self.idem.register_planned(
+            run_id=run_id,
+            step_index=step_index,
+            effect_type='email.send',
+            effect_key=key,
+            target=target,
+            payload=payload,
+            created_at=_now(),
+        )
+        self.idem.commit(key, _now())
+        self.store.trace_event(run_id, 'email.simulated', step_index, payload, _now())
+        return {
+            'status': 'ok',
+            'state': {**state, 'delivery_status': 'simulated_sent', 'delivery_target': target},
+            'input_state': dict(state),
         }
 
     def _log_crm(self, run_id: str, step_index: int, state: Dict[str, Any]) -> Dict[str, Any]:
