@@ -297,6 +297,11 @@ class MissionRunner:
                     "input": payload or {},
                 }),
             })
+            if stitch_run_id and self._registry:
+                try:
+                    self._registry.update_stitch_registered(mission_id, True)
+                except Exception:
+                    pass
         except Exception as exc:
             log.warning("STITCH dispatch failed for run %s: %s", run_id, exc)
 
@@ -417,6 +422,11 @@ class MissionRunner:
                         on_done=self._make_on_done(mission_run_id),
                     )
                     stitch_ok = bool(stitch_run_id)
+                    if stitch_run_id and self._registry:
+                        try:
+                            self._registry.update_stitch_registered(mission_id, True)
+                        except Exception:
+                            pass
                 except Exception as exc:
                     log.warning("STITCH start-after-approval failed for %s: %s",
                                 mission_run_id, exc)

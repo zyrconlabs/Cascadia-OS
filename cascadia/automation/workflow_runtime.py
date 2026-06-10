@@ -384,6 +384,18 @@ class WorkflowRuntime:
         if sentinel_block:
             return sentinel_block
 
+        # Check policy — approval_required pauses the run before dispatch
+        policy_decision = self.policy.check(run_id=run_id, step_index=step_index, action=action)
+        if policy_decision.decision == 'approval_required':
+            return {
+                'status': 'waiting_human',
+                'approval_id': policy_decision.approval_id,
+                'preview': f'Approval required before {action}.',
+                'state': state,
+            }
+        if policy_decision.decision == 'denied':
+            return {'status': 'failed', 'reason': policy_decision.reason, 'state': state}
+
         if action == 'crm.write':
             return self._log_crm(run_id, step_index, dict(state))
         if not step_operator:
