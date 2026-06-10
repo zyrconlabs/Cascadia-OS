@@ -45,6 +45,8 @@ from cascadia.chief.intent_router import (
     CONFIDENCE_DISPATCH,
     CONFIDENCE_CLARIFY,
 )
+from cascadia.automation.workflow_runtime import WorkflowRuntime
+from cascadia.automation.stitch import WorkflowDefinition, WorkflowStep
 
 _VERSION = "1.0.0"
 
@@ -179,6 +181,46 @@ def _outreach_safety_reason(business_name: str, email: str) -> str | None:
     return None
 
 
+def _chat_now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+class ChatSession:
+    """One human conversation session. State only — no execution logic."""
+
+    def __init__(self, session_id: str, tenant_id: str = 'default') -> None:
+        self.session_id = session_id
+        self.tenant_id = tenant_id
+        self.created_at = _chat_now()
+        self.last_active = time.time()
+        self.messages: list = []
+        self.pending_approvals: list = []
+        self.linked_run_ids: list = []
+
+    def add_message(self, role: str, content: str, metadata: dict | None = None) -> dict:
+        msg = {
+            'id': uuid.uuid4().hex[:8],
+            'session_id': self.session_id,
+            'role': role,
+            'content': content,
+            'ts': _chat_now(),
+            'metadata': metadata or {},
+        }
+        self.messages.append(msg)
+        self.last_active = time.time()
+        return msg
+
+    def to_dict(self) -> dict:
+        return {
+            'session_id': self.session_id,
+            'tenant_id': self.tenant_id,
+            'created_at': self.created_at,
+            'message_count': len(self.messages),
+            'pending_approvals': self.pending_approvals,
+            'linked_runs': self.linked_run_ids,
+        }
+
+
 class ChiefService:
     """
     CHIEF - Task orchestrator.
@@ -219,6 +261,20 @@ class ChiefService:
                                     self._handle_outreach_approval_request)
         self.runtime.register_route("GET",  "/api/startup_report",
                                     self.startup_report)
+
+        # ── Chat / BELL-absorbed routes ──────────────────────────────────────
+        db_path = self.config.get('database_path', './data/runtime/cascadia.db')
+        self._chat_wf_runtime = WorkflowRuntime(db_path)
+        self._chat_wf_definitions = self._build_chat_workflow_definitions()
+        self._chat_sessions: Dict[str, ChatSession] = {}
+        self._chat_lock = threading.Lock()
+
+        self.runtime.register_route('POST', '/session/start',   self.chat_start_session)
+        self.runtime.register_route('POST', '/message',         self.chat_receive_message)
+        self.runtime.register_route('POST', '/approve',         self.chat_receive_approval)
+        self.runtime.register_route('POST', '/approve/edit',    self.chat_edit_and_approve)
+        self.runtime.register_route('GET',  '/sessions',        self.chat_list_sessions)
+        self.runtime.register_route('POST', '/session/history', self.chat_get_history)
 
     # ------------------------------------------------------------------
     # Health
@@ -2427,6 +2483,194 @@ class ChiefService:
         self.runtime.logger.warning(
             "CHIEF: CREW registration failed after %d attempts", retries
         )
+
+    # ------------------------------------------------------------------
+    # Chat handlers (absorbed from BELL)
+    # ------------------------------------------------------------------
+
+    def _build_chat_workflow_definitions(self) -> dict:
+        """Build built-in workflow definitions. Replaces _StitchShim from BELL."""
+        lead = WorkflowDefinition(
+            workflow_id='lead_follow_up',
+            name='Lead Follow-Up',
+            description='Parse lead, enrich, draft email, approval gate, send, log CRM.',
+            steps=[
+                WorkflowStep('parse_lead',     'main_operator',  'parse_lead'),
+                WorkflowStep('enrich_company', 'main_operator',  'enrich_company'),
+                WorkflowStep('draft_email',    'main_operator',  'draft_email'),
+                WorkflowStep('send_email',     'gmail_operator', 'email.send', on_failure='stop'),
+                WorkflowStep('log_crm',        'main_operator',  'crm.write'),
+            ],
+        )
+        return {'lead_follow_up': lead}
+
+    def chat_start_session(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /session/start — open a new chat session."""
+        session_id = f'bell_{uuid.uuid4().hex[:10]}'
+        tenant_id = payload.get('tenant_id', 'default')
+        with self._chat_lock:
+            session = ChatSession(session_id, tenant_id)
+            self._chat_sessions[session_id] = session
+        self.runtime.logger.info('CHIEF chat session started: %s', session_id)
+        return 201, {'session_id': session_id, 'tenant_id': tenant_id}
+
+    def chat_receive_message(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /message — receive a human message and run a workflow."""
+        session_id = payload.get('session_id', '')
+        content = payload.get('content', '')
+        if not session_id or not content:
+            return 400, {'error': 'session_id and content required'}
+        with self._chat_lock:
+            session = self._chat_sessions.get(session_id)
+            if session is None:
+                return 404, {'error': 'session not found'}
+            session.add_message('user', content, payload.get('metadata'))
+
+        if content.startswith('/settings'):
+            try:
+                from cascadia.settings.chat_assistant import SettingsChatAssistant
+                context = {
+                    'operator': payload.get('operator_id', session_id),
+                    'business_type': payload.get('business_type', 'general'),
+                }
+                result = SettingsChatAssistant().handle(content, context)
+                return 200, result
+            except Exception as exc:
+                self.runtime.logger.warning('SettingsChatAssistant error: %s', exc)
+
+        workflow_id = payload.get('workflow_id', 'lead_follow_up')
+        definition = self._chat_wf_definitions.get(workflow_id)
+        if definition is None:
+            return 400, {'error': f'unknown workflow: {workflow_id}'}
+
+        try:
+            result = self._chat_wf_runtime.execute(workflow_id, definition, {
+                'session_id': session_id,
+                'content': content,
+                'tenant_id': payload.get('tenant_id', session.tenant_id),
+                'goal': payload.get('goal', f'Lead follow-up from chat session {session_id}'),
+                'sender': 'chief',
+            })
+        except Exception as exc:
+            self.runtime.logger.error('CHIEF chat workflow execution failed: %s', exc)
+            return 500, {'error': str(exc)}
+
+        result_dict = result.to_dict()
+        run_id = result_dict['run_id']
+        with self._chat_lock:
+            if run_id not in session.linked_run_ids:
+                session.linked_run_ids.append(run_id)
+            approval_id = result_dict.get('pending_approval_id')
+            if approval_id is not None and approval_id not in session.pending_approvals:
+                session.pending_approvals.append(approval_id)
+            assistant_msg = result_dict.get('assistant_message') or result_dict.get('draft_preview', '')
+            if assistant_msg:
+                session.add_message('assistant', assistant_msg)
+
+        self.runtime.logger.info(
+            'CHIEF chat run %s — state: %s step: %s',
+            run_id, result_dict['run_state'], result_dict['current_step'],
+        )
+        return 202, result_dict
+
+    def chat_receive_approval(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /approve — record an approval decision and resume the run."""
+        session_id  = payload.get('session_id', '')
+        approval_id = payload.get('approval_id')
+        decision    = payload.get('decision', '')
+        reason      = payload.get('reason', '')
+        actor       = payload.get('actor', 'operator')
+        run_id      = payload.get('run_id', '')
+
+        if decision not in ('approved', 'denied'):
+            return 400, {'error': 'decision must be approved or denied'}
+        if approval_id is None:
+            return 400, {'error': 'approval_id required'}
+
+        try:
+            self._chat_wf_runtime.approvals.record_decision(
+                int(approval_id), decision, actor, reason
+            )
+        except Exception as exc:
+            self.runtime.logger.error('CHIEF chat approval record failed: %s', exc)
+            return 500, {'error': f'failed to record decision: {exc}'}
+
+        with self._chat_lock:
+            session = self._chat_sessions.get(session_id)
+            if session and approval_id in session.pending_approvals:
+                session.pending_approvals.remove(approval_id)
+
+        resume_result = None
+        if decision == 'approved':
+            effective_run_id = run_id
+            if not effective_run_id:
+                with self._chat_lock:
+                    if session and session.linked_run_ids:
+                        effective_run_id = session.linked_run_ids[-1]
+            if effective_run_id:
+                definition = self._chat_wf_definitions.get('lead_follow_up')
+                if definition:
+                    try:
+                        result = self._chat_wf_runtime.execute(
+                            'lead_follow_up', definition, {'run_id': effective_run_id}
+                        )
+                        resume_result = result.to_dict()
+                        with self._chat_lock:
+                            if session:
+                                msg = resume_result.get('assistant_message') or resume_result.get('draft_preview', '')
+                                if msg:
+                                    session.add_message('assistant', msg)
+                        self.runtime.logger.info(
+                            'CHIEF chat run %s resumed — state: %s',
+                            effective_run_id, resume_result['run_state'],
+                        )
+                    except Exception as exc:
+                        self.runtime.logger.error('CHIEF chat resume failed: %s', exc)
+
+        return 200, {
+            'approval_id': approval_id,
+            'decision': decision,
+            'reason': reason,
+            'recorded': True,
+            'resume_result': resume_result,
+        }
+
+    def chat_edit_and_approve(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /approve/edit — store owner edits alongside approval."""
+        approval_id = payload.get('approval_id')
+        content     = payload.get('content', '')
+        summary     = payload.get('summary', '')
+        actor       = payload.get('actor', 'operator')
+
+        if approval_id is None:
+            return 400, {'error': 'approval_id required'}
+        if not content:
+            return 400, {'error': 'content required'}
+
+        try:
+            self._chat_wf_runtime.approvals.edit_and_approve(
+                int(approval_id), actor, content, summary
+            )
+        except Exception as exc:
+            self.runtime.logger.error('CHIEF chat edit_and_approve failed: %s', exc)
+            return 500, {'error': str(exc)}
+
+        return 200, {'approval_id': approval_id, 'decision': 'approved', 'edited': True}
+
+    def chat_list_sessions(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /sessions — list all chat sessions."""
+        with self._chat_lock:
+            sessions = [s.to_dict() for s in self._chat_sessions.values()]
+        return 200, {'sessions': sessions, 'count': len(sessions)}
+
+    def chat_get_history(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /session/history — get message history for a session."""
+        session_id = payload.get('session_id', '')
+        with self._chat_lock:
+            session = self._chat_sessions.get(session_id)
+        if session is None:
+            return 404, {'error': 'session not found'}
+        return 200, {'session_id': session_id, 'messages': session.messages}
 
     # ------------------------------------------------------------------
     # Start
