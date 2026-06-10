@@ -535,7 +535,7 @@ class WorkflowRuntime:
             cfg = json.loads(cfg_path.read_text(encoding='utf-8'))
             ops_dir = cfg.get('operators_dir')
             if ops_dir:
-                mf = Path(ops_dir) / operator_id / 'manifest.json'
+                mf = Path(ops_dir).expanduser() / operator_id / 'manifest.json'
                 if mf.exists():
                     m = json.loads(mf.read_text(encoding='utf-8'))
                     if m.get('port'):
