@@ -1,4 +1,4 @@
-"""Mission Runner — turns mission manifests into executable runs via STITCH."""
+"""Mission Runner — turns mission manifests into executable runs via WorkflowRuntime."""
 from __future__ import annotations
 
 import json
@@ -10,6 +10,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from cascadia.automation.workflow_runtime import WorkflowRuntime
+from cascadia.automation.stitch import WorkflowDefinition, WorkflowStep
 
 from cascadia.missions.constants import DEFAULT_ORGANIZATION_ID
 from cascadia.missions.events import (
@@ -82,6 +85,10 @@ def _http_post(url: str, data: dict, timeout: int = 10) -> dict:
 
 # ── STITCH adapter ────────────────────────────────────────────────────────────
 
+# DEPRECATED: StitchMissionAdapter
+# MissionRunner now calls WorkflowRuntime directly via _execute_workflow_direct().
+# This class is preserved for reference and will be removed in the next cleanup pass.
+# HTTP calls to STITCH /run/execute are no longer made for missions.
 class StitchMissionAdapter:
     """
     Narrow HTTP adapter for dispatching mission workflows via STITCH (port 6201).
@@ -201,7 +208,7 @@ class MissionRunner:
     ) -> None:
         self._registry = registry or MissionRegistry()
         self._db_path = db_path or _resolve_db_path()
-        self._adapter = adapter or StitchMissionAdapter()
+        self._adapter = adapter or StitchMissionAdapter()  # unused after _execute_workflow_direct; kept for legacy resume path
 
     # ── Start ─────────────────────────────────────────────────────────────────
 
@@ -284,26 +291,25 @@ class MissionRunner:
                 "status": "waiting_approval",
             }
 
-        # No external actions — dispatch to STITCH
+        # No external actions — dispatch directly to WorkflowRuntime
         try:
-            stitch_run_id = self._adapter.start_workflow(
-                wf_def, payload or {}, on_done=self._make_on_done(run_id),
+            wrt_run_id = self._execute_workflow_direct(
+                mission_id=mission_id,
+                workflow_id=workflow_id,
+                wf_def=wf_def,
+                payload=payload or {},
+                on_done=self._make_on_done(run_id),
             )
             self._update_run(run_id, {
                 "trigger_data": json.dumps({
                     "workflow_id": workflow_id,
                     "trigger_type": trigger_type,
-                    "stitch_run_id": stitch_run_id,
+                    "stitch_run_id": wrt_run_id,
                     "input": payload or {},
                 }),
             })
-            if stitch_run_id and self._registry:
-                try:
-                    self._registry.update_stitch_registered(mission_id, True)
-                except Exception:
-                    pass
         except Exception as exc:
-            log.warning("STITCH dispatch failed for run %s: %s", run_id, exc)
+            log.warning("WorkflowRuntime direct dispatch failed for run %s: %s", run_id, exc)
 
         return {
             "mission_run_id": run_id,
@@ -417,18 +423,17 @@ class MissionRunner:
                     edited_payload = (
                         approval_decision.get("edited_payload") or td.get("input", {})
                     )
-                    stitch_run_id = self._adapter.start_workflow(
-                        wf_def, edited_payload,
+                    wrt_run_id = self._execute_workflow_direct(
+                        mission_id=mission_id,
+                        workflow_id=workflow_id,
+                        wf_def=wf_def,
+                        payload=edited_payload,
                         on_done=self._make_on_done(mission_run_id),
                     )
-                    stitch_ok = bool(stitch_run_id)
-                    if stitch_run_id and self._registry:
-                        try:
-                            self._registry.update_stitch_registered(mission_id, True)
-                        except Exception:
-                            pass
+                    stitch_run_id = wrt_run_id
+                    stitch_ok = bool(wrt_run_id)
                 except Exception as exc:
-                    log.warning("STITCH start-after-approval failed for %s: %s",
+                    log.warning("WorkflowRuntime direct start-after-approval failed for %s: %s",
                                 mission_run_id, exc)
 
         if not stitch_ok:
@@ -694,8 +699,63 @@ class MissionRunner:
             log.error("Failed to insert mission_run %s: %s", run_id, exc)
             raise MissionRunError(f"Failed to create run record: {exc}") from exc
 
+    def _execute_workflow_direct(
+        self,
+        mission_id: str,
+        workflow_id: str,
+        wf_def: dict,
+        payload: dict,
+        on_done: Optional[Any] = None,
+    ) -> str:
+        """Execute workflow via WorkflowRuntime directly. Returns WorkflowRuntime run_id.
+
+        Previously routed through StitchMissionAdapter (3 HTTP calls: register + start +
+        execute). Now calls WorkflowRuntime in-process via a background thread.
+
+        policy_rules={} — MissionRunner's pre-dispatch gate (EXTERNAL_ACTIONS) has
+        already handled external-action approval before this call is reached.
+        WorkflowRuntime's internal gate must not fire a second time on the same action.
+        RuntimePolicy default flags email.send as approval_required (workflow_runtime.py:95).
+        """
+        steps = [
+            WorkflowStep(
+                name=s.get("id", ""),
+                operator=s.get("operator", ""),
+                action=s.get("action", ""),
+                condition=s.get("condition"),
+            )
+            for s in wf_def.get("steps", [])
+        ]
+        definition = WorkflowDefinition(
+            workflow_id=wf_def.get("id", workflow_id),
+            name=wf_def.get("name", workflow_id),
+            steps=steps,
+        )
+        runtime = WorkflowRuntime(self._db_path, policy_rules={})
+        wrt_run_id = runtime.create_run(workflow_id, definition, payload)
+
+        def _run() -> None:
+            try:
+                result = runtime.execute(workflow_id, definition, {"run_id": wrt_run_id})
+                if on_done is not None:
+                    try:
+                        on_done(result.to_dict())
+                    except Exception as exc:
+                        log.warning("on_done callback failed for %s: %s", wrt_run_id, exc)
+            except Exception as exc:
+                log.warning("WorkflowRuntime direct execute failed for %s: %s", wrt_run_id, exc)
+                if on_done is not None:
+                    on_done({"error": str(exc), "run_state": "failed"})
+
+        threading.Thread(
+            target=_run,
+            daemon=True,
+            name=f"wf-direct-{wrt_run_id}",
+        ).start()
+        return wrt_run_id
+
     def _make_on_done(self, mission_run_id: str):
-        """Build a STITCH /run/execute completion callback bound to this mission_run."""
+        """Build WorkflowRuntime completion callback bound to this mission_run."""
         def _on_done(response: dict) -> None:
             rs = (response or {}).get("run_state") or ""
             if rs == "complete":
