@@ -297,6 +297,11 @@ def _update_run(db_path: str, run_id: str, updates: dict) -> None:
             _save_runs(db_path, runs)
 
 
+# DEPRECATED: WorkflowRunEngine (Engine 1)
+# Polling capability extracted to WorkflowRuntime._poll_for_completion() (workflow_runtime.py).
+# This engine is preserved ONLY because wf_sales_funnel uses it.
+# wf_sales_funnel should be migrated to WorkflowRuntime or removed.
+# Do not add new callers. This class will be deleted when wf_sales_funnel is resolved.
 class WorkflowRunEngine:
     """
     Executes a sales-funnel-style workflow definition sequentially.
@@ -542,13 +547,15 @@ class WorkflowStep:
 
     def __init__(self, name: str, operator: str, action: str,
                  inputs: Optional[Dict] = None, on_failure: str = 'stop',
-                 condition: Optional[str] = None) -> None:
+                 condition: Optional[str] = None,
+                 poll_config: Optional[Dict] = None) -> None:
         self.name = name
         self.operator = operator    # Which operator runs this step
         self.action = action        # What action the operator performs
         self.inputs = inputs or {}
         self.on_failure = on_failure  # 'stop' | 'skip' | 'retry'
         self.condition = condition  # optional "<key> == 'literal'" / "<key> != 'literal'" guard
+        self.poll_config = poll_config  # None → sync step; dict → async poll via WorkflowRuntime
 
 
 class WorkflowDefinition:
