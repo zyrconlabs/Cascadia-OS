@@ -1102,45 +1102,56 @@ class StitchService:
 
     def _register_scheduled_jobs(self) -> None:
         """Register default recurring jobs. Config overrides can be added externally."""
-        morning_brief_time = self.config.get('scheduler', {}).get('morning_brief_time', '07:00')
-        self._scheduler.add_job(
-            name='morning_brief',
-            schedule=morning_brief_time,
-            trigger_fn=lambda: self._trigger_workflow_by_id('calendar_check', {'goal': 'morning_brief'}),
-        )
+        # DEPRECATED 2026-06-10: ghost job — created in-memory WorkflowRun stubs only,
+        # never called execute_run. Real scheduling now owned by MissionScheduler
+        # (missions/scheduler.py) via run_work/morning_brief (cron: 0 7 * * *).
+        # morning_brief_time = self.config.get('scheduler', {}).get('morning_brief_time', '07:00')
+        # self._scheduler.add_job(
+        #     name='morning_brief',
+        #     schedule=morning_brief_time,
+        #     trigger_fn=lambda: self._trigger_workflow_by_id('calendar_check', {'goal': 'morning_brief'}),
+        # )
+
         weekly_time = self.config.get('scheduler', {}).get('weekly_summary_time', 'FRI 17:00')
         self._scheduler.add_job(
             name='weekly_summary',
             schedule=weekly_time,
             trigger_fn=self._trigger_weekly_summary,
         )
-        growth_desk_time = self.config.get('scheduler', {}).get('growth_desk_daily_time', 'MON-FRI 09:00')
-        self._scheduler.add_job(
-            name='growth_desk_daily',
-            schedule=growth_desk_time,
-            trigger_fn=lambda: self._trigger_workflow_by_id('growth_desk_campaign', {'goal': 'daily_growth_desk'}),
-        )
 
-    def _trigger_workflow_by_id(self, workflow_id: str, payload: Optional[Dict[str, Any]] = None) -> None:
-        """Trigger a registered workflow by ID. Used by the scheduler."""
-        with self._lock:
-            wf = self._workflows.get(workflow_id)
-        if wf is None:
-            self.runtime.logger.warning('Scheduler: workflow not found: %s', workflow_id)
-            return
-        run_id = f'sched_{uuid.uuid4().hex[:10]}'
-        run = WorkflowRun(
-            run_id=run_id,
-            workflow_id=workflow_id,
-            tenant_id=(payload or {}).get('tenant_id', 'default'),
-            goal=(payload or {}).get('goal', wf.name),
-            total_steps=len(wf.steps),
-        )
-        run.state = 'running'
-        run.updated_at = _now()
-        with self._lock:
-            self._runs[run_id] = run
-        self.runtime.logger.info('Scheduler fired: %s → run %s', workflow_id, run_id)
+        # DEPRECATED 2026-06-10: ghost job — created in-memory WorkflowRun stubs only,
+        # never called execute_run. Real scheduling now owned by MissionScheduler
+        # (missions/scheduler.py) via find_work/outreach_followup (cron: 0 7 * * *).
+        # growth_desk_time = self.config.get('scheduler', {}).get('growth_desk_daily_time', 'MON-FRI 09:00')
+        # self._scheduler.add_job(
+        #     name='growth_desk_daily',
+        #     schedule=growth_desk_time,
+        #     trigger_fn=lambda: self._trigger_workflow_by_id('growth_desk_campaign', {'goal': 'daily_growth_desk'}),
+        # )
+
+    # DEPRECATED 2026-06-10: only called by ghost scheduler jobs (morning_brief,
+    # growth_desk_daily) which have been disabled. Created in-memory WorkflowRun stubs
+    # only — never called execute_run. No other callers. Preserved for reference.
+    # def _trigger_workflow_by_id(self, workflow_id: str, payload: Optional[Dict[str, Any]] = None) -> None:
+    #     """Trigger a registered workflow by ID. Used by the scheduler."""
+    #     with self._lock:
+    #         wf = self._workflows.get(workflow_id)
+    #     if wf is None:
+    #         self.runtime.logger.warning('Scheduler: workflow not found: %s', workflow_id)
+    #         return
+    #     run_id = f'sched_{uuid.uuid4().hex[:10]}'
+    #     run = WorkflowRun(
+    #         run_id=run_id,
+    #         workflow_id=workflow_id,
+    #         tenant_id=(payload or {}).get('tenant_id', 'default'),
+    #         goal=(payload or {}).get('goal', wf.name),
+    #         total_steps=len(wf.steps),
+    #     )
+    #     run.state = 'running'
+    #     run.updated_at = _now()
+    #     with self._lock:
+    #         self._runs[run_id] = run
+    #     self.runtime.logger.info('Scheduler fired: %s → run %s', workflow_id, run_id)
 
     def _trigger_weekly_summary(self) -> None:
         """Trigger the weekly summary report via WeeklySummaryReport."""
