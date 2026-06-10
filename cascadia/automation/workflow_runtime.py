@@ -92,7 +92,8 @@ class WorkflowRuntime:
         self.resume = ResumeManager(self.store, self.journal, self.idem)
         self.dependency_manager = DependencyManager(self.store)
         self.policy = RuntimePolicy(
-            policy_rules or {'email.send': 'approval_required', 'crm.write': 'allowed'},
+            policy_rules if policy_rules is not None
+            else {'email.send': 'approval_required', 'crm.write': 'allowed'},
             self.store,
             self.approvals,
         )
