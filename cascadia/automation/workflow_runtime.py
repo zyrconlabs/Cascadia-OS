@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.request
 import urllib.error
 import uuid
@@ -207,7 +208,11 @@ class WorkflowRuntime:
                 started_at=_now(),
                 input_state=state,
             )
-            outcome = self._execute_step(run_id, idx, step.name, step.action, state, step_operator=step.operator)
+            outcome = self._execute_step(
+                run_id, idx, step.name, step.action, state,
+                step_operator=step.operator,
+                poll_config=getattr(step, 'poll_config', None),
+            )
             if outcome['status'] == 'waiting_human':
                 self.store.update_run(run_id, run_state='waiting_human', process_state='ready', updated_at=_now())
                 self.store.trace_event(run_id, 'approval.waiting', idx, {
@@ -369,6 +374,7 @@ class WorkflowRuntime:
         action: str,
         state: Dict[str, Any],
         step_operator: Optional[str] = None,
+        poll_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         # Non-side-effect steps skip SENTINEL check
         if step_name == 'parse_lead':
@@ -410,6 +416,7 @@ class WorkflowRuntime:
             operator_id=step_operator,
             action=action,
             state=state,
+            poll_config=poll_config,
         )
 
     def _parse_lead_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -592,7 +599,17 @@ class WorkflowRuntime:
         operator_id: str,
         action: str,
         state: Dict[str, Any],
+        poll_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        # Polling step contract:
+        # Step definition may include poll_config dict with:
+        #   poll_endpoint: str   — "GET /path/{run_id}" to poll on the operator
+        #   poll_status_field: str  — response field checked for completion (default "status")
+        #   poll_complete_value: str — value that means done (default "complete")
+        #   poll_timeout_seconds: int — seconds before timeout (default 300)
+        #   poll_interval_seconds: int — seconds between polls (default 5)
+        # Initial dispatch must return {"run_id": "..."} or {"job_id": "..."} to trigger
+        # polling. If absent, or if poll_config is None, step completes synchronously.
         port = self._resolve_operator_port(operator_id)
         if port is None:
             return {
@@ -653,6 +670,24 @@ class WorkflowRuntime:
                           or f'operator returned status={op_status!r}',
                 'state': state,
             }
+        if poll_config:
+            poll_id = response.get('run_id') or response.get('job_id', '')
+            if poll_id:
+                poll_path = poll_config.get('poll_endpoint', '')
+                if ' ' in poll_path:
+                    poll_path = poll_path.split(' ', 1)[1]
+                poll_path = poll_path.replace('{run_id}', str(poll_id))
+                try:
+                    response = self._poll_for_completion(
+                        port=port,
+                        poll_path=poll_path,
+                        poll_status_field=poll_config.get('poll_status_field', 'status'),
+                        poll_complete_value=poll_config.get('poll_complete_value', 'complete'),
+                        timeout_seconds=poll_config.get('poll_timeout_seconds', 300),
+                        interval_seconds=poll_config.get('poll_interval_seconds', 5),
+                    )
+                except TimeoutError as exc:
+                    return {'status': 'failed', 'reason': str(exc), 'state': state}
         if 'result' in response and isinstance(response['result'], dict):
             result = response['result']
         else:
@@ -663,6 +698,37 @@ class WorkflowRuntime:
         if isinstance(result, dict):
             new_state.update({k: v for k, v in result.items() if isinstance(k, str)})
         return {'status': 'ok', 'state': new_state, 'input_state': dict(state)}
+
+    def _poll_for_completion(
+        self,
+        port: int,
+        poll_path: str,
+        poll_status_field: str,
+        poll_complete_value: str,
+        timeout_seconds: int,
+        interval_seconds: int,
+    ) -> Dict[str, Any]:
+        """Poll an operator GET endpoint until the job reports completion or timeout.
+
+        Returns the final poll response dict on completion.
+        Raises TimeoutError if the deadline is exceeded.
+        """
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            time.sleep(interval_seconds)
+            try:
+                req = urllib.request.Request(
+                    f'http://127.0.0.1:{port}{poll_path}',
+                    method='GET',
+                    headers={'Content-Type': 'application/json'},
+                )
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    result = json.loads(resp.read().decode())
+            except Exception:
+                continue
+            if result.get(poll_status_field) == poll_complete_value:
+                return result
+        raise TimeoutError(f'polling timed out after {timeout_seconds}s ({poll_path})')
 
     def _extract_email(self, content: str) -> str:
         m = _EMAIL_RE.search(content or '')
