@@ -53,12 +53,9 @@ _MG_CONFIG: Dict[str, Any] = {
     'tier2': ['social', 'scout', 'brief', 'collect'],
     'tier3': ['recon'],
     'missions': {
-        'growth_desk':     ['social'],
-        'outreach':        ['recon', 'email_operator'],
-        'lead_intake':     ['scout', 'collect', 'brief'],
-        'quoting':         ['quote', 'quote_brief'],
-        'revenue_desk':    ['scout', 'recon', 'quote', 'quote_brief', 'collect'],
-        'operations_desk': ['brief', 'collect', 'aurelia', 'debrief'],
+        'find_work': ['scout', 'recon', 'collect', 'quote_brief', 'brief', 'social', 'email_operator'],
+        'win_work':  ['scout', 'recon', 'collect', 'quote_brief', 'quote', 'brief', 'email_operator'],
+        'run_work':  ['collect', 'brief', 'aurelia', 'debrief', 'quote_brief', 'email_operator'],
     },
 }
 
