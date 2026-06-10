@@ -204,7 +204,7 @@ class MissionRegistry:
 
     def _resolve_root(self, packages_root) -> str | None:
         if packages_root is not None:
-            return str(packages_root) if packages_root else None
+            return str(Path(packages_root).expanduser()) if packages_root else None
 
         # config.json missions.packages_root
         # expanduser() lets the value be "~/..." so the same config works for
