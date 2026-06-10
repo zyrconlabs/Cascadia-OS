@@ -207,6 +207,8 @@ class MissionRegistry:
             return str(packages_root) if packages_root else None
 
         # config.json missions.packages_root
+        # expanduser() lets the value be "~/..." so the same config works for
+        # any OS user (e.g. both andy@ on Air and zyrcon@ on mini).
         try:
             config_path = Path(__file__).parent.parent.parent / "config.json"
             if config_path.exists():
@@ -214,7 +216,7 @@ class MissionRegistry:
                 if isinstance(cfg.get("missions"), dict):
                     root = cfg["missions"].get("packages_root")
                     if root:
-                        return str(root)
+                        return str(Path(root).expanduser())
         except Exception:
             pass
 
