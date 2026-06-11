@@ -828,9 +828,9 @@ class ChiefService:
                     reply_text=f"⚙️ Approving {n_out + n_q} pending item(s)... Stand by.",
                 ).to_dict()
             if cmd == "/outreach":
-                # Optional limit: "/outreach" → 3 (default), "/outreach 5" → 5,
+                # Optional limit: "/outreach" → 20 (default), "/outreach 5" → 5,
                 # capped at 10. Non-numeric arg falls back to the default.
-                limit = 3
+                limit = 20
                 arg = (parsed_cmd.get("args") or "").strip()
                 if arg:
                     try:
@@ -2345,7 +2345,7 @@ class ChiefService:
             "To queue for approval run /outreach"
         )
 
-    def _outreach_sync_for_prism(self, limit: int = 3) -> str:
+    def _outreach_sync_for_prism(self, limit: int = 20) -> str:
         """Sync /outreach for PRISM: trigger RECON to draft + stage up to `limit`
         outreach leads, wait for RECON's callbacks to land them in
         pending_outreach.json, then return a summary. RECON drafts asynchronously
@@ -2529,7 +2529,7 @@ class ChiefService:
         else:
             _tg("✅ Nothing pending — queue is empty.")
 
-    def _run_outreach_and_notify(self, chat_id: str, limit: int = 3) -> None:
+    def _run_outreach_and_notify(self, chat_id: str, limit: int = 20) -> None:
         """Background: POST to RECON /api/outreach with chat_id and lead limit."""
         try:
             result = _http_post(
@@ -2761,10 +2761,10 @@ class ChiefService:
             if not chat_id:
                 return "no chat_id"
             threading.Thread(
-                target=self._run_outreach_and_notify, args=(chat_id, 3),
+                target=self._run_outreach_and_notify, args=(chat_id, 20),
                 daemon=True, name="chief-cb-outreach",
             ).start()
-            _edit("📧 Pulling top 3 leads for outreach — stand by...")
+            _edit("📧 Pulling top 20 leads for outreach — stand by...")
             return "ok"
         if data == "do_followups":
             _edit(self._followups_snapshot())
