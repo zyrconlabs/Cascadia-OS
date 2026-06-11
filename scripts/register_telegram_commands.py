@@ -22,6 +22,8 @@ CONFIG_PATH = (
 )
 
 COMMANDS = [
+    # Onboarding
+    {"command": "start",          "description": "Show welcome and persistent keyboard"},
     # Menu
     {"command": "menu",           "description": "Interactive button menu"},
     # Find Work

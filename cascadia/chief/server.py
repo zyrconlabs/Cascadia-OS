@@ -105,6 +105,21 @@ def _http_post(url: str, payload: dict, timeout: int = 30) -> dict:
         return json.loads(r.read().decode())
 
 
+def _tg_send(chat_id: str, text: str, reply_markup: dict | None = None) -> None:
+    """Send a Telegram message via the connector. Optionally attach a keyboard."""
+    tg_payload: dict = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        tg_payload["reply_markup"] = reply_markup
+    try:
+        _http_post(
+            os.environ.get("TELEGRAM_URL", "http://127.0.0.1:9000") + "/send",
+            tg_payload,
+            timeout=8,
+        )
+    except Exception:
+        pass
+
+
 def _http_get(url: str, timeout: int = 5) -> dict:
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return json.loads(r.read().decode())
@@ -206,6 +221,19 @@ def _run_work_keyboard() -> dict:
          {"text": "📊 Weekly Summary",  "data": "do_weekly"}],
         [{"text": "⬅️ Main Menu",       "data": "menu_main"}],
     ])
+
+def _persistent_keyboard() -> dict:
+    """ReplyKeyboardMarkup pinned above the text input at all times."""
+    return {
+        "keyboard": [[
+            {"text": "🏠 Menu"},
+            {"text": "✅ Approve All"},
+            {"text": "📥 Inbox"},
+        ]],
+        "resize_keyboard": True,
+        "persistent": True,
+        "input_field_placeholder": "Or type a command...",
+    }
 
 # ── End menu system helpers ───────────────────────────────────────────────────
 
@@ -529,6 +557,55 @@ class ChiefService:
             "CHIEF received task [%s] from %s via %s",
             task_id, req.sender, req.source_channel,
         )
+
+        # ── Persistent keyboard button intercept ─────────────────────────────
+        # ReplyKeyboardMarkup sends plain text — must be caught before parse_command.
+        _task_text = req.task.strip()
+        if _task_text == "/start":
+            _tg_send(
+                chat_id,
+                "👋 Welcome to Zyrcon Command Center\n\n"
+                "Use the buttons below or tap 🏠 Menu to navigate by mission.",
+                _persistent_keyboard(),
+            )
+            return 200, TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="status", selected_target="/start",
+                reply_text="Welcome sent.",
+            ).to_dict()
+        if _task_text == "🏠 Menu":
+            reply_text = self._handle_menu(chat_id)
+            return 200, TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="status", selected_target="/menu",
+                reply_text=reply_text,
+            ).to_dict()
+        if _task_text == "✅ Approve All":
+            if chat_id:
+                n_out = len(self._load_outreach_approvals())
+                n_q   = len(self._load_approvals())
+                if n_out + n_q == 0:
+                    reply_text = "✅ Nothing pending — queue is empty."
+                else:
+                    threading.Thread(
+                        target=self._approve_all_and_notify, args=(chat_id,),
+                        daemon=True, name="chief-kb-approveall",
+                    ).start()
+                    reply_text = f"⚙️ Approving {n_out + n_q} pending item(s)... Stand by."
+            else:
+                reply_text = "❌ chat_id required."
+            return 200, TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="status", selected_target="/approve_all",
+                reply_text=reply_text,
+            ).to_dict()
+        if _task_text == "📥 Inbox":
+            _tg_send(chat_id, self._inbox_check(1))
+            return 200, TaskResponse(
+                ok=True, task_id=task_id,
+                selected_type="status", selected_target="/inbox_check",
+                reply_text="Inbox checked.",
+            ).to_dict()
 
         # ── Step 0 — Slash command fast-path (100% accuracy, no LLM) ────────
         # /contact_N must come FIRST — not in COMMANDS dict, would otherwise be "unknown"
