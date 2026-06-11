@@ -231,6 +231,9 @@ class VanguardService:
                 },
                 timeout=60,
             )
+            if result.get('silent'):
+                self.runtime.logger.info('VANGUARD: silent response — skipping reply')
+                return
             reply_text = result.get('reply_text') or '✅ Task completed.'
         except urllib.error.URLError:
             self.runtime.logger.error('VANGUARD: CHIEF dispatch timed out for chat_id=%s', chat_id)

@@ -568,18 +568,10 @@ class ChiefService:
                 "Use the buttons below or tap 🏠 Menu to navigate by mission.",
                 _persistent_keyboard(),
             )
-            return 200, TaskResponse(
-                ok=True, task_id=task_id,
-                selected_type="status", selected_target="/start",
-                reply_text="Welcome sent.",
-            ).to_dict()
+            return 200, {"ok": True, "task_id": task_id, "silent": True}
         if _task_text == "🏠 Menu":
-            reply_text = self._handle_menu(chat_id)
-            return 200, TaskResponse(
-                ok=True, task_id=task_id,
-                selected_type="status", selected_target="/menu",
-                reply_text=reply_text,
-            ).to_dict()
+            self._handle_menu(chat_id)
+            return 200, {"ok": True, "task_id": task_id, "silent": True}
         if _task_text == "✅ Approve All":
             if chat_id:
                 n_out = len(self._load_outreach_approvals())
@@ -601,11 +593,7 @@ class ChiefService:
             ).to_dict()
         if _task_text == "📥 Inbox":
             _tg_send(chat_id, self._inbox_check(1))
-            return 200, TaskResponse(
-                ok=True, task_id=task_id,
-                selected_type="status", selected_target="/inbox_check",
-                reply_text="Inbox checked.",
-            ).to_dict()
+            return 200, {"ok": True, "task_id": task_id, "silent": True}
 
         # ── Step 0 — Slash command fast-path (100% accuracy, no LLM) ────────
         # /contact_N must come FIRST — not in COMMANDS dict, would otherwise be "unknown"
@@ -731,12 +719,8 @@ class ChiefService:
                     reply_text=self._social_start(topic, chat_id),
                 ).to_dict()
             if cmd == "/menu":
-                reply_text = self._handle_menu(chat_id)
-                return 200, TaskResponse(
-                    ok=True, task_id=task_id,
-                    selected_type="status", selected_target=cmd,
-                    reply_text=reply_text,
-                ).to_dict()
+                self._handle_menu(chat_id)
+                return 200, {"ok": True, "task_id": task_id, "silent": True}
             # ── Mission trigger commands ──────────────────────────────────────
             if cmd == "/brief":
                 return 200, TaskResponse(
