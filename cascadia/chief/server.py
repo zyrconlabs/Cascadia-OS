@@ -164,10 +164,10 @@ def _main_menu_keyboard(counts: dict) -> dict:
     inbox_label   = f"📥 Inbox ({r})"   if r else "📥 Inbox"
     return _build_inline_keyboard([
         [{"text": "🔍 Find Work",  "data": "menu_find"},
-         {"text": "💼 Win Work",   "data": "menu_win"},
-         {"text": "⚙️ Run Work",   "data": "menu_run"}],
-        [{"text": "📊 Status",     "data": "do_status"},
-         {"text": approve_label,   "data": "do_approve_all"},
+         {"text": "💼 Win Work",   "data": "menu_win"}],
+        [{"text": "⚙️ Run Work",   "data": "menu_run"},
+         {"text": "📊 Status",     "data": "do_status"}],
+        [{"text": approve_label,   "data": "do_approve_all"},
          {"text": inbox_label,     "data": "do_inbox"}],
         [{"text": "❓ Help",       "data": "do_help"}],
     ])
@@ -191,15 +191,15 @@ def _win_work_keyboard() -> dict:
          {"text": "🔄 Quote Follow-up", "data": "do_quote_fu"}],
         [{"text": "✅ Close Job",       "data": "do_close"},
          {"text": "💰 Get Paid",        "data": "do_invoice"}],
-        [{"text": "🎯 Sales Funnel",    "data": "do_funnel"}],
-        [{"text": "⬅️ Main Menu",       "data": "menu_main"}],
+        [{"text": "🎯 Sales Funnel",    "data": "do_funnel"},
+         {"text": "⬅️ Main Menu",       "data": "menu_main"}],
     ])
 
 
 def _run_work_keyboard() -> dict:
     return _build_inline_keyboard([
         [{"text": "🌅 Morning Brief",   "data": "do_brief"},
-         {"text": "📅 Schedule Check",  "data": "do_schedule"}],
+         {"text": "📅 Schedule",        "data": "do_schedule"}],
         [{"text": "🚧 Blockers",        "data": "do_blockers"},
          {"text": "🌙 End of Day",      "data": "do_eod"}],
         [{"text": "⭐ Review Request",  "data": "do_review"},
