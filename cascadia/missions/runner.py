@@ -591,10 +591,7 @@ class MissionRunner:
         payload: dict,
         on_done: Optional[Any] = None,
     ) -> str:
-        """Execute workflow via WorkflowRuntime directly. Returns WorkflowRuntime run_id.
-
-        Previously routed through StitchMissionAdapter (3 HTTP calls: register + start +
-        execute). Now calls WorkflowRuntime in-process via a background thread.
+        """Execute workflow via WorkflowRuntime in-process. Returns WorkflowRuntime run_id.
 
         policy_rules={} — MissionRunner's pre-dispatch gate (EXTERNAL_ACTIONS) has
         already handled external-action approval before this call is reached.
