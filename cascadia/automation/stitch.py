@@ -662,7 +662,12 @@ class StitchService:
     #     self.runtime.logger.info('Scheduler fired: %s → run %s', workflow_id, run_id)
 
     def _trigger_weekly_summary(self) -> None:
-        """Trigger the weekly summary report via WeeklySummaryReport."""
+        """Trigger the weekly summary report via WeeklySummaryReport.
+
+        TODO: migrate to debrief operator (debrief.generate_weekly_summary).
+        Mission structure declared in run_work/workflows/weekly_summary.json.
+        This direct call is the interim path until that operator action is implemented.
+        """
         try:
             from cascadia.reports.weekly_summary import WeeklySummaryReport
             db_path = self.config.get('database_path', './data/runtime/cascadia.db')
