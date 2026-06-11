@@ -196,7 +196,8 @@ def _find_work_keyboard() -> dict:
          {"text": "🔄 Follow-ups",   "data": "do_followups"}],
         [{"text": "💬 Replies",      "data": "do_replies"},
          {"text": "♻️ Reactivate",   "data": "do_reactivate"}],
-        [{"text": "⬅️ Main Menu",    "data": "menu_main"}],
+        [{"text": "🚀 Start RECON",  "data": "do_recon_start"},
+         {"text": "⬅️ Main Menu",    "data": "menu_main"}],
     ])
 
 
@@ -2777,6 +2778,13 @@ class ChiefService:
                 daemon=True, name="chief-cb-reactivate",
             ).start()
             _edit("♻️ Triggering lead reactivation — stand by...")
+            return "ok"
+        if data == "do_recon_start":
+            threading.Thread(
+                target=lambda: _tg_send(chat_id, self._recon_start()),
+                daemon=True, name="chief-cb-recon-start",
+            ).start()
+            _edit("🚀 Starting RECON scraper — stand by...")
             return "ok"
 
         # ── Win Work actions ──────────────────────────────────────────
