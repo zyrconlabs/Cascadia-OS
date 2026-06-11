@@ -2183,45 +2183,47 @@ document.getElementById('key').addEventListener('keydown', function(e){
     # ------------------------------------------------------------------
 
     def sales_funnel_run(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/prism/sales_funnel/run — trigger the Sales Funnel workflow via STITCH."""
-        stitch_port = self._ports.get('stitch', 6201)
-        result = _http_post(stitch_port, '/api/workflows/wf_sales_funnel/run', {
-            'id': 'wf_sales_funnel',
+        """POST /api/prism/sales_funnel/run — trigger the Sales Funnel workflow via mission manager."""
+        mm_port = self._ports.get('mission_manager', 6207)
+        result = _http_post(mm_port, '/api/missions/win_work/run/sales_funnel', {
+            'mission_id': 'win_work',
+            'workflow_id': 'sales_funnel',
             'input': {
-                'company_name':    payload.get('company_name', ''),
-                'contact_name':    payload.get('contact_name', ''),
-                'contact_email':   payload.get('contact_email', ''),
+                'company_name':     payload.get('company_name', ''),
+                'contact_name':     payload.get('contact_name', ''),
+                'contact_email':    payload.get('contact_email', ''),
                 'service_interest': payload.get('service_interest', ''),
             },
         }, timeout=10.0)
         if result is None:
-            return 502, {'error': 'STITCH not reachable'}
+            return 502, {'error': 'mission_manager not reachable'}
         return 202, result
 
     def sales_funnel_run_status(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """GET /api/prism/sales_funnel/run/{run_id} — poll run state from STITCH."""
+        """GET /api/prism/sales_funnel/run/{run_id} — poll run state from mission manager."""
         run_id = payload.get('run_id', '')
         if not run_id:
             return 400, {'error': 'run_id required'}
-        stitch_port = self._ports.get('stitch', 6201)
-        result = _http_get(stitch_port, f'/api/workflows/runs/{run_id}', timeout=5.0)
+        mm_port = self._ports.get('mission_manager', 6207)
+        result = _http_get(mm_port, f'/api/missions/runs/{run_id}', timeout=5.0)
         if result is None:
-            return 502, {'error': 'STITCH not reachable'}
+            return 502, {'error': 'mission_manager not reachable'}
         return 200, result
 
     def sales_funnel_approve(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """POST /api/prism/sales_funnel/approve/{run_id} — proxy approval decision to STITCH."""
+        """POST /api/prism/sales_funnel/approve/{run_id} — resume mission run via mission manager."""
         run_id = payload.get('run_id', '')
         if not run_id:
             return 400, {'error': 'run_id required'}
-        stitch_port = self._ports.get('stitch', 6201)
-        result = _http_post(stitch_port, f'/api/workflows/runs/{run_id}/approve', {
+        mm_port = self._ports.get('mission_manager', 6207)
+        approved = payload.get('approved', False)
+        result = _http_post(mm_port, f'/api/missions/win_work/runs/{run_id}/resume', {
             'run_id': run_id,
-            'approved': payload.get('approved', False),
+            'decision': 'approved' if approved else 'rejected',
             'note': payload.get('note', ''),
         }, timeout=10.0)
         if result is None:
-            return 502, {'error': 'STITCH not reachable'}
+            return 502, {'error': 'mission_manager not reachable'}
         return 200, result
 
     def serve_sales_funnel(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:

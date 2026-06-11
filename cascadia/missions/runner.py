@@ -5,7 +5,6 @@ import json
 import logging
 import sqlite3
 import threading
-import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -71,109 +70,6 @@ def check_tier_allowed(manifest: dict, organization_tier: str,
     return True
 
 
-# ── HTTP helper ───────────────────────────────────────────────────────────────
-
-def _http_post(url: str, data: dict, timeout: int = 10) -> dict:
-    body = json.dumps(data).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=body, method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
-# ── STITCH adapter ────────────────────────────────────────────────────────────
-
-# DEPRECATED: StitchMissionAdapter
-# MissionRunner now calls WorkflowRuntime directly via _execute_workflow_direct().
-# This class is preserved for reference and will be removed in the next cleanup pass.
-# HTTP calls to STITCH /run/execute are no longer made for missions.
-class StitchMissionAdapter:
-    """
-    Narrow HTTP adapter for dispatching mission workflows via STITCH (port 6201).
-
-    STITCH is HTTP-only — no direct Python callable from runner.py.
-
-    resume_workflow() calls POST /run/resume which delegates to WorkflowRuntime.
-    For runs that were paused before STITCH was ever called (approval gate fired
-    pre-dispatch), there is no STITCH run record to resume. In that case the
-    caller should treat resume as a fresh start_workflow() call.
-
-    If resume returns {"supported": False} the caller must mark the run
-    retry_pending rather than faking completion.
-    """
-
-    STITCH_PORT = 6201
-
-    def __init__(self, host: str = "127.0.0.1", port: int = STITCH_PORT) -> None:
-        self._base = f"http://{host}:{port}"
-
-    def start_workflow(self, workflow_def: dict, payload: dict,
-                       on_done: Optional[Any] = None) -> str:
-        """Register and start a mission workflow via STITCH. Returns stitch run_id.
-
-        If on_done is provided, it is called with the /run/execute response dict
-        once execution finishes (or with {"error": ...} on transport failure).
-        """
-        steps = [
-            {
-                "name": s.get("id", ""),
-                "operator": s.get("operator", ""),
-                "action": s.get("action", ""),
-                "on_failure": "stop",
-            }
-            for s in workflow_def.get("steps", [])
-        ]
-        wf_id = workflow_def.get("id", f"mission_{uuid.uuid4().hex[:8]}")
-        _http_post(self._base + "/workflow/register", {
-            "workflow_id": wf_id,
-            "name": workflow_def.get("name", wf_id),
-            "steps": steps,
-            "description": workflow_def.get("description", ""),
-        })
-        result = _http_post(self._base + "/run/start", {
-            "workflow_id": wf_id,
-            "goal": workflow_def.get("name", ""),
-            "input": payload,
-        })
-        stitch_run_id = result.get("run_id", "")
-
-        execute_payload = {
-            "workflow_id": wf_id,
-            "goal": workflow_def.get("name", ""),
-            "input": payload,
-            "input_snapshot": payload,
-        }
-        base = self._base
-        def _trigger_execute() -> None:
-            try:
-                response = _http_post(base + "/run/execute", execute_payload, timeout=300)
-            except Exception as exc:
-                log.warning("STITCH /run/execute failed for %s: %s", stitch_run_id, exc)
-                response = {"error": str(exc), "run_state": "failed"}
-            if on_done is not None:
-                try:
-                    on_done(response)
-                except Exception as exc:
-                    log.warning("on_done callback failed for %s: %s", stitch_run_id, exc)
-        threading.Thread(
-            target=_trigger_execute,
-            daemon=True,
-            name=f"stitch-execute-{stitch_run_id or wf_id}",
-        ).start()
-
-        return stitch_run_id
-
-    def resume_workflow(self, stitch_run_id: str, payload: dict) -> dict:
-        """Try to resume a STITCH run. Returns {"supported": False} if unavailable."""
-        try:
-            return _http_post(self._base + "/run/resume", {"run_id": stitch_run_id})
-        except Exception as exc:
-            log.warning("STITCH resume unavailable for %s: %s", stitch_run_id, exc)
-            return {"error": str(exc), "supported": False}
-
-
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _resolve_db_path() -> str:
@@ -204,11 +100,9 @@ class MissionRunner:
         self,
         registry: Optional[MissionRegistry] = None,
         db_path: Optional[str] = None,
-        adapter: Optional[StitchMissionAdapter] = None,
     ) -> None:
         self._registry = registry or MissionRegistry()
         self._db_path = db_path or _resolve_db_path()
-        self._adapter = adapter or StitchMissionAdapter()  # unused after _execute_workflow_direct; kept for legacy resume path
 
     # ── Start ─────────────────────────────────────────────────────────────────
 
@@ -405,44 +299,34 @@ class MissionRunner:
             except Exception:
                 pass
 
-        stitch_run_id = td.get("stitch_run_id", "")
-        stitch_ok = False
+        dispatch_ok = False
+        mission_id = run.get("mission_id", "")
+        workflow_id = run.get("workflow_id") or td.get("workflow_id", "")
+        if mission_id and workflow_id and self._registry:
+            try:
+                wf_path = self._registry.get_workflow_path(mission_id, workflow_id)
+                wf_def = json.loads(Path(wf_path).read_text(encoding="utf-8"))
+                edited_payload = (
+                    approval_decision.get("edited_payload") or td.get("input", {})
+                )
+                wrt_run_id = self._execute_workflow_direct(
+                    mission_id=mission_id,
+                    workflow_id=workflow_id,
+                    wf_def=wf_def,
+                    payload=edited_payload,
+                    on_done=self._make_on_done(mission_run_id),
+                )
+                dispatch_ok = bool(wrt_run_id)
+            except Exception as exc:
+                log.warning("WorkflowRuntime dispatch failed for %s: %s",
+                            mission_run_id, exc)
 
-        if stitch_run_id:
-            # Resume existing STITCH run
-            result = self._adapter.resume_workflow(stitch_run_id, approval_decision)
-            stitch_ok = result.get("supported") is not False and "error" not in result
-        else:
-            # No STITCH run yet — start fresh after approval
-            mission_id = run.get("mission_id", "")
-            workflow_id = run.get("workflow_id") or td.get("workflow_id", "")
-            if mission_id and workflow_id and self._registry:
-                try:
-                    wf_path = self._registry.get_workflow_path(mission_id, workflow_id)
-                    wf_def = json.loads(Path(wf_path).read_text(encoding="utf-8"))
-                    edited_payload = (
-                        approval_decision.get("edited_payload") or td.get("input", {})
-                    )
-                    wrt_run_id = self._execute_workflow_direct(
-                        mission_id=mission_id,
-                        workflow_id=workflow_id,
-                        wf_def=wf_def,
-                        payload=edited_payload,
-                        on_done=self._make_on_done(mission_run_id),
-                    )
-                    stitch_run_id = wrt_run_id
-                    stitch_ok = bool(wrt_run_id)
-                except Exception as exc:
-                    log.warning("WorkflowRuntime direct start-after-approval failed for %s: %s",
-                                mission_run_id, exc)
-
-        if not stitch_ok:
-            # STITCH resume/start unavailable — manual retry required
+        if not dispatch_ok:
             self._update_run(mission_run_id, {"status": "retry_pending", "updated_at": now})
             publish_mission_event(APPROVAL_RESOLVED, {
                 "mission_run_id": mission_run_id,
                 "decision": decision,
-                "note": "STITCH resume not available — manual retry required",
+                "note": "WorkflowRuntime dispatch unavailable — manual retry required",
             })
             return {"status": "retry_pending", "mission_run_id": mission_run_id}
 

@@ -103,13 +103,6 @@
             "pulse_file": "./data/runtime/handshake.heartbeat"
         },
         {
-            "name": "bell",
-            "module": "cascadia.chat.bell",
-            "port": 6204,
-            "tier": 2,
-            "pulse_file": "./data/runtime/bell.heartbeat"
-        },
-        {
             "name": "almanac",
             "module": "cascadia.guide.almanac",
             "port": 6205,
@@ -234,11 +227,10 @@
     "sentinel_fail_open": false,
     "sentinel_fail_open_note": "Production default is false (fail-closed): if SENTINEL is unreachable, side-effect steps are blocked. Set true only for dev/demo environments.",
     "mission_runner": {
-        "stitch_url": "http://localhost:6201",
-        "bell_url": "http://localhost:6204"
+        "stitch_url": "http://localhost:6201"
     },
     "missions": {
-        "packages_root": "/Users/andy/Zyrcon/operators/cascadia-os-operators/missions"
+        "packages_root": "~/Zyrcon/operators/cascadia-os-operators/missions"
     },
     "connectors": {
         "vantage_url": "http://localhost:6208",

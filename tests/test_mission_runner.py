@@ -6,7 +6,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -18,7 +18,6 @@ from cascadia.missions.runner import (
     MissionNotFoundError,
     MissionNotInstalledError,
     MissionRunner,
-    StitchMissionAdapter,
     TierNotAllowedError,
     WorkflowNotFoundError,
     check_tier_allowed,
@@ -47,11 +46,9 @@ def _make_installed_registry(tmp_path) -> MissionRegistry:
     return MissionRegistry(packages_root=FIXTURE_DIR, registry_file=str(reg_file))
 
 
-def _make_runner(db: str, reg: MissionRegistry) -> tuple[MissionRunner, MagicMock]:
-    mock_adapter = MagicMock(spec=StitchMissionAdapter)
-    mock_adapter.start_workflow.return_value = "stitch_run_001"
-    runner = MissionRunner(registry=reg, db_path=db, adapter=mock_adapter)
-    return runner, mock_adapter
+def _make_runner(db: str, reg: MissionRegistry) -> tuple[MissionRunner, None]:
+    runner = MissionRunner(registry=reg, db_path=db)
+    return runner, None
 
 
 def _now() -> str:
@@ -146,7 +143,6 @@ def test_start_mission_external_action_pauses_run(tmp_path):
         runner, mock_adapter = _make_runner(db, reg)
         result = runner.start_mission(FIXTURE_ID, "daily_campaign")
     assert result["status"] == "waiting_approval"
-    mock_adapter.start_workflow.assert_not_called()
 
 
 # ── pause_for_approval ────────────────────────────────────────────────────────
