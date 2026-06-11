@@ -7,30 +7,49 @@ from __future__ import annotations
 import re as _re
 
 COMMANDS: dict[str, dict] = {
-    "/recon":     {"operator": "recon",       "description": "Run a RECON lead scan"},
-    "/scan":      {"operator": "recon",       "description": "Alias for /recon"},
-    "/leads":     {"operator": "recon",       "description": "Show lead report"},
-    "/recon_start": {"operator": None,        "description": "Start the RECON lead-scraping worker"},
-    "/recon_stop":  {"operator": None,        "description": "Stop the RECON lead-scraping worker"},
-    "/quote":     {"operator": "quote_brief", "description": "Draft a proposal or quote"},
-    "/scout":     {"operator": "scout",       "description": "Qualify an inbound lead"},
-    "/preview":       {"operator": None, "description": "Preview the next outreach draft (no send, no queue)"},
-    "/outreach":      {"operator": None, "description": "[N] queue N outreach drafts for approval (default 3, max 10)"},
-    "/send_outreach": {"operator": None, "description": "Draft AND send outreach emails to top leads"},
-    "/approve_all":   {"operator": None, "description": "Approve all pending outreach drafts and quotes at once"},
-    "/followups":     {"operator": None, "description": "Show pending follow-ups due today"},
-    "/replies":       {"operator": None, "description": "Show recent lead replies from inbox"},
-    "/inbox_check":   {"operator": None, "description": "Trigger immediate IMAP inbox poll"},
-    "/archive":       {"operator": None, "description": "Archive completed (exhausted/skipped) leads to contacted_list"},
-    "/pipeline":  {"operator": None,          "description": "Show lead pipeline snapshot"},
-    "/status":    {"operator": None,          "description": "Show system status"},
-    "/missions":  {"operator": None,          "description": "Recent mission runs"},
-    "/operators": {"operator": None,          "description": "List available operators"},
-    "/help":      {"operator": None,          "description": "Show all commands"},
-    "/startup_report": {"operator": None,    "description": "Full system health report → Telegram"},
-    "/ram":            {"operator": None,    "description": "Show RAM and swap usage"},
-    "/social":         {"operator": None,    "description": "Start a social media campaign"},
-    "/campaign":       {"operator": None,    "description": "Alias for /social"},
+    # Menu
+    "/menu":          {"operator": None,         "description": "Interactive button menu"},
+    # Find Work
+    "/recon":         {"operator": "recon",       "description": "Search for new leads (trade + city)"},
+    "/scan":          {"operator": "recon",       "description": "Alias for /recon"},
+    "/leads":         {"operator": "recon",       "description": "Show lead report"},
+    "/recon_start":   {"operator": None,          "description": "Start RECON lead-scraping worker"},
+    "/recon_stop":    {"operator": None,          "description": "Stop RECON lead-scraping worker"},
+    "/scout":         {"operator": "scout",       "description": "Qualify an inbound lead"},
+    "/outreach":      {"operator": None,          "description": "[N] Queue N outreach drafts for approval (default 3, max 10)"},
+    "/followups":     {"operator": None,          "description": "Show follow-ups due today"},
+    "/replies":       {"operator": None,          "description": "Show recent lead replies"},
+    "/reactivate":    {"operator": None,          "description": "Reactivate cold leads"},
+    # Win Work
+    "/quote":         {"operator": "quote_brief", "description": "Draft a proposal or quote"},
+    "/close":         {"operator": None,          "description": "Close a won job"},
+    "/invoice":       {"operator": None,          "description": "Invoice follow-up — get paid"},
+    "/funnel":        {"operator": None,          "description": "Run sales funnel workflow"},
+    # Run Work
+    "/brief":         {"operator": None,          "description": "Morning brief"},
+    "/schedule":      {"operator": None,          "description": "Today's schedule check"},
+    "/blockers":      {"operator": None,          "description": "Active blocker watch"},
+    "/eod":           {"operator": None,          "description": "End of day report"},
+    "/weekly":        {"operator": None,          "description": "Weekly summary report"},
+    "/review":        {"operator": None,          "description": "Request a review from a customer"},
+    # Approvals
+    "/preview":       {"operator": None,          "description": "Preview the next outreach draft (no send, no queue)"},
+    "/send_outreach": {"operator": None,          "description": "Draft AND send outreach emails to top leads"},
+    "/approve_all":   {"operator": None,          "description": "Approve all pending outreach drafts and quotes at once"},
+    # Utility
+    "/inbox_check":   {"operator": None,          "description": "Trigger immediate IMAP inbox poll"},
+    "/archive":       {"operator": None,          "description": "Archive completed (exhausted/skipped) leads"},
+    # System
+    "/pipeline":      {"operator": None,          "description": "Lead pipeline snapshot"},
+    "/status":        {"operator": None,          "description": "System health"},
+    "/missions":      {"operator": None,          "description": "Recent mission runs"},
+    "/operators":     {"operator": None,          "description": "List available operators"},
+    # Advanced
+    "/startup_report": {"operator": None,         "description": "Full system health report"},
+    "/ram":            {"operator": None,         "description": "RAM and swap usage"},
+    "/social":         {"operator": None,         "description": "Start a social media campaign"},
+    "/campaign":       {"operator": None,         "description": "Alias for /social"},
+    "/help":           {"operator": None,         "description": "Show all commands"},
 }
 
 
@@ -97,17 +116,61 @@ def parse_approval_command(text: str) -> dict | None:
 
 
 def build_help_text() -> str:
-    lines = ["📋 CHIEF Commands\n"]
-    for cmd, info in COMMANDS.items():
-        lines.append(f"{cmd:<12}  {info['description']}")
-    lines.append(
-        "\nOr just type naturally — CHIEF understands plain English.\n"
-        "Examples:\n"
-        '  "Find HVAC contractors in Houston"\n'
-        '  "Draft a proposal for a warehouse mezzanine job"\n'
-        '  "How many leads do we have?"\n'
-        '  "Do it again"'
-    )
+    lines = [
+        "📋 *CHIEF Commands*\n",
+
+        "🏠 MENU",
+        "/menu         Interactive button menu — tap to navigate\n",
+
+        "🔍 FIND WORK",
+        "/recon        Search for new leads (trade + city)",
+        "/scout        Qualify an inbound lead",
+        "/outreach [N] Queue N outreach drafts for approval",
+        "/followups    Follow-ups due today",
+        "/replies      Recent lead replies",
+        "/reactivate   Reactivate cold leads\n",
+
+        "💼 WIN WORK",
+        "/quote        Draft a proposal or quote",
+        "/close        Close a won job",
+        "/invoice      Invoice follow-up — get paid",
+        "/funnel       Run sales funnel workflow\n",
+
+        "⚙️ RUN WORK",
+        "/brief        Morning brief",
+        "/schedule     Today's schedule check",
+        "/blockers     Active blocker watch",
+        "/eod          End of day report",
+        "/weekly       Weekly summary report",
+        "/review       Request a review from a customer\n",
+
+        "✅ APPROVALS",
+        "/approve_all  Approve all pending items",
+        "/approve_N    Approve item N",
+        "/reject_N     Reject item N\n",
+
+        "📊 SYSTEM",
+        "/pipeline     Lead pipeline snapshot",
+        "/missions     Recent mission runs",
+        "/status       System health",
+        "/inbox_check  Trigger IMAP inbox poll",
+        "/ram          RAM and swap usage\n",
+
+        "🔧 ADVANCED",
+        "/recon_start  Start RECON worker",
+        "/recon_stop   Stop RECON worker",
+        "/archive      Archive exhausted leads",
+        "/startup_report  Full system health report",
+        "/preview      Preview next outreach draft",
+        "/social       Start social media campaign\n",
+
+        "Or just type naturally — CHIEF understands plain English.",
+        "Examples:",
+        '  "Find HVAC contractors in Houston"',
+        '  "Draft a proposal for a warehouse mezzanine job"',
+        '  "How many leads do we have?"',
+        '  "Do it again"',
+    ]
     return "\n".join(lines)
 
 
@@ -116,5 +179,5 @@ def build_operators_text(operator_catalog: dict) -> str:
     for op_id, op in operator_catalog.items():
         icon = "✅" if op.get("status") == "available" else "🔜"
         lines.append(f"{icon} {op['display_name']} — {op['description']}")
-    lines.append("\nType /help to see slash commands.")
+    lines.append("\nType /menu for interactive navigation or /help for all commands.")
     return "\n".join(lines)

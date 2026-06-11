@@ -22,16 +22,43 @@ CONFIG_PATH = (
 )
 
 COMMANDS = [
-    {"command": "recon",     "description": "Run a RECON lead scan"},
-    {"command": "scan",      "description": "Alias for /recon — start a lead scan"},
-    {"command": "leads",     "description": "Show lead report"},
-    {"command": "quote",     "description": "Draft a proposal or quote"},
-    {"command": "scout",     "description": "Qualify an inbound lead"},
-    {"command": "outreach",  "description": "Brief top uncontacted leads for outreach"},
-    {"command": "pipeline",  "description": "Show lead pipeline snapshot"},
-    {"command": "status",    "description": "Show system status"},
-    {"command": "operators", "description": "List available operators"},
-    {"command": "help",      "description": "Show all commands"},
+    # Menu
+    {"command": "menu",           "description": "Interactive button menu"},
+    # Find Work
+    {"command": "recon",          "description": "Search for new leads"},
+    {"command": "scout",          "description": "Qualify an inbound lead"},
+    {"command": "outreach",       "description": "Queue outreach drafts for approval"},
+    {"command": "followups",      "description": "Follow-ups due today"},
+    {"command": "replies",        "description": "Recent lead replies"},
+    {"command": "reactivate",     "description": "Reactivate cold leads"},
+    # Win Work
+    {"command": "quote",          "description": "Draft a proposal or quote"},
+    {"command": "close",          "description": "Close a won job"},
+    {"command": "invoice",        "description": "Invoice follow-up — get paid"},
+    {"command": "funnel",         "description": "Run sales funnel workflow"},
+    # Run Work
+    {"command": "brief",          "description": "Morning brief"},
+    {"command": "schedule",       "description": "Today's schedule check"},
+    {"command": "blockers",       "description": "Active blocker watch"},
+    {"command": "eod",            "description": "End of day report"},
+    {"command": "weekly",         "description": "Weekly summary report"},
+    {"command": "review",         "description": "Request a review from a customer"},
+    # Approvals
+    {"command": "approve_all",    "description": "Approve all pending items"},
+    # System
+    {"command": "pipeline",       "description": "Lead pipeline snapshot"},
+    {"command": "missions",       "description": "Recent mission runs"},
+    {"command": "status",         "description": "System health"},
+    {"command": "inbox_check",    "description": "Trigger inbox poll"},
+    {"command": "ram",            "description": "RAM and swap usage"},
+    # Advanced
+    {"command": "recon_start",    "description": "Start RECON worker"},
+    {"command": "recon_stop",     "description": "Stop RECON worker"},
+    {"command": "archive",        "description": "Archive exhausted leads"},
+    {"command": "startup_report", "description": "Full system health report"},
+    {"command": "social",         "description": "Start social campaign"},
+    {"command": "operators",      "description": "List available operators"},
+    {"command": "help",           "description": "Show all commands"},
 ]
 
 

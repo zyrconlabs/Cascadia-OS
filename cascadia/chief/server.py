@@ -59,6 +59,14 @@ BELL_URL   = os.environ.get("BELL_URL", "http://127.0.0.1:6204")
 TELEGRAM_URL = os.environ.get("TELEGRAM_URL", "http://127.0.0.1:9000")
 OM_URL     = os.environ.get("OM_URL", "http://127.0.0.1:6210")
 
+_PENDING_OUTREACH_PATH = Path(os.path.expanduser(
+    "~/Zyrcon/operators/cascadia-os-operators/recon/output/pending_outreach.json"
+))
+_REPLIES_PATH = Path(os.path.expanduser(
+    "~/Zyrcon/operators/cascadia-os-operators/recon/output/replies.json"
+))
+_OWN_EMAIL = "hello@zyrcon.ai"
+
 _WAKE_WAIT = 35  # seconds to wait for operator health after wake (covers OM's 30s poll cycle)
 
 _last_startup_report_at: float = 0.0
@@ -111,6 +119,94 @@ def _is_prism(metadata: dict | None) -> bool:
     PRISM expects full results returned synchronously in reply_text rather
     than pushed to Telegram."""
     return _get_source(metadata) == "prism"
+
+
+# ── Menu system helpers ───────────────────────────────────────────────────────
+
+def _get_menu_counts() -> dict:
+    """Return live counts for button labels: pending approvals and unread replies."""
+    pending = 0
+    replies = 0
+    try:
+        if _PENDING_OUTREACH_PATH.exists():
+            data = json.loads(_PENDING_OUTREACH_PATH.read_text())
+            pending = len(data) if isinstance(data, dict) else len(data)
+    except Exception:
+        pass
+    try:
+        if _REPLIES_PATH.exists():
+            data = json.loads(_REPLIES_PATH.read_text())
+            if isinstance(data, list):
+                replies = len([r for r in data
+                               if isinstance(r, dict) and r.get("from", "") != _OWN_EMAIL])
+    except Exception:
+        pass
+    return {"pending": pending, "replies": replies}
+
+
+def _build_inline_keyboard(rows: list[list[dict]]) -> dict:
+    """Build a Telegram InlineKeyboardMarkup dict from a list of button rows."""
+    return {
+        "inline_keyboard": [
+            [{"text": btn["text"], "callback_data": btn["data"]} for btn in row]
+            for row in rows
+        ]
+    }
+
+
+_MENU_TEXT = "🏠 *Zyrcon Command Center*\nSelect a mission area:"
+
+def _main_menu_keyboard(counts: dict) -> dict:
+    p = counts["pending"]
+    r = counts["replies"]
+    approve_label = f"✅ Approve ({p})" if p else "✅ Approve All"
+    inbox_label   = f"📥 Inbox ({r})"   if r else "📥 Inbox"
+    return _build_inline_keyboard([
+        [{"text": "🔍 Find Work",  "data": "menu_find"},
+         {"text": "💼 Win Work",   "data": "menu_win"},
+         {"text": "⚙️ Run Work",   "data": "menu_run"}],
+        [{"text": "📊 Status",     "data": "do_status"},
+         {"text": approve_label,   "data": "do_approve_all"},
+         {"text": inbox_label,     "data": "do_inbox"}],
+        [{"text": "❓ Help",       "data": "do_help"}],
+    ])
+
+
+def _find_work_keyboard() -> dict:
+    return _build_inline_keyboard([
+        [{"text": "🔍 New Leads",    "data": "do_new_leads"},
+         {"text": "📥 Inbound Lead", "data": "do_inbound"}],
+        [{"text": "📧 Outreach",     "data": "do_outreach"},
+         {"text": "🔄 Follow-ups",   "data": "do_followups"}],
+        [{"text": "💬 Replies",      "data": "do_replies"},
+         {"text": "♻️ Reactivate",   "data": "do_reactivate"}],
+        [{"text": "⬅️ Main Menu",    "data": "menu_main"}],
+    ])
+
+
+def _win_work_keyboard() -> dict:
+    return _build_inline_keyboard([
+        [{"text": "📄 Quote Builder",   "data": "do_quote"},
+         {"text": "🔄 Quote Follow-up", "data": "do_quote_fu"}],
+        [{"text": "✅ Close Job",       "data": "do_close"},
+         {"text": "💰 Get Paid",        "data": "do_invoice"}],
+        [{"text": "🎯 Sales Funnel",    "data": "do_funnel"}],
+        [{"text": "⬅️ Main Menu",       "data": "menu_main"}],
+    ])
+
+
+def _run_work_keyboard() -> dict:
+    return _build_inline_keyboard([
+        [{"text": "🌅 Morning Brief",   "data": "do_brief"},
+         {"text": "📅 Schedule Check",  "data": "do_schedule"}],
+        [{"text": "🚧 Blockers",        "data": "do_blockers"},
+         {"text": "🌙 End of Day",      "data": "do_eod"}],
+        [{"text": "⭐ Review Request",  "data": "do_review"},
+         {"text": "📊 Weekly Summary",  "data": "do_weekly"}],
+        [{"text": "⬅️ Main Menu",       "data": "menu_main"}],
+    ])
+
+# ── End menu system helpers ───────────────────────────────────────────────────
 
 
 # ── Outreach send-time safety gate ───────────────────────────────────────────
@@ -275,6 +371,7 @@ class ChiefService:
         self.runtime.register_route('POST', '/approve/edit',    self.chat_edit_and_approve)
         self.runtime.register_route('GET',  '/sessions',        self.chat_list_sessions)
         self.runtime.register_route('POST', '/session/history', self.chat_get_history)
+        self.runtime.register_route('POST', '/callback',        self.handle_callback)
 
     # ------------------------------------------------------------------
     # Health
@@ -554,6 +651,64 @@ class ChiefService:
                     ok=True, task_id=task_id,
                     selected_type="social", selected_target="social",
                     reply_text=self._social_start(topic, chat_id),
+                ).to_dict()
+            if cmd == "/menu":
+                reply_text = self._handle_menu(chat_id)
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=reply_text,
+                ).to_dict()
+            # ── Mission trigger commands ──────────────────────────────────────
+            if cmd == "/brief":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("run_work", "morning_brief", chat_id),
+                ).to_dict()
+            if cmd == "/schedule":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("run_work", "schedule_check", chat_id),
+                ).to_dict()
+            if cmd == "/blockers":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("run_work", "blocker_watch", chat_id),
+                ).to_dict()
+            if cmd == "/eod":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("run_work", "end_of_day_report", chat_id),
+                ).to_dict()
+            if cmd == "/weekly":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("run_work", "weekly_summary", chat_id),
+                ).to_dict()
+            if cmd == "/review":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("run_work", "review_request", chat_id),
+                ).to_dict()
+            if cmd == "/reactivate":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("find_work", "lead_reactivation", chat_id),
+                ).to_dict()
+            if cmd == "/close":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("win_work", "close_the_job", chat_id),
+                ).to_dict()
+            if cmd == "/invoice":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("win_work", "get_paid", chat_id),
+                ).to_dict()
+            if cmd == "/funnel":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id, selected_type="status", selected_target=cmd,
+                    reply_text=self._trigger_mission("win_work", "sales_funnel", chat_id),
                 ).to_dict()
             if cmd == "/preview":
                 if _is_prism(req.metadata):
@@ -2437,6 +2592,246 @@ class ChiefService:
             )
         except Exception as exc:
             return f"❌ RAM check failed: {exc}"
+
+    # ------------------------------------------------------------------
+    # Menu system + callback handler
+    # ------------------------------------------------------------------
+
+    def _handle_menu(self, chat_id: str | None) -> str:
+        """Send the main menu as an inline keyboard. Returns ack text for non-Telegram callers."""
+        counts  = _get_menu_counts()
+        markup  = _main_menu_keyboard(counts)
+        if chat_id:
+            try:
+                _http_post(
+                    f"{TELEGRAM_URL}/send",
+                    {
+                        "chat_id":      chat_id,
+                        "text":         _MENU_TEXT,
+                        "parse_mode":   "Markdown",
+                        "reply_markup": markup,
+                    },
+                    timeout=8,
+                )
+                return "Menu sent."
+            except Exception as exc:
+                self.runtime.logger.warning("CHIEF /menu send failed: %s", exc)
+                return "❌ Could not send menu."
+        return "Use /menu from Telegram to see the interactive button menu."
+
+    def _trigger_mission(self, mission_id: str, workflow_id: str, chat_id: str | None) -> str:
+        """POST to MissionManager to trigger a workflow. Returns status text."""
+        url = f"{MISSION_MANAGER_URL}/api/missions/{mission_id}/run/{workflow_id}"
+        try:
+            data = _http_post(url, {}, timeout=15)
+            run_id = data.get("mission_run_id") or data.get("run_id") or ""
+            status = data.get("status") or "started"
+            label  = workflow_id.replace("_", " ").title()
+            return (
+                f"✅ {label} started\n"
+                f"Status: {status}\n"
+                f"Run: {run_id[:8]}..." if run_id else f"✅ {label} started\nStatus: {status}"
+            )
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode() if hasattr(exc, "read") else str(exc)
+            return f"❌ {workflow_id}: HTTP {exc.code} — {body[:120]}"
+        except Exception as exc:
+            return f"❌ Could not start {workflow_id}: {exc}"
+
+    def _handle_callback_query(self, payload: dict) -> str:
+        """Route an inline button callback_data string to the right action."""
+        data       = payload.get("data", "")
+        chat_id    = str(payload.get("chat_id", ""))
+        message_id = payload.get("message_id")
+
+        def _edit(text: str, markup: dict | None = None) -> None:
+            tg_payload: dict = {
+                "chat_id":    chat_id,
+                "message_id": message_id,
+                "text":       text,
+                "parse_mode": "Markdown",
+            }
+            if markup:
+                tg_payload["reply_markup"] = markup
+            try:
+                _http_post(f"{TELEGRAM_URL}/edit_message", tg_payload, timeout=8)
+            except Exception as exc:
+                self.runtime.logger.warning("CHIEF edit_message failed: %s", exc)
+
+        def _send(text: str) -> None:
+            try:
+                _http_post(
+                    f"{TELEGRAM_URL}/send",
+                    {"chat_id": chat_id, "text": text},
+                    timeout=8,
+                )
+            except Exception as exc:
+                self.runtime.logger.warning("CHIEF send after callback failed: %s", exc)
+
+        # ── Navigation ────────────────────────────────────────────────
+        if data == "menu_main":
+            counts = _get_menu_counts()
+            _edit(_MENU_TEXT, _main_menu_keyboard(counts))
+            return "ok"
+        if data == "menu_find":
+            _edit("🔍 *Find Work*\nSelect a workflow:", _find_work_keyboard())
+            return "ok"
+        if data == "menu_win":
+            _edit("💼 *Win Work*\nSelect a workflow:", _win_work_keyboard())
+            return "ok"
+        if data == "menu_run":
+            _edit("⚙️ *Run Work*\nSelect a workflow:", _run_work_keyboard())
+            return "ok"
+
+        # ── Find Work actions ─────────────────────────────────────────
+        if data == "do_new_leads":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("find_work", "new_lead_search", chat_id)),
+                daemon=True, name="chief-cb-recon",
+            ).start()
+            _edit("🔍 Searching for new leads — stand by...")
+            return "ok"
+        if data == "do_inbound":
+            _edit("📥 *Inbound Lead*\nSend a lead description or paste a URL to qualify with /scout.")
+            return "ok"
+        if data == "do_outreach":
+            if not chat_id:
+                return "no chat_id"
+            threading.Thread(
+                target=self._run_outreach_and_notify, args=(chat_id, 3),
+                daemon=True, name="chief-cb-outreach",
+            ).start()
+            _edit("📧 Pulling top 3 leads for outreach — stand by...")
+            return "ok"
+        if data == "do_followups":
+            _edit(self._followups_snapshot())
+            return "ok"
+        if data == "do_replies":
+            _edit(self._replies_snapshot())
+            return "ok"
+        if data == "do_reactivate":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("find_work", "lead_reactivation", chat_id)),
+                daemon=True, name="chief-cb-reactivate",
+            ).start()
+            _edit("♻️ Triggering lead reactivation — stand by...")
+            return "ok"
+
+        # ── Win Work actions ──────────────────────────────────────────
+        if data == "do_quote":
+            _edit("📄 *Quote Builder*\nType: /quote [description] or /quote_N to draft for a specific lead.")
+            return "ok"
+        if data == "do_quote_fu":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("win_work", "quote_followup", chat_id)),
+                daemon=True, name="chief-cb-quote-fu",
+            ).start()
+            _edit("🔄 Triggering quote follow-up — stand by...")
+            return "ok"
+        if data == "do_close":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("win_work", "close_the_job", chat_id)),
+                daemon=True, name="chief-cb-close",
+            ).start()
+            _edit("✅ Triggering close job workflow — stand by...")
+            return "ok"
+        if data == "do_invoice":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("win_work", "get_paid", chat_id)),
+                daemon=True, name="chief-cb-invoice",
+            ).start()
+            _edit("💰 Triggering invoice follow-up — stand by...")
+            return "ok"
+        if data == "do_funnel":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("win_work", "sales_funnel", chat_id)),
+                daemon=True, name="chief-cb-funnel",
+            ).start()
+            _edit("🎯 Triggering sales funnel — stand by...")
+            return "ok"
+
+        # ── Run Work actions ──────────────────────────────────────────
+        if data == "do_brief":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "morning_brief", chat_id)),
+                daemon=True, name="chief-cb-brief",
+            ).start()
+            _edit("🌅 Triggering morning brief — stand by...")
+            return "ok"
+        if data == "do_schedule":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "schedule_check", chat_id)),
+                daemon=True, name="chief-cb-schedule",
+            ).start()
+            _edit("📅 Triggering schedule check — stand by...")
+            return "ok"
+        if data == "do_blockers":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "blocker_watch", chat_id)),
+                daemon=True, name="chief-cb-blockers",
+            ).start()
+            _edit("🚧 Triggering blocker watch — stand by...")
+            return "ok"
+        if data == "do_eod":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "end_of_day_report", chat_id)),
+                daemon=True, name="chief-cb-eod",
+            ).start()
+            _edit("🌙 Triggering end of day report — stand by...")
+            return "ok"
+        if data == "do_review":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "review_request", chat_id)),
+                daemon=True, name="chief-cb-review",
+            ).start()
+            _edit("⭐ Triggering review request — stand by...")
+            return "ok"
+        if data == "do_weekly":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "weekly_summary", chat_id)),
+                daemon=True, name="chief-cb-weekly",
+            ).start()
+            _edit("📊 Triggering weekly summary — stand by...")
+            return "ok"
+
+        # ── Cross-mission ─────────────────────────────────────────────
+        if data == "do_status":
+            _edit(self._status_summary())
+            return "ok"
+        if data == "do_approve_all":
+            if not chat_id:
+                return "no chat_id"
+            n_out = len(self._load_outreach_approvals())
+            n_q   = len(self._load_approvals())
+            if n_out + n_q == 0:
+                _edit("✅ Nothing pending — queue is empty.")
+                return "ok"
+            threading.Thread(
+                target=self._approve_all_and_notify, args=(chat_id,),
+                daemon=True, name="chief-cb-approveall",
+            ).start()
+            _edit(f"⚙️ Approving {n_out + n_q} pending item(s)... Stand by.")
+            return "ok"
+        if data == "do_inbox":
+            _edit(self._inbox_check(1))
+            return "ok"
+        if data == "do_help":
+            from cascadia.chief.commands import build_help_text as _bht
+            _edit(_bht())
+            return "ok"
+
+        self.runtime.logger.warning("CHIEF unknown callback_data: %s", data)
+        return "unknown"
+
+    def handle_callback(self, payload: dict) -> tuple[int, dict]:
+        """POST /callback — receives inline keyboard taps from Telegram connector."""
+        chat_id = str(payload.get("chat_id", ""))
+        owner   = "1535010257"
+        if chat_id != owner:
+            self.runtime.logger.warning("CHIEF callback: unauthorized chat_id=%s", chat_id)
+            return 403, {"ok": False, "error": "unauthorized"}
+        result = self._handle_callback_query(payload)
+        return 200, {"ok": True, "result": result}
 
     # ------------------------------------------------------------------
     # CREW self-registration
