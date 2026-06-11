@@ -15,7 +15,6 @@ from cascadia.missions.runner import (
     MissionNotFoundError,
     MissionNotInstalledError,
     MissionRunner,
-    StitchMissionAdapter,
     TierNotAllowedError,
     WorkflowNotFoundError,
 )
@@ -601,10 +600,7 @@ class MissionManagerService:
         component = next(c for c in config["components"] if c["name"] == name)
         packages_root = (config.get("missions") or {}).get("packages_root") or None
         _registry = MissionRegistry(packages_root=packages_root)
-        _runner = MissionRunner(
-            registry=_registry,
-            adapter=StitchMissionAdapter(),
-        )
+        _runner = MissionRunner(registry=_registry)
         _scheduler = MissionScheduler(registry=_registry, runner=_runner)
         _bridge = get_bridge()
         self.runtime = ServiceRuntime(
