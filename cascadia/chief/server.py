@@ -2814,11 +2814,11 @@ class ChiefService:
             _edit(f"⚙️ Approving {n_out + n_q} pending item(s)... Stand by.")
             return "ok"
         if data == "do_inbox":
-            _edit(self._inbox_check(1))
+            _send(self._inbox_check(1))
             return "ok"
         if data == "do_help":
             from cascadia.chief.commands import build_help_text as _bht
-            _edit(_bht())
+            _send(_bht())
             return "ok"
 
         self.runtime.logger.warning("CHIEF unknown callback_data: %s", data)
