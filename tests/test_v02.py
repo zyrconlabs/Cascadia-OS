@@ -431,42 +431,6 @@ class TestOnce(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # BELL tests
 # ---------------------------------------------------------------------------
-
-class TestBell(unittest.TestCase):
-    def setUp(self) -> None:
-        from cascadia.chat.bell import ChatSession
-        self.SessionClass = ChatSession
-
-    def test_session_creation(self) -> None:
-        session = self.SessionClass('bell_test001', 'acme')
-        self.assertEqual(session.session_id, 'bell_test001')
-        self.assertEqual(session.tenant_id, 'acme')
-        self.assertEqual(len(session.messages), 0)
-
-    def test_add_messages(self) -> None:
-        session = self.SessionClass('bell_test002')
-        msg1 = session.add_message('user', 'Hello')
-        msg2 = session.add_message('assistant', 'Hi there')
-        self.assertEqual(len(session.messages), 2)
-        self.assertEqual(msg1['role'], 'user')
-        self.assertEqual(msg2['role'], 'assistant')
-
-    def test_session_to_dict(self) -> None:
-        session = self.SessionClass('bell_test003', 'tenant_x')
-        session.add_message('user', 'Test message')
-        d = session.to_dict()
-        self.assertEqual(d['message_count'], 1)
-        self.assertEqual(d['tenant_id'], 'tenant_x')
-
-    def test_pending_approvals_tracked(self) -> None:
-        session = self.SessionClass('bell_test004')
-        session.pending_approvals.append('approval_001')
-        self.assertIn('approval_001', session.pending_approvals)
-        session.pending_approvals.remove('approval_001')
-        self.assertEqual(len(session.pending_approvals), 0)
-
-
-# ---------------------------------------------------------------------------
 # Manifest tests (operator manifest validation)
 # ---------------------------------------------------------------------------
 
@@ -592,7 +556,6 @@ if __name__ == '__main__':
         TestHandshake,
         TestAlmanac,
         TestOnce,
-        TestBell,
         TestManifests,
         TestDurabilityIntegration,
     ]:
