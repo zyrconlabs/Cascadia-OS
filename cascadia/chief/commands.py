@@ -7,6 +7,8 @@ from __future__ import annotations
 import re as _re
 
 COMMANDS: dict[str, dict] = {
+    # Onboarding
+    "/start":         {"operator": None,         "description": "Show welcome + persistent keyboard"},
     # Menu
     "/menu":          {"operator": None,         "description": "Interactive button menu"},
     # Find Work
