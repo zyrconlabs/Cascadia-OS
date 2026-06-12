@@ -957,6 +957,7 @@ const S = {
   auditLog:[], apiKeys:[],
   overview: null,
   reconStatus: null,
+  poolStatus: null,
 };
 
 /* ═══ VAULT (IndexedDB — v3 schema) ═══ */
@@ -1669,7 +1670,7 @@ function renderMain() {
       </div>
     </div>
     ${c.isWorker?`<div class="worker-panel${wpOpen?' worker-panel--open':''}" id="worker-panel-${c.id}"><div class="worker-panel__inner" id="wp-inner-${c.id}"><div style="font-family:var(--mono);font-size:11px;color:var(--gray-400)">Loading…</div></div></div>`:''}
-    ${!c.isBeacon&&!c.isWorker?`<div class="info-strip"><div class="chip"><div class="chip__val">${c.completion}%</div><div class="chip__lbl">Completion</div></div><div class="chip"><div class="chip__val">${c.hours}</div><div class="chip__lbl">Hours</div></div><div class="chip"><div class="chip__val">${c.done}/${c.total}</div><div class="chip__lbl">Tasks</div></div><div class="chip chip--bar"><div class="mini-prog"><div class="mini-prog__fill" style="width:${c.completion}%"></div></div></div></div>`:''}
+    ${c.id==='email'?`<div class="info-strip" id="email-pool-strip" style="flex-wrap:wrap;gap:12px;padding:12px 20px;"><span style="font-family:var(--mono);font-size:11px;color:var(--gray-400)">Loading pool…</span></div>`:!c.isBeacon&&!c.isWorker?`<div class="info-strip"><div class="chip"><div class="chip__val">${c.completion}%</div><div class="chip__lbl">Completion</div></div><div class="chip"><div class="chip__val">${c.hours}</div><div class="chip__lbl">Hours</div></div><div class="chip"><div class="chip__val">${c.done}/${c.total}</div><div class="chip__lbl">Tasks</div></div><div class="chip chip--bar"><div class="mini-prog"><div class="mini-prog__fill" style="width:${c.completion}%"></div></div></div></div>`:''}
     <div class="chat-area">
       <div class="chat-log" id="chat-log">${mHTML}</div>
       ${actHTML}
@@ -1692,6 +1693,7 @@ function renderMain() {
     </div>`;
 
   scrollChat();
+  if (c.id==='email') fetchPoolStatus();
   if (c.isWorker&&wpOpen) loadWorkerPanel(c.id);
   if (act?.badges?.length) act.badges.forEach((_,i)=>setTimeout(()=>{const el=document.getElementById('ab-'+i);if(el){el.classList.add('vis');if(i>0){const p=document.getElementById('ab-'+(i-1));if(p)p.classList.remove('active')}el.classList.add('active')}},i*350));
   if (typeof _guidedConfigEnabled !== 'undefined' && _guidedConfigEnabled) {
@@ -4158,10 +4160,77 @@ async function loadBackupStatus() {
   } catch(e) {}
 }
 
+/* ═══ EMAIL SENDER POOL BADGES ═══ */
+async function fetchPoolStatus() {
+  try {
+    const r = await fetch('http://localhost:8010/api/pool/status',
+                          {cache:'no-store', signal:AbortSignal.timeout(4000)});
+    if (r.ok) {
+      const d = await r.json();
+      S.poolStatus = d;
+      renderEmailPoolStrip();
+    }
+  } catch(e) {}
+}
+
+function renderEmailPoolStrip() {
+  const el = document.getElementById('email-pool-strip');
+  if (!el) return;
+  const p = S.poolStatus;
+  if (!p) { el.innerHTML = '<span style="font-family:var(--mono);font-size:11px;color:var(--gray-400)">Loading pool…</span>'; return; }
+
+  // Normalise both response shapes:
+  //   {accounts:[...]}  OR  {slot_0:{cap,email,sent}, slot_1:{...}}
+  let accounts = [];
+  if (p.accounts && p.accounts.length) {
+    accounts = p.accounts;
+  } else {
+    ['slot_0','slot_1'].forEach((k,i) => {
+      if (p[k]) accounts.push({
+        slot:       i,
+        from_email: p[k].email || p[k].from_email || '',
+        sent_today: p[k].sent  || p[k].sent_today  || 0,
+        daily_cap:  p[k].cap   || p[k].daily_cap   || 0,
+        at_cap:     (p[k].sent || 0) >= (p[k].cap  || 1),
+      });
+    });
+  }
+
+  if (!accounts.length) { el.innerHTML = '<span style="font-family:var(--mono);font-size:11px;color:var(--yellow)">Pool unavailable</span>'; return; }
+
+  el.innerHTML = accounts.map(a => {
+    const pct       = a.daily_cap > 0 ? Math.round((a.sent_today / a.daily_cap) * 100) : 0;
+    const dotCls    = a.at_cap ? 'dot--standby' : 'dot--online';
+    const barColor  = a.at_cap ? 'var(--yellow)' : pct > 60 ? 'var(--gold)' : 'var(--green)';
+    const remaining = a.daily_cap - a.sent_today;
+    return `<div class="wp-chip" style="min-width:190px;padding:10px 14px;background:var(--gray-50);border:1px solid var(--gray-150);border-radius:9px;">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
+        <span class="op-dot ${dotCls}" style="flex-shrink:0;width:8px;height:8px;"></span>
+        <span style="font-family:var(--mono);font-size:9.5px;color:var(--gray-500);letter-spacing:.06em;">SLOT-${a.slot}</span>
+      </div>
+      <div class="wp-chip__val" style="font-size:12px;">${esc(a.from_email)}</div>
+      <div style="margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:4px;">
+          <span style="color:var(--gray-500);">sent today</span>
+          <span style="color:var(--navy-800);font-weight:600;">${a.sent_today} / ${a.daily_cap}</span>
+        </div>
+        <div style="background:var(--gray-200);border-radius:3px;height:4px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px;transition:width .4s;"></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:9.5px;color:var(--gray-500);margin-top:4px;text-align:right;">
+          ${a.at_cap ? '⚠ at cap — resets midnight' : remaining + ' remaining'}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 (async()=>{
   await refreshOperators();
+  fetchPoolStatus();
   // refreshOperators sidebar — reduced to 30s to avoid cursor/copy disruption
   setInterval(refreshOperators, 30000);
+  setInterval(fetchPoolStatus, 30000);
   startLivePoll();
   loadModelsFromPRISM();
   refreshOperators();
