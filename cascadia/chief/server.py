@@ -1827,6 +1827,10 @@ class ChiefService:
         source_url = (payload.get("source_url") or self._RECON_URL).rstrip("/")
         kind       = payload.get("kind") or "outreach"
 
+        from_email = str(payload.get("from_email") or "hello@zyrcon.ai")
+        slot       = str(payload.get("slot") or "0")
+        tg_header  = str(payload.get("tg_header") or "")
+
         entry = {
             "row_id":        row_id,
             "business_name": biz,
@@ -1838,6 +1842,8 @@ class ChiefService:
             "chat_id":       chat_id,
             "source_url":    source_url,
             "kind":          kind,
+            "from_email":    from_email,
+            "slot":          slot,
             "created_at":    datetime.now(timezone.utc).isoformat(),
         }
         with self._outreach_lock:
@@ -1849,8 +1855,9 @@ class ChiefService:
             "🔁 FOLLOW-UP DRAFT — approval needed" if kind == "followup"
             else "📋 OUTREACH DRAFT — approval needed"
         )
+        tg_line = f"\n{tg_header}" if tg_header else ""
         msg = (
-            f"{header}\n\n"
+            f"{header}{tg_line}\n\n"
             f"🏢 {biz}\n"
             f"🔧 {btype} | {city}\n"
             f"📧 {email}\n\n"
@@ -2066,8 +2073,12 @@ class ChiefService:
                 try:
                     res = _http_post(
                         "http://127.0.0.1:8010/api/task",
-                        {"to": email, "subject": entry.get("subject", ""),
-                         "body": entry.get("body", ""), "reply_to": "hello@zyrcon.ai"},
+                        {"to":         email,
+                         "subject":    entry.get("subject", ""),
+                         "body":       entry.get("body", ""),
+                         "reply_to":   entry.get("from_email", "hello@zyrcon.ai"),
+                         "from_email": entry.get("from_email", "hello@zyrcon.ai"),
+                         "slot":       entry.get("slot", "0")},
                         timeout=20,
                     )
                 except Exception as exc:
@@ -2101,10 +2112,12 @@ class ChiefService:
             send_result = _http_post(
                 "http://127.0.0.1:8010/api/task",
                 {
-                    "to":       email,
-                    "subject":  entry.get("subject", ""),
-                    "body":     entry.get("body", ""),
-                    "reply_to": "hello@zyrcon.ai",
+                    "to":         email,
+                    "subject":    entry.get("subject", ""),
+                    "body":       entry.get("body", ""),
+                    "reply_to":   entry.get("from_email", "hello@zyrcon.ai"),
+                    "from_email": entry.get("from_email", "hello@zyrcon.ai"),
+                    "slot":       entry.get("slot", "0"),
                 },
                 timeout=20,
             )
