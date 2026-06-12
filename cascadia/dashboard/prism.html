@@ -4206,7 +4206,7 @@ function renderEmailPoolStrip() {
     return `<div class="wp-chip" style="min-width:190px;padding:10px 14px;background:var(--gray-50);border:1px solid var(--gray-150);border-radius:9px;">
       <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
         <span class="op-dot ${dotCls}" style="flex-shrink:0;width:8px;height:8px;"></span>
-        <span style="font-family:var(--mono);font-size:9.5px;color:var(--gray-500);letter-spacing:.06em;">SLOT-${a.slot}</span>
+        <span style="font-family:var(--mono);font-size:9.5px;color:var(--gray-500);letter-spacing:.06em;">${'email-' + String(a.slot + 1).padStart(2, '0')}</span>
       </div>
       <div class="wp-chip__val" style="font-size:12px;">${esc(a.from_email)}</div>
       <div style="margin-top:8px;">
