@@ -128,6 +128,18 @@ class OperatorProcess:
         except FileNotFoundError as e:
             self.logger.warning(str(e))
             return
+        # Single-worker invariant: terminate any worker already running this
+        # operator's script before launching a new one. This covers orphans
+        # left by a prior OM process (self.worker_proc would be None) or by a
+        # fallback spawner — preventing duplicate workers that each loop a
+        # stale task. Idempotent: start_worker() always yields exactly one.
+        killed = self._kill_existing_workers(worker_script)
+        if killed:
+            self.logger.info(
+                "Operator %s: killed %d existing worker(s) before start",
+                self.id, killed,
+            )
+            time.sleep(2)  # let ports / file locks clear
         log = self._log_file(f"{self.id}_worker")
         self.worker_proc = subprocess.Popen(
             [sys.executable, str(worker_script)],
@@ -140,6 +152,58 @@ class OperatorProcess:
         self.logger.info(
             "Operator %s worker started (PID %d)", self.id, self.worker_proc.pid
         )
+
+    def _kill_existing_workers(self, worker_script: Path) -> int:
+        """Kill any running process executing this operator's worker script.
+
+        Enforces a single worker per operator by reaping OS-level orphans that
+        this OM instance does not track in self.worker_proc. Matches on the
+        resolved script path so it never touches another operator's worker.
+        Returns the number of processes killed.
+        """
+        import signal as _signal
+
+        killed = 0
+        self_pid = os.getpid()
+        try:
+            out = subprocess.run(
+                ["pgrep", "-f", worker_script.name],
+                capture_output=True, text=True,
+            ).stdout
+        except Exception as e:
+            self.logger.warning(
+                "Operator %s: worker cleanup pgrep failed: %s", self.id, e
+            )
+            return 0
+
+        for tok in out.split():
+            if not tok.strip().isdigit():
+                continue
+            pid = int(tok)
+            if pid == self_pid:
+                continue
+            # pgrep -f matches substrings; confirm this PID is really running
+            # the resolved worker script before killing it.
+            try:
+                cmdline = subprocess.run(
+                    ["ps", "-o", "command=", "-p", str(pid)],
+                    capture_output=True, text=True,
+                ).stdout
+            except Exception:
+                cmdline = ""
+            if str(worker_script) not in cmdline and worker_script.name not in cmdline:
+                continue
+            try:
+                os.kill(pid, _signal.SIGKILL)
+                killed += 1
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                self.logger.warning(
+                    "Operator %s: failed to kill worker PID %d: %s",
+                    self.id, pid, e,
+                )
+        return killed
 
     def _env(self) -> dict:
         env = os.environ.copy()
