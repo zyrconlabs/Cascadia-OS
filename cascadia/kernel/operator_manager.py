@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import resource
 import subprocess
 import sys
@@ -70,6 +71,10 @@ class OperatorProcess:
         self.worker_started = False
         self.status       = "pending"
         self._stopped     = False
+        # RAM-pressure governor metadata (additive; loaded from manifest).
+        self.priority     = manifest.get("priority", "standard")  # critical/standard/background
+        self.idle_timeout = int(manifest.get("idle_timeout", 900))
+        self.last_active  = 0.0   # unix ts, bumped when has_work=True
 
     def _resolve_script(self, cmd: str) -> Path:
         filename = cmd.replace("python3 ", "").strip()
@@ -509,7 +514,10 @@ class OperatorManager:
                 url = f"http://127.0.0.1:{op.port}{op.health_path}"
                 with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT) as r:
                     data = json.loads(r.read().decode())
-                return bool(data.get("has_work", False))
+                hw = bool(data.get("has_work", False))
+                if hw:
+                    op.last_active = time.time()   # governor idle tracking
+                return hw
             except Exception:
                 pass
 
@@ -770,6 +778,86 @@ class OperatorManager:
                 self.sleep_operator(op.id, "soft_pulse_no_work")
             # has_work=True → stay running, no log
 
+    # ── RAM pressure governor (additive) ──────────────────────────────────────
+
+    def _sample_ram_pressure(self) -> float:
+        """Sample system RAM pressure as a 0.0-1.0 fraction via vm_stat.
+        Cheap (one subprocess), no psutil dependency."""
+        try:
+            import subprocess as _sp
+            vm = _sp.check_output(["vm_stat"], timeout=3).decode()
+            try:
+                total_mb = int(_sp.check_output(
+                    ["sysctl", "-n", "hw.memsize"]).decode()) // (1024 ** 2)
+            except Exception:
+                total_mb = 16384
+            page = 16384
+
+            def _pg(label):
+                m = re.search(rf"{label}[^:]*:\s+(\d+)", vm)
+                return int(m.group(1)) * page // (1024 ** 2) if m else 0
+
+            used = _pg("Pages active") + _pg("Pages wired down")
+            return round(used / total_mb, 3) if total_mb else 0.0
+        except Exception as e:
+            self.logger.warning("[GOVERNOR] RAM sample error: %s", e)
+            return 0.0
+
+    def _pressure_governor_check(self, pressure: float) -> None:
+        """Sleep the lowest-priority IDLE operators when RAM pressure is high.
+
+        Additive to the work/idle soft-pulse. Levels:
+          GREEN  <0.65        -> no action
+          YELLOW 0.65-0.75    -> sleep idle background ops
+          ORANGE 0.75-0.85    -> sleep idle background + standard ops
+          RED    >0.85        -> same + Telegram alert
+        Critical operators are never slept; the LLM is not OM-managed. A LIVE
+        has_work check guards every candidate, so a busy operator is never slept
+        regardless of last_active staleness."""
+        if pressure < 0.65:
+            return
+        level = "RED" if pressure > 0.85 else "ORANGE" if pressure > 0.75 else "YELLOW"
+        targets = {"background"} if level == "YELLOW" else {"background", "standard"}
+        self.logger.warning(
+            "[GOVERNOR] RAM pressure %s (%.0f%%) — evaluating operators",
+            level, pressure * 100)
+        now = time.time()
+        slept = []
+        for op in list(self.operators.values()):
+            if op.priority == "critical" or op.priority not in targets:
+                continue
+            if op.proc is None or op.proc.poll() is not None:
+                continue  # already down
+            # Spare operators that were recently active.
+            if op.last_active and (now - op.last_active) < op.idle_timeout:
+                continue
+            # Live idle check — never sleep a busy operator.
+            if self._check_operator_has_work(op):
+                continue
+            try:
+                self.sleep_operator(op.id, f"ram_pressure_{level.lower()}")
+                slept.append(op.name)
+            except Exception as e:
+                self.logger.error("[GOVERNOR] sleep failed for %s: %s", op.id, e)
+        if slept:
+            self.logger.warning("[GOVERNOR] slept %d operator(s): %s",
+                                len(slept), ", ".join(slept))
+        if level == "RED":
+            self._send_ram_alert(pressure, slept)
+
+    def _send_ram_alert(self, pressure: float, slept: list) -> None:
+        """Telegram alert to the owner on RED pressure (best-effort)."""
+        try:
+            import urllib.request as _ur
+            body = "🔴 RAM PRESSURE — RED (%.0f%%)\nNode: zyrcon-node-a\n" % (pressure * 100)
+            body += "Slept: " + (", ".join(slept) if slept else "none (all critical/active)")
+            payload = json.dumps({"chat_id": "1535010257", "text": body}).encode()
+            req = _ur.Request("http://127.0.0.1:9000/send", data=payload, method="POST",
+                              headers={"Content-Type": "application/json"})
+            _ur.urlopen(req, timeout=5)
+        except Exception as e:
+            self.logger.error("[GOVERNOR] alert failed: %s", e)
+
     def _monitoring_loop(self) -> None:
         """Background loop: liveness check every 30s, soft pulse every 15min."""
         time.sleep(STARTUP_GRACE)
@@ -780,6 +868,11 @@ class OperatorManager:
         while self._running:
             now = time.time()
             self._check_process_liveness()
+            # RAM pressure governor — runs every liveness tick (no-op at GREEN).
+            try:
+                self._pressure_governor_check(self._sample_ram_pressure())
+            except Exception as _gov_err:
+                self.logger.warning("[GOVERNOR] error: %s", _gov_err)
             if now - last_pulse >= SOFT_PULSE_INTERVAL:
                 self._soft_pulse_check()
                 last_pulse = now
