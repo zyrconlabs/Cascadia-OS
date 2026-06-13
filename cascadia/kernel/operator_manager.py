@@ -103,7 +103,16 @@ class OperatorProcess:
 
     def _log_file(self, name: str):
         _LOG_DIR.mkdir(parents=True, exist_ok=True)
-        return open(str(_LOG_DIR / f"{name}.log"), "a")
+        path = _LOG_DIR / f"{name}.log"
+        # Rotate at (re)start when oversized so OM-captured stdout/stderr logs
+        # don't grow unbounded (e.g. email-operator-error, telegram, whatsapp).
+        # Keeps one backup (.log.1); the live file reopens fresh.
+        try:
+            if path.exists() and path.stat().st_size > 20 * 1024 * 1024:
+                path.replace(path.with_name(path.name + ".1"))
+        except Exception:
+            pass
+        return open(str(path), "a")
 
     def start(self, preexec_fn=None) -> None:
         cmd = self._build_cmd()
