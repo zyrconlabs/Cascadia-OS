@@ -32,7 +32,6 @@ SERVICES = [
     ("scout",    7002, "/api/health",  True),
     ("recon",    8002, "/api/health",  True),
     ("email",    8010, "/api/health",  True),
-    ("crm",      8015, "/api/health",  True),
     ("scout-tg", 9002, "/api/health",  True),
     ("beacon",   6210, "/health",      True),
     ("vault",    5101, "/health",      True),
