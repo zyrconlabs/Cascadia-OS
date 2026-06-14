@@ -49,7 +49,7 @@ _MG_CONFIG: Dict[str, Any] = {
         'nats', 'crew', 'chief', 'beacon',
         'llm', 'postgres', 'telegram', 'email_operator',
     ],
-    'tier1': ['crm', 'quote', 'debrief', 'aurelia'],
+    'tier1': ['crm', 'quote', 'debrief', 'aurelia', 'pulse'],
     'tier2': ['social', 'scout', 'brief', 'collect'],
     'tier3': ['recon'],
     'missions': {
