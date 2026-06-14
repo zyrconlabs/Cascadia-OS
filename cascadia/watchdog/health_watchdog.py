@@ -37,6 +37,7 @@ SERVICES = [
     ("vault",    5101, "/health",      True),
     ("collect",  8003, "/api/health",  False),
     ("quote",    8007, "/api/health",  False),
+    ("crm",      8015, "/api/health",  False),
 ]
 CRITICAL_THRESHOLD = 1   # alert after 1 failed check (~5 min)
 STANDARD_THRESHOLD = 3   # alert after 3 failed checks (~15 min)
