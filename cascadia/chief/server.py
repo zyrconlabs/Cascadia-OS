@@ -712,6 +712,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._ram_status(),
                 ).to_dict()
+            if cmd == "/crm":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._crm_command(parsed_cmd.get("args", "")),
+                ).to_dict()
             if cmd in ("/social", "/campaign"):
                 topic = cmd_parsed.get("args", "").strip() or "daily social campaign"
                 return 200, TaskResponse(
@@ -1156,6 +1162,28 @@ class ChiefService:
             "CHIEF: %s did not become healthy within %ds", target, _WAKE_WAIT
         )
         return False
+
+    def _crm_command(self, args: str) -> str:
+        sub = args.strip().lower()
+        if sub == "sleep":
+            try:
+                body = json.dumps({"reason": "manual"}).encode()
+                req = urllib.request.Request(
+                    f"{OM_URL}/operators/crm/sleep",
+                    data=body, method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    result = json.loads(r.read().decode())
+                if result.get("ok"):
+                    return "💤 CRM sleeping — port :8015 released."
+                return f"⚠️ OM rejected sleep: {result}"
+            except Exception as exc:
+                return f"❌ CRM sleep failed: {exc}"
+        if sub == "wake":
+            ok = self._wake_and_wait("crm")
+            return "✅ CRM awake — :8015 healthy." if ok else "⚠️ CRM wake timed out."
+        return "Usage: /crm sleep | /crm wake"
 
     # Fallback ports for operators that register dynamically with CREW.
     # Used when BEACON can't find the operator (duplicate CREW instances,
