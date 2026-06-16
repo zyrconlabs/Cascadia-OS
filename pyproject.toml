@@ -1,6 +1,6 @@
 [project]
 name = "cascadia-os"
-version = "2026.5.1"
+version = "2026.6"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 description = "Cascadia OS — local-first single-node operator platform"
@@ -46,6 +46,6 @@ where = ["."]
 include = ["cascadia*"]
 
 [tool.cascadia]
-version = "2026.5.1"
+version = "2026.6"
 control_plane = "cascadia.kernel.flint"
 entrypoint    = "cascadia.kernel.watchdog"

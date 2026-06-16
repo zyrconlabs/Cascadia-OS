@@ -1,7 +1,38 @@
 # Changelog
 
 > Cascadia OS uses Calendar Versioning (CalVer): YYYY.M
-> Current release: 2026.5 — May 2026
+> Current release: 2026.6 — June 2026
+
+---
+
+## 2026.6 (June 2026) — dual-pool-autosleep-sprint
+
+### Added
+- **Dual email sender pool**: email-01 (hello@zyrcon.ai, 100/day) + email-02 (zyrcon@a00.pro / Titan, 50/day) — 150/day total capacity with sequential caps, burst throttle, and midnight reset
+- **sent.json enriched**: from_email, type (outreach/followup), and slot_label recorded on every send
+- **pool/status API**: live per-account sent/cap counters via `_pool.status()`
+- **/email_status** Telegram command: today / 7-day / 30-day breakdown — sent, failed, outreach vs follow-up split, per-account, live pool caps, lead pipeline counts
+- **/crm sleep** and **/crm wake** Telegram commands — one-tap CRM lifecycle via OperatorManager
+- **CRM registered with OM** (lifecycle: on_demand, idle_timeout: 300s) — auto-sleep on inactivity, RAM pressure, and BEACON swap threshold
+- **CRM health watchdog**: re-added to 11-service monitor (critical=False, 5-min checks, Telegram alert after 3 misses)
+- **CRM outreach fields unblocked**: contacted_via, outreach_slot, outreach_sent_at now writable via PUT /api/contacts/<id>
+- **CRM write on approval**: CHIEF writes contacted_via + outreach_sent_at to CRM contact after every approved send (threaded, non-fatal)
+- **/version** CHIEF command: shows running version, operator count, node info
+
+### Fixed
+- RECON LLM context overflow (22k→5k chars): lead qualification restored
+- RECON category rotation deadlock: plumbing/electrical/roofing now cycle correctly
+- RECON interleaved suburb queries: CM + task.md alternate even/odd cycles
+- RECON task.md stop condition: mode:quantity key mismatch corrected, target raised to 1200
+- Email operator: `from` field renamed to `from_email` for consistency; type and slot_label added to failure log path
+- CHIEF /crm commands: Content-Type: application/json header added to OM sleep/wake calls
+- Watchdog: CRM correctly excluded from monitored services when intentionally sleeping; re-added when awake
+
+### Changed
+- CRM plist: RunAtLoad=false — OperatorManager owns CRM process lifecycle (launchd no longer auto-starts it)
+- RAM governor: CRM, PRISM, QUOTE, Pulse moved to background tier (sleep first under pressure)
+- BEACON tier1 sleep list: Pulse added alongside CRM, Quote, Debrief, Aurelia
+- Healthcare leads archived (contacted=skip) — contractor-only outreach pool going forward
 
 ---
 
