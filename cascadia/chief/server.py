@@ -712,6 +712,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._ram_status(),
                 ).to_dict()
+            if cmd == "/email_status":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._email_status(),
+                ).to_dict()
             if cmd == "/crm":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -1162,6 +1168,129 @@ class ChiefService:
             "CHIEF: %s did not become healthy within %ds", target, _WAKE_WAIT
         )
         return False
+
+    def _email_status(self) -> str:
+        import csv as _csv
+        from datetime import datetime, timezone, timedelta
+        from pathlib import Path
+        OPERATORS = os.path.expanduser("~/Zyrcon/operators/cascadia-os-operators")
+        now       = datetime.now(timezone.utc)
+        today     = now.date()
+        week_ago  = today - timedelta(days=7)
+        month_ago = today - timedelta(days=30)
+
+        entries: list = []
+        sent_path = Path(OPERATORS) / "email/data/sent.json"
+        try:
+            entries = json.loads(sent_path.read_text()) if sent_path.exists() else []
+        except Exception:
+            pass
+
+        def _date(e: dict):
+            try:
+                return datetime.fromisoformat(e.get("sent_at", "")).date()
+            except Exception:
+                return None
+
+        def _acct(e: dict) -> str:
+            fe = e.get("from_email", e.get("from", ""))
+            sl = str(e.get("slot", ""))
+            if "a00.pro" in fe or sl == "1":
+                return "email-02 (zyrcon@a00.pro)"
+            return "email-01 (hello@zyrcon.ai)"
+
+        def _stats(subset: list) -> dict:
+            sent     = [e for e in subset if e.get("status") == "sent"]
+            failed   = [e for e in subset if e.get("status") == "failed"]
+            outreach = [e for e in sent if e.get("type", "outreach") != "followup"]
+            followup = [e for e in sent if e.get("type") == "followup"]
+            by_acct: dict = {}
+            for e in sent:
+                lbl = _acct(e)
+                by_acct[lbl] = by_acct.get(lbl, 0) + 1
+            return {"sent": len(sent), "failed": len(failed),
+                    "outreach": len(outreach), "followup": len(followup),
+                    "by_acct": by_acct}
+
+        def _bucket(since):
+            return [e for e in entries if (_d := _date(e)) and _d >= since]
+
+        td = _stats(_bucket(today))
+        wk = _stats(_bucket(week_ago))
+        mo = _stats(_bucket(month_ago))
+
+        # Live pool counters
+        pool: dict = {}
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:8010/api/pool/status",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=3) as _r:
+                pool = json.loads(_r.read().decode())
+        except Exception:
+            pass
+
+        # Lead pipeline from CSV
+        total_leads = contacted = followup_q = 0
+        csv_path = Path(OPERATORS) / "recon/output/outreach_ready.csv"
+        try:
+            with open(csv_path) as _f:
+                rows = list(_csv.DictReader(_f))
+            total_leads = len(rows)
+            contacted   = sum(1 for r in rows if r.get("contacted", "").lower() == "yes")
+            followup_q  = sum(1 for r in rows
+                              if int(r.get("followup_count", "0") or "0") > 0)
+        except Exception:
+            pass
+
+        def _acct_lines(by_acct: dict) -> str:
+            if not by_acct:
+                return "    (no per-account data)"
+            return "\n".join(f"    {lbl}: {n}" for lbl, n in sorted(by_acct.items()))
+
+        def _pool_lines() -> str:
+            s0 = pool.get("slot_0", {})
+            s1 = pool.get("slot_1", {})
+            if not s0 and not s1:
+                return "  (pool counters unavailable)"
+            lines = []
+            for slot_key, label in [("slot_0", "email-01"), ("slot_1", "email-02")]:
+                s = pool.get(slot_key, {})
+                if s:
+                    pct = round(s.get("sent", 0) / max(s.get("cap", 1), 1) * 100)
+                    lines.append(
+                        f"  {label} {s.get('email','?'):30s} "
+                        f"{s.get('sent',0)}/{s.get('cap',0)} ({pct}%)"
+                    )
+            return "\n".join(lines) if lines else "  (pool counters unavailable)"
+
+        return (
+            f"📊 Email Status\n"
+            f"{'─'*32}\n\n"
+            f"📅 TODAY\n"
+            f"  Sent:     {td['sent']}\n"
+            f"  Failed:   {td['failed']}\n"
+            f"  Outreach: {td['outreach']}  |  Follow-up: {td['followup']}\n"
+            f"  By account:\n{_acct_lines(td['by_acct'])}\n\n"
+            f"📅 THIS WEEK (7 days)\n"
+            f"  Sent:     {wk['sent']}\n"
+            f"  Failed:   {wk['failed']}\n"
+            f"  Outreach: {wk['outreach']}  |  Follow-up: {wk['followup']}\n"
+            f"  By account:\n{_acct_lines(wk['by_acct'])}\n\n"
+            f"📅 THIS MONTH (30 days)\n"
+            f"  Sent:     {mo['sent']}\n"
+            f"  Failed:   {mo['failed']}\n"
+            f"  Outreach: {mo['outreach']}  |  Follow-up: {mo['followup']}\n"
+            f"  By account:\n{_acct_lines(mo['by_acct'])}\n\n"
+            f"📬 LIVE POOL (today)\n"
+            f"{_pool_lines()}\n\n"
+            f"👥 LEAD PIPELINE\n"
+            f"  Total leads:   {total_leads}\n"
+            f"  Contacted:     {contacted}\n"
+            f"  Follow-up due: {followup_q}\n\n"
+            f"📌 Data: sent.json ({len(entries)} records)"
+        )
 
     def _crm_command(self, args: str) -> str:
         sub = args.strip().lower()
@@ -2153,6 +2282,40 @@ class ChiefService:
             return f"❌ Email operator unreachable: {exc}"
         if not send_result.get("ok"):
             return f"❌ Email send failed: {send_result.get('error', 'unknown')}"
+
+        # Write contacted_via + outreach_sent_at to CRM (non-fatal, threaded)
+        def _crm_write() -> None:
+            try:
+                import urllib.parse as _up
+                from datetime import datetime, timezone as _tz
+                search_url = (
+                    f"http://127.0.0.1:8015/api/contacts"
+                    f"?search={_up.quote(email, safe='')}&limit=1"
+                )
+                req = urllib.request.Request(
+                    search_url, method="GET",
+                    headers={"Accept": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=3) as _r:
+                    contacts = json.loads(_r.read().decode()).get("contacts", [])
+                if not contacts:
+                    return
+                cid = contacts[0]["id"]
+                put_body = json.dumps({
+                    "contacted_via":    entry.get("from_email", ""),
+                    "outreach_slot":    str(entry.get("slot", "0")),
+                    "outreach_sent_at": datetime.now(_tz.utc).isoformat(),
+                }).encode()
+                put_req = urllib.request.Request(
+                    f"http://127.0.0.1:8015/api/contacts/{cid}",
+                    data=put_body, method="PUT",
+                    headers={"Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(put_req, timeout=3)
+            except Exception:
+                pass
+        threading.Thread(target=_crm_write, daemon=True,
+                         name=f"crm-write-{row_id}").start()
 
         try:
             _http_post(
