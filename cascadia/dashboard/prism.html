@@ -761,7 +761,7 @@ input[type="file"]{display:none}
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__header">
-      <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v0.48</div></div>
+      <div style="flex:1;min-width:0"><div class="sidebar__title">PRISM · Dashboard</div><div class="sidebar__sub">Cascadia OS v2026.6</div></div>
       <div id="conn-dot" style="width:7px;height:7px;border-radius:50%;background:var(--gray-300);flex-shrink:0" title="Gateway status"></div>
     </div>
     <div class="sidebar__search"><input type="text" placeholder="Search operators…" oninput="filterOperators(this.value)"></div>
@@ -1287,7 +1287,7 @@ async function handleCommand(id, cmd) {
       return `<div class="status-card" style="animation-delay:${i*.04}s"><div class="sc-dot ${dc}"></div><div class="sc-info"><div class="sc-name">${name.toUpperCase()}</div><div class="sc-task">${stateLabel}</div></div><div class="sc-pct">${ok?'●':state==='starting'||state==='draining'?'◑':'◯'}</div></div>`;
     }).join('');
     S.messages[id].push({time:t,type:'agent',html:`
-      <div class="msg-text" style="margin-bottom:10px">Cascadia OS v0.48 — System Overview</div>
+      <div class="msg-text" style="margin-bottom:10px">Cascadia OS v2026.6 — System Overview</div>
       <div style="display:grid;grid-template-columns:repeat(${hw.available?'5':'4'},1fr);gap:6px;margin-bottom:10px">
         <div style="background:var(--gray-50);border:1px solid var(--gray-150);border-radius:8px;padding:9px 11px">
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--navy-800)">${healthy}</div>
@@ -4928,7 +4928,7 @@ function _gspRemoveTag(key, idx) {
 <!-- ALMANAC OVERLAY -->
 <div class="welcome-backdrop" id="welcome-backdrop">
   <div class="welcome-card">
-    <div class="welcome-logo">CASCADIA OS · v0.48</div>
+    <div class="welcome-logo">CASCADIA OS · v2026.6</div>
     <div class="welcome-title">Welcome to PRISM</div>
     <div class="welcome-sub">Your command center for the Cascadia OS operator platform. Here's what you're looking at:</div>
     <div class="welcome-grid">

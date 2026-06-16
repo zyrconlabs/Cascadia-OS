@@ -51,6 +51,7 @@ COMMANDS: dict[str, dict] = {
     "/ram":            {"operator": None,         "description": "RAM and swap usage"},
     "/crm":            {"operator": None,         "description": "Sleep or wake CRM (/crm sleep | /crm wake)"},
     "/email_status":   {"operator": None,         "description": "Email stats: sent/failed, per-account, outreach vs followup"},
+    "/version":        {"operator": None,         "description": "Show running Cascadia OS version and operator count"},
     "/social":         {"operator": None,         "description": "Start a social media campaign"},
     "/campaign":       {"operator": None,         "description": "Alias for /social"},
     "/help":           {"operator": None,         "description": "Show all commands"},

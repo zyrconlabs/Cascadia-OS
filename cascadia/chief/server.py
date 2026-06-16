@@ -49,7 +49,7 @@ from cascadia.chief.intent_router import (
 from cascadia.automation.workflow_runtime import WorkflowRuntime
 from cascadia.automation.stitch import WorkflowDefinition, WorkflowStep
 
-_VERSION = "1.0.0"
+_VERSION = "2026.6"
 
 # Environment overrides — ports resolved from config at startup, not hardcoded
 CHIEF_PORT = int(os.environ.get("CHIEF_PORT", "6211"))
@@ -712,6 +712,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._ram_status(),
                 ).to_dict()
+            if cmd == "/version":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._version_info(),
+                ).to_dict()
             if cmd == "/email_status":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -1168,6 +1174,26 @@ class ChiefService:
             "CHIEF: %s did not become healthy within %ds", target, _WAKE_WAIT
         )
         return False
+
+    def _version_info(self) -> str:
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:6210/operators",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=2) as _r:
+                ops = json.loads(_r.read().decode())
+            op_count = len(ops) if isinstance(ops, list) else len(ops.get("operators", ops))
+        except Exception:
+            op_count = "?"
+        return (
+            f"⚙️ Cascadia OS v{_VERSION}\n"
+            f"───────────────────────\n"
+            f"Operators: {op_count} registered\n"
+            f"Node:      zyrcon-node-a\n"
+            f"Build:     CalVer {_VERSION}\n"
+            f"Repo:      github.com/zyrconlabs/cascadia-os"
+        )
 
     def _email_status(self) -> str:
         import csv as _csv

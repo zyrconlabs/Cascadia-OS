@@ -5,7 +5,7 @@
 > Architecturally compliant with EU AI Act Articles 8-15 for high-risk AI systems — by design, not by retrofit.
 > → [EU AI Act Compliance Reference](./docs/eu_ai_act_compliance.md)
 
-**Version:** 2026.5.1 · May 2026 · [Changelog](CHANGELOG.md) · ![Tests](https://img.shields.io/badge/tests-1265%20passing-green) · [![PyPI](https://img.shields.io/pypi/v/cascadia-os)](https://pypi.org/project/cascadia-os/)
+**Version:** 2026.6 · June 2026 · [Changelog](CHANGELOG.md) · ![Tests](https://img.shields.io/badge/tests-1265%20passing-green) · [![PyPI](https://img.shields.io/pypi/v/cascadia-os)](https://pypi.org/project/cascadia-os/)
 
 ---
 
@@ -21,7 +21,7 @@ I didn't want a chatbot. I wanted an operator I could trust. Something that reme
 
 ---
 
-## What's New in 2026.5.1
+## What's New in 2026.6
 
 - **Operator tier limits enforced** — Lite=2, Pro=6, Business=12, Enterprise=999. Installing beyond the cap returns HTTP 403 `operator_limit_reached` with `upgrade_url`.
 - **`step.failed` events** emitted to `run_trace` — PRISM run list now surfaces per-step failure reasons.
@@ -155,7 +155,7 @@ Approvals sync instantly to PRISM. Background refresh keeps item counts current.
 **PyPI (all platforms):**
 ```bash
 pip install cascadia-os          # latest
-pip install cascadia-os==2026.5.1  # pinned
+pip install cascadia-os==2026.6  # pinned
 ```
 
 **macOS:**
@@ -400,4 +400,4 @@ See [LICENSE](./LICENSE) for full terms.
 
 ---
 
-*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs) · 2026.5.1*
+*Built in Houston, Texas — [Zyrcon Labs](https://github.com/zyrconlabs) · 2026.6*
