@@ -852,7 +852,7 @@ class ChiefService:
                 arg = (parsed_cmd.get("args") or "").strip()
                 if arg:
                     try:
-                        limit = min(max(int(arg.split()[0]), 1), 10)
+                        limit = min(max(int(arg.split()[0]), 1), 20)
                     except (ValueError, IndexError):
                         limit = 3
                 if _is_prism(req.metadata):
