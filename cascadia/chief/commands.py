@@ -50,6 +50,7 @@ COMMANDS: dict[str, dict] = {
     "/startup_report": {"operator": None,         "description": "Full system health report"},
     "/ram":            {"operator": None,         "description": "RAM and swap usage"},
     "/crm":            {"operator": None,         "description": "Sleep or wake CRM (/crm sleep | /crm wake)"},
+    "/email_status":   {"operator": None,         "description": "Email stats: sent/failed, per-account, outreach vs followup"},
     "/social":         {"operator": None,         "description": "Start a social media campaign"},
     "/campaign":       {"operator": None,         "description": "Alias for /social"},
     "/help":           {"operator": None,         "description": "Show all commands"},
@@ -158,7 +159,8 @@ def build_help_text() -> str:
         "/status       System health",
         "/inbox_check  Trigger IMAP inbox poll",
         "/ram          RAM and swap usage",
-        "/crm          Sleep or wake CRM (/crm sleep | /crm wake)\n",
+        "/crm          Sleep or wake CRM (/crm sleep | /crm wake)",
+        "/email_status Email stats: sent/failed, per-account, outreach vs followup\n",
 
         "🔧 ADVANCED",
         "/recon_start  Start RECON worker",
