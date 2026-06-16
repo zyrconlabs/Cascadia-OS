@@ -18,7 +18,7 @@ COMMANDS: dict[str, dict] = {
     "/recon_start":   {"operator": None,          "description": "Start RECON lead-scraping worker"},
     "/recon_stop":    {"operator": None,          "description": "Stop RECON lead-scraping worker"},
     "/scout":         {"operator": "scout",       "description": "Qualify an inbound lead"},
-    "/outreach":      {"operator": None,          "description": "[N] Queue N outreach drafts for approval (default 3, max 10)"},
+    "/outreach":      {"operator": None,          "description": "[N] Queue N outreach drafts for approval (default 20, max 20)"},
     "/followups":     {"operator": None,          "description": "Show follow-ups due today"},
     "/replies":       {"operator": None,          "description": "Show recent lead replies"},
     "/reactivate":    {"operator": None,          "description": "Reactivate cold leads"},
