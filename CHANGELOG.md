@@ -8,7 +8,7 @@
 ## 2026.6 (June 2026) — dual-pool-autosleep-sprint
 
 ### Added
-- **Dual email sender pool**: email-01 (hello@zyrcon.ai, 100/day) + email-02 (zyrcon@a00.pro / Titan, 50/day) — 150/day total capacity with sequential caps, burst throttle, and midnight reset
+- **Dual email sender pool**: email-01 (hello@zyrcon.ai, 100/day) + email-02 (Titan, 50/day) — 150/day total capacity with sequential caps, burst throttle, and midnight reset
 - **sent.json enriched**: from_email, type (outreach/followup), and slot_label recorded on every send
 - **pool/status API**: live per-account sent/cap counters via `_pool.status()`
 - **/email_status** Telegram command: today / 7-day / 30-day breakdown — sent, failed, outreach vs follow-up split, per-account, live pool caps, lead pipeline counts

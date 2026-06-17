@@ -23,12 +23,13 @@ I didn't want a chatbot. I wanted an operator I could trust. Something that reme
 
 ## What's New in 2026.6
 
-- **Operator tier limits enforced** — Lite=2, Pro=6, Business=12, Enterprise=999. Installing beyond the cap returns HTTP 403 `operator_limit_reached` with `upgrade_url`.
-- **`step.failed` events** emitted to `run_trace` — PRISM run list now surfaces per-step failure reasons.
-- **Conditional step execution** — workflow runner supports step-level `condition` fields.
-- **PRISM failure visibility** — failed step reasons shown inline in the run timeline.
-- **`purchase_webhook` + `sync_publisher`** restored to FLINT supervision.
-- **PyPI package published** — `pip install cascadia-os` is now live.
+- **Dual email sender pool** — email-01 and email-02 on independent SMTP infrastructure, 150 emails/day total, automatic failover when the primary slot hits its daily cap.
+- **RECON engine fixes** — resolved an LLM context overflow that was zeroing out lead qualification; fixed a category rotation deadlock; added parallel suburb coverage via interleaved query cycles.
+- **Scout guided lead capture** — 9-question staged flow with a mandatory contact gate; warm leads are no longer dropped without owner notification.
+- **CRM auto-sleep** — registered with OperatorManager (`lifecycle: on_demand`); sleeps automatically when idle, wakes on demand.
+- **RAM pressure governor** — background-tier operators sleep and wake automatically at memory thresholds.
+- **Health watchdog** — monitors 11 services every 5 minutes with Telegram alerts on state change.
+- **New Telegram commands** — `/email_status` (today/week/month per-account breakdown), `/crm sleep|wake` (one-tap lifecycle), `/version` (running version + operator count), and `/outreach N` (pick exact batch size 1–50).
 
 ---
 
