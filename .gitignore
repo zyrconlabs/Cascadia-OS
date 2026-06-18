@@ -96,3 +96,8 @@ scripts/record_demo.sh
 cascadia/operators/generic_alert/alerts.db
 config.json
 cascadia/missions/missions_registry.json
+
+# Backup and temp files (added 2026-06-16)
+*.bak_*
+test_results_session*
+.metadata_never_index
