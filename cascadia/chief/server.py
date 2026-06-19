@@ -730,6 +730,18 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._x_command(parsed_cmd.get("args", "")),
                 ).to_dict()
+            if cmd == "/x_approve":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._x_command("approve"),
+                ).to_dict()
+            if cmd == "/x_skip":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._x_command("skip"),
+                ).to_dict()
             if cmd == "/crm":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,

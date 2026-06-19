@@ -54,7 +54,9 @@ COMMANDS: dict[str, dict] = {
     "/version":        {"operator": None,         "description": "Show running Cascadia OS version and operator count"},
     "/social":         {"operator": None,         "description": "Start a social media campaign"},
     "/campaign":       {"operator": None,         "description": "Alias for /social"},
-    "/x":              {"operator": None,         "description": "Post to X: /x <text> now, /x approve | /x skip scheduled drafts, /x status"},
+    "/x":              {"operator": None,         "description": "Post to X: /x <text> to post now, /x status for queue + recent"},
+    "/x_approve":      {"operator": None,         "description": "Approve the scheduled X draft and send it"},
+    "/x_skip":         {"operator": None,         "description": "Skip the scheduled X draft, move to next"},
     "/help":           {"operator": None,         "description": "Show all commands"},
 }
 
@@ -171,7 +173,8 @@ def build_help_text() -> str:
         "/startup_report  Full system health report",
         "/preview      Preview next outreach draft",
         "/social       Start social media campaign",
-        "/x            Post to X (/x <text> or /x status)\n",
+        "/x            Post to X (/x <text> or /x status)",
+        "/x_approve    Approve scheduled X draft   /x_skip  Skip it\n",
 
         "Or just type naturally — CHIEF understands plain English.",
         "Examples:",
