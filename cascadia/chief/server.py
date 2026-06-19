@@ -766,6 +766,24 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._x_command("status"),
                 ).to_dict()
+            if cmd == "/fb_approve":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._fb_command("approve"),
+                ).to_dict()
+            if cmd == "/fb_skip":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._fb_command("skip"),
+                ).to_dict()
+            if cmd == "/fb_status":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._fb_command("status"),
+                ).to_dict()
             if cmd in ("/social", "/campaign"):
                 topic = cmd_parsed.get("args", "").strip() or "daily social campaign"
                 return 200, TaskResponse(
@@ -1490,6 +1508,55 @@ class ChiefService:
         handle = "beast_popovich"
         return (f"✅ Posted to X\nChars: {char_count}/280\n"
                 f"Via: Buffer → @{handle}\nID: {str(result.get('post_id', '?'))[:24]}")
+
+    def _fb_command(self, action: str) -> str:
+        """Facebook queue actions via the Social operator (approval gate).
+
+        action: approve | skip | status
+        """
+        social_url = "http://localhost:8011"
+        if action == "status":
+            try:
+                with urllib.request.urlopen(f"{social_url}/api/fb/queue_status", timeout=8) as r:
+                    d = json.loads(r.read().decode())
+            except Exception as exc:
+                return f"❌ Facebook status unavailable: {str(exc)[:80]}"
+            lines = ["📘 Facebook Queue Status\n",
+                     f"Pending: {d.get('pending','?')}   Posted: {d.get('posted','?')}"]
+            nxt = d.get("next_post")
+            if nxt:
+                lines.append(f"Next: post {nxt.get('position','?')} "
+                             f"({nxt.get('char_count','?')} chars)")
+            lines.append("\nSchedule: 7:45 / 13:15 / 17:15 CT")
+            return "\n".join(lines)
+
+        path = "/api/fb/approve" if action == "approve" else "/api/fb/skip"
+        try:
+            req = urllib.request.Request(
+                f"{social_url}{path}", data=b"{}", method="POST",
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                res = json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return ("Nothing waiting for Facebook approval. Drafts arrive "
+                        "7:45/13:15/17:15 CT." if action == "approve"
+                        else "Nothing waiting to skip.")
+            return f"❌ Facebook {action} failed: HTTP {e.code}"
+        except Exception as exc:
+            return f"❌ Facebook {action} error: {str(exc)[:80]}"
+        if not res.get("success"):
+            return f"❌ {res.get('error', action + ' failed')}"
+        if action == "approve":
+            tag = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to Facebook"
+            return (f"{tag} — post {res.get('position','?')}\n"
+                    f"Chars: {res.get('char_count','?')}/450\n"
+                    f"Remaining in queue: {res.get('remaining','?')}")
+        msg = f"⏭ Skipped post {res.get('skipped','?')}. Pending: {res.get('pending','?')}"
+        nxt = res.get("next_post")
+        if nxt:
+            msg += f"\nNext: post {nxt.get('position','?')} ({nxt.get('char_count','?')} chars)"
+        return msg
 
     # Fallback ports for operators that register dynamically with CREW.
     # Used when BEACON can't find the operator (duplicate CREW instances,
