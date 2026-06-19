@@ -63,6 +63,10 @@ COMMANDS: dict[str, dict] = {
     "/fb_status":      {"operator": None,         "description": "Facebook queue depth + recent posts"},
     "/fb_approve":     {"operator": None,         "description": "Approve the scheduled Facebook draft and send it"},
     "/fb_skip":        {"operator": None,         "description": "Skip the scheduled Facebook draft, move to next"},
+    "/ig_status":      {"operator": None,         "description": "Instagram queue depth (image required to post)"},
+    "/ig_approve":     {"operator": None,         "description": "Approve the Instagram draft — send image first"},
+    "/ig_skip":        {"operator": None,         "description": "Skip the scheduled Instagram draft, move to next"},
+    "/clear_image":    {"operator": None,         "description": "Discard pending images sent to the bot"},
     "/help":           {"operator": None,         "description": "Show all commands"},
 }
 

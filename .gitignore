@@ -101,3 +101,8 @@ cascadia/missions/missions_registry.json
 *.bak_*
 test_results_session*
 .metadata_never_index
+
+# Temporary media files — never commit
+/tmp/zyrcon_media/
+telegram/media/*
+!telegram/media/.gitkeep
