@@ -748,6 +748,24 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._crm_command(parsed_cmd.get("args", "")),
                 ).to_dict()
+            if cmd == "/crm_sleep":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._crm_command("sleep"),
+                ).to_dict()
+            if cmd == "/crm_wake":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._crm_command("wake"),
+                ).to_dict()
+            if cmd == "/x_status":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._x_command("status"),
+                ).to_dict()
             if cmd in ("/social", "/campaign"):
                 topic = cmd_parsed.get("args", "").strip() or "daily social campaign"
                 return 200, TaskResponse(
@@ -1356,7 +1374,7 @@ class ChiefService:
         if sub == "wake":
             ok = self._wake_and_wait("crm")
             return "✅ CRM awake — :8015 healthy." if ok else "⚠️ CRM wake timed out."
-        return "Usage: /crm sleep | /crm wake"
+        return "Usage: /crm_sleep | /crm_wake"
 
     def _x_command(self, args: str) -> str:
         """Post to X via the Social operator (single brain → Buffer → X).
