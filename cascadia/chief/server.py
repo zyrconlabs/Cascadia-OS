@@ -784,6 +784,30 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._fb_command("status"),
                 ).to_dict()
+            if cmd == "/ig_approve":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._ig_command("approve"),
+                ).to_dict()
+            if cmd == "/ig_skip":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._ig_command("skip"),
+                ).to_dict()
+            if cmd == "/ig_status":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._ig_command("status"),
+                ).to_dict()
+            if cmd == "/clear_image":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._clear_image_command(),
+                ).to_dict()
             if cmd in ("/social", "/campaign"):
                 topic = cmd_parsed.get("args", "").strip() or "daily social campaign"
                 return 200, TaskResponse(
@@ -1557,6 +1581,78 @@ class ChiefService:
         if nxt:
             msg += f"\nNext: post {nxt.get('position','?')} ({nxt.get('char_count','?')} chars)"
         return msg
+
+    def _ig_command(self, action: str) -> str:
+        """Instagram queue actions via Social (approval gate, image required).
+
+        action: approve | skip | status
+        """
+        social_url = "http://localhost:8011"
+        if action == "status":
+            try:
+                with urllib.request.urlopen(f"{social_url}/api/ig/queue_status", timeout=8) as r:
+                    d = json.loads(r.read().decode())
+            except Exception as exc:
+                return f"❌ Instagram status unavailable: {str(exc)[:80]}"
+            lines = ["📸 Instagram Queue\n",
+                     f"Pending: {d.get('pending','?')}   Posted: {d.get('posted','?')}"]
+            if d.get('pending', 0) == 0:
+                lines.append("\nQueue empty — load with POST /api/ig/load_queue")
+            nxt = d.get("next_post")
+            if nxt:
+                lines.append(f"Next: post {nxt.get('position','?')} "
+                             f"({nxt.get('char_count','?')} chars)")
+            lines.append("\n⚠️ Image required — send image first, then /ig_approve")
+            lines.append("Schedule: 8:00 / 12:15 / 17:30 CT")
+            return "\n".join(lines)
+
+        path = "/api/ig/approve" if action == "approve" else "/api/ig/skip"
+        try:
+            req = urllib.request.Request(
+                f"{social_url}{path}", data=b"{}", method="POST",
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                res = json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            detail = ""
+            try:
+                detail = json.loads(e.read().decode()).get("error", "")
+            except Exception:
+                pass
+            if e.code == 400 and "image" in detail.lower():
+                return ("❌ Instagram requires an image.\nSend image(s) to this chat "
+                        "first, then tap /ig_approve.")
+            if e.code == 404:
+                return ("Nothing waiting for Instagram approval. Drafts arrive "
+                        "8:00/12:15/17:30 CT." if action == "approve"
+                        else "Nothing waiting to skip.")
+            return f"❌ Instagram {action} failed: HTTP {e.code} {detail[:60]}"
+        except Exception as exc:
+            return f"❌ Instagram {action} error: {str(exc)[:80]}"
+        if not res.get("success"):
+            return f"❌ {res.get('error', action + ' failed')}"
+        if action == "approve":
+            tag = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to Instagram"
+            return (f"{tag} — post {res.get('position','?')}\n"
+                    f"Remaining in queue: {res.get('remaining','?')}")
+        msg = f"⏭ Skipped post {res.get('skipped','?')}. Pending: {res.get('pending','?')}"
+        nxt = res.get("next_post")
+        if nxt:
+            msg += f"\nNext: post {nxt.get('position','?')} ({nxt.get('char_count','?')} chars)"
+        return msg
+
+    def _clear_image_command(self) -> str:
+        """Discard any images pending in the Telegram operator's memory."""
+        try:
+            body = json.dumps({"chat_id": "1535010257"}).encode()
+            req = urllib.request.Request(
+                "http://localhost:9000/api/media/clear", data=body, method="POST",
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                n = json.loads(r.read().decode()).get("removed", 0)
+            return f"🗑 Cleared {n} pending image(s)."
+        except Exception as exc:
+            return f"❌ Could not clear images: {str(exc)[:80]}"
 
     # Fallback ports for operators that register dynamically with CREW.
     # Used when BEACON can't find the operator (duplicate CREW instances,
