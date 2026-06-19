@@ -54,6 +54,7 @@ COMMANDS: dict[str, dict] = {
     "/version":        {"operator": None,         "description": "Show running Cascadia OS version and operator count"},
     "/social":         {"operator": None,         "description": "Start a social media campaign"},
     "/campaign":       {"operator": None,         "description": "Alias for /social"},
+    "/x":              {"operator": None,         "description": "Post to X: /x <text> to post now, /x status for recent posts"},
     "/help":           {"operator": None,         "description": "Show all commands"},
 }
 
@@ -169,7 +170,8 @@ def build_help_text() -> str:
         "/archive      Archive exhausted leads",
         "/startup_report  Full system health report",
         "/preview      Preview next outreach draft",
-        "/social       Start social media campaign\n",
+        "/social       Start social media campaign",
+        "/x            Post to X (/x <text> or /x status)\n",
 
         "Or just type naturally — CHIEF understands plain English.",
         "Examples:",

@@ -724,6 +724,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._email_status(),
                 ).to_dict()
+            if cmd == "/x":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._x_command(parsed_cmd.get("args", "")),
+                ).to_dict()
             if cmd == "/crm":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -1339,6 +1345,79 @@ class ChiefService:
             ok = self._wake_and_wait("crm")
             return "✅ CRM awake — :8015 healthy." if ok else "⚠️ CRM wake timed out."
         return "Usage: /crm sleep | /crm wake"
+
+    def _x_command(self, args: str) -> str:
+        """Post to X via the Social operator (single brain → Buffer → X).
+
+          /x <text>    → post immediately
+          /x status    → recent posts + Buffer state
+          /x <text> at HH:MM | tomorrow | in N hours → scheduling (not yet enabled)
+        """
+        import re as _re
+        social_url = "http://localhost:8011"
+        body = (args or "").strip()
+
+        # ── STATUS ────────────────────────────────────────────
+        if body.lower() in ("", "status"):
+            try:
+                with urllib.request.urlopen(f"{social_url}/api/x/status", timeout=8) as r:
+                    data = json.loads(r.read().decode())
+            except Exception as exc:
+                return f"❌ X status unavailable: {str(exc)[:80]}"
+            recent = data.get("recent_posts", [])
+            buf_mode = (data.get("buffer") or {}).get("mode", "?")
+            lines = ["📊 X Posting Status\n"]
+            if recent:
+                lines.append("Recent posts:")
+                for p in recent[:3]:
+                    ts = (p.get("created_at") or "?")[:16]
+                    txt = (p.get("content") or "?")[:40]
+                    sim = " (sim)" if p.get("simulated") else ""
+                    lines.append(f"  • {ts} — {txt}…{sim}")
+            else:
+                lines.append("No posts yet.")
+            lines.append(f"\nBuffer: {buf_mode}   Limit: 280 chars/post")
+            return "\n".join(lines)
+
+        # ── SCHEDULING (not yet enabled) ──────────────────────
+        if (_re.search(r"\s+at\s+\d{1,2}:\d{2}\s*$", body, _re.I)
+                or _re.search(r"\s+tomorrow\s*$", body, _re.I)
+                or _re.search(r"\s+in\s+\d+\s+hours?\s*$", body, _re.I)):
+            return ("⏳ Scheduled posting isn't enabled yet — only immediate "
+                    "posting is available.\nDrop the time and resend to post now.")
+
+        # ── IMMEDIATE POST ────────────────────────────────────
+        content = body
+        char_count = len(content)
+        if char_count > 280:
+            return (f"❌ Too long — {char_count}/280 ({char_count - 280} over).\n"
+                    f"Trim and resend.")
+        try:
+            payload = json.dumps({"content": content, "source": "telegram"}).encode()
+            req = urllib.request.Request(
+                f"{social_url}/api/x/post", data=payload, method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=25) as r:
+                result = json.loads(r.read().decode())
+        except Exception as exc:
+            return f"❌ Social operator error: {str(exc)[:100]}"
+
+        if not result.get("success"):
+            err = str(result.get("error", "unknown"))
+            if "unreachable" in err.lower():
+                return ("❌ Buffer connector down.\n"
+                        "Run: launchctl start ai.zyrcon.buffer, then retry.")
+            if "queue" in err.lower() or "limit" in err.lower():
+                return "⚠️ Buffer queue full (free plan: 10 max). Wait, then retry."
+            return f"❌ Post failed: {err[:120]}\nChars: {char_count}/280"
+
+        if result.get("simulated"):
+            return (f"⚠️ Posted (simulated) — Buffer not configured.\n"
+                    f"Chars: {char_count}/280")
+        handle = "beast_popovich"
+        return (f"✅ Posted to X\nChars: {char_count}/280\n"
+                f"Via: Buffer → @{handle}\nID: {str(result.get('post_id', '?'))[:24]}")
 
     # Fallback ports for operators that register dynamically with CREW.
     # Used when BEACON can't find the operator (duplicate CREW instances,
