@@ -54,7 +54,7 @@ COMMANDS: dict[str, dict] = {
     "/version":        {"operator": None,         "description": "Show running Cascadia OS version and operator count"},
     "/social":         {"operator": None,         "description": "Start a social media campaign"},
     "/campaign":       {"operator": None,         "description": "Alias for /social"},
-    "/x":              {"operator": None,         "description": "Post to X: /x <text> to post now, /x status for recent posts"},
+    "/x":              {"operator": None,         "description": "Post to X: /x <text> now, /x approve | /x skip scheduled drafts, /x status"},
     "/help":           {"operator": None,         "description": "Show all commands"},
 }
 

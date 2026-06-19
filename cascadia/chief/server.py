@@ -1357,6 +1357,48 @@ class ChiefService:
         social_url = "http://localhost:8011"
         body = (args or "").strip()
 
+        # ── APPROVE / SKIP (approval gate for scheduled drafts) ──
+        if body.lower() == "approve":
+            try:
+                req = urllib.request.Request(
+                    f"{social_url}/api/x/approve", data=b"{}", method="POST",
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    res = json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    return "Nothing waiting for approval. Drafts arrive 9:00/13:00/17:00 CT."
+                return f"❌ Approve failed: HTTP {e.code}"
+            except Exception as exc:
+                return f"❌ Approve error: {str(exc)[:80]}"
+            if not res.get("success"):
+                return f"❌ {res.get('error', 'approve failed')}"
+            tag = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to X"
+            return (f"{tag} — post {res.get('position','?')}\n"
+                    f"Chars: {res.get('char_count','?')}/280\n"
+                    f"Remaining in queue: {res.get('remaining','?')}\n"
+                    f"https://x.com/beast_popovich")
+        if body.lower() == "skip":
+            try:
+                req = urllib.request.Request(
+                    f"{social_url}/api/x/skip", data=b"{}", method="POST",
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    res = json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    return "Nothing waiting to skip."
+                return f"❌ Skip failed: HTTP {e.code}"
+            except Exception as exc:
+                return f"❌ Skip error: {str(exc)[:80]}"
+            if not res.get("success"):
+                return f"❌ {res.get('error', 'skip failed')}"
+            msg = f"⏭ Skipped post {res.get('skipped','?')}. Pending: {res.get('pending','?')}"
+            nxt = res.get("next_post")
+            if nxt:
+                msg += f"\nNext: post {nxt.get('position','?')} ({nxt.get('char_count','?')} chars)"
+            return msg
+
         # ── STATUS ────────────────────────────────────────────
         if body.lower() in ("", "status"):
             try:
