@@ -730,6 +730,31 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._x_command(parsed_cmd.get("args", "")),
                 ).to_dict()
+            if cmd == "/fb":
+                _fb_text = (parsed_cmd.get("args", "") or "").strip()
+                _fb_reply = self._direct_post("facebook", _fb_text)
+                if _fb_reply == "":
+                    _fb_reply = "Usage: /fb <text> — posts directly to Facebook (or send an image first)."
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=_fb_reply,
+                ).to_dict()
+            if cmd == "/ig":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._direct_post("instagram", parsed_cmd.get("args", "")),
+                ).to_dict()
+            if cmd == "/post":
+                _all_text = (parsed_cmd.get("args", "") or "").strip()
+                _all_reply = (self._direct_post_all(_all_text) if _all_text
+                              else "Usage: /post <text> — posts to X, Facebook, and Instagram.")
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=_all_reply,
+                ).to_dict()
             if cmd == "/x_approve":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -1500,38 +1525,8 @@ class ChiefService:
             return ("⏳ Scheduled posting isn't enabled yet — only immediate "
                     "posting is available.\nDrop the time and resend to post now.")
 
-        # ── IMMEDIATE POST ────────────────────────────────────
-        content = body
-        char_count = len(content)
-        if char_count > 280:
-            return (f"❌ Too long — {char_count}/280 ({char_count - 280} over).\n"
-                    f"Trim and resend.")
-        try:
-            payload = json.dumps({"content": content, "source": "telegram"}).encode()
-            req = urllib.request.Request(
-                f"{social_url}/api/x/post", data=payload, method="POST",
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=25) as r:
-                result = json.loads(r.read().decode())
-        except Exception as exc:
-            return f"❌ Social operator error: {str(exc)[:100]}"
-
-        if not result.get("success"):
-            err = str(result.get("error", "unknown"))
-            if "unreachable" in err.lower():
-                return ("❌ Buffer connector down.\n"
-                        "Run: launchctl start ai.zyrcon.buffer, then retry.")
-            if "queue" in err.lower() or "limit" in err.lower():
-                return "⚠️ Buffer queue full (free plan: 10 max). Wait, then retry."
-            return f"❌ Post failed: {err[:120]}\nChars: {char_count}/280"
-
-        if result.get("simulated"):
-            return (f"⚠️ Posted (simulated) — Buffer not configured.\n"
-                    f"Chars: {char_count}/280")
-        handle = "beast_popovich"
-        return (f"✅ Posted to X\nChars: {char_count}/280\n"
-                f"Via: Buffer → @{handle}\nID: {str(result.get('post_id', '?'))[:24]}")
+        # ── IMMEDIATE POST (attaches any pending image) ───────
+        return self._direct_post("x", body)
 
     def _fb_command(self, action: str) -> str:
         """Facebook queue actions via the Social operator (approval gate).
@@ -1653,6 +1648,114 @@ class ChiefService:
             return f"🗑 Cleared {n} pending image(s)."
         except Exception as exc:
             return f"❌ Could not clear images: {str(exc)[:80]}"
+
+    _OWNER_CHAT = "1535010257"
+    _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
+                  "instagram": "/api/ig/post"}
+    _DIRECT_LABEL = {"x": "@beast_popovich", "facebook": "Facebook",
+                     "instagram": "Instagram"}
+
+    def _direct_post(self, platform: str, text: str, clear_after: bool = True) -> str:
+        """Post immediately to a platform (no queue, no gate).
+
+        Attaches any image(s) pending in the Telegram operator. Because Buffer
+        deletes the files it receives, we pass COPIES (so a later /post platform
+        still has them) and clear the originals after, unless clear_after=False.
+        Returns a reply string, or '' to signal 'no content' (caller shows usage).
+        """
+        import os as _os, uuid as _uuid, shutil
+        text = (text or "").strip()
+
+        # Fetch pending images from the Telegram operator.
+        orig_paths = []
+        try:
+            with urllib.request.urlopen(
+                f"http://localhost:9000/api/media/pending?chat_id={self._OWNER_CHAT}",
+                timeout=5) as r:
+                orig_paths = json.loads(r.read().decode()).get("image_paths", []) or []
+        except Exception:
+            pass
+
+        if platform == "instagram" and not orig_paths:
+            return ("❌ Instagram requires an image.\nSend an image to this chat "
+                    "first, then /ig (optionally with a caption).")
+        if not text and not orig_paths:
+            return ""  # nothing to post → caller shows usage
+        if platform == "x" and text and len(text) > 280:
+            return f"❌ Too long for X — {len(text)}/280. Trim and resend."
+
+        # Per-platform copies so Buffer's delete doesn't starve other platforms.
+        copies = []
+        for src in orig_paths:
+            try:
+                dst = f"/tmp/zyrcon_media/{_uuid.uuid4().hex}{_os.path.splitext(src)[1]}"
+                shutil.copy2(src, dst)
+                copies.append(dst)
+            except Exception as exc:
+                log.warning("direct_post image copy failed %s: %s", src, exc)
+
+        try:
+            body = json.dumps({"content": text, "image_paths": copies,
+                               "source": "direct_command"}).encode()
+            req = urllib.request.Request(
+                f"http://localhost:8011{self._DIRECT_EP[platform]}", data=body,
+                method="POST", headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                res = json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            for c in copies:
+                try:
+                    _os.remove(c)
+                except Exception:
+                    pass
+            detail = ""
+            try:
+                detail = json.loads(e.read().decode()).get("error", "")
+            except Exception:
+                pass
+            return f"❌ {platform.title()}: {detail[:80] or ('HTTP ' + str(e.code))}"
+        except Exception as exc:
+            for c in copies:
+                try:
+                    _os.remove(c)
+                except Exception:
+                    pass
+            return f"❌ {platform.title()} error: {str(exc)[:70]}"
+
+        if clear_after and orig_paths:
+            try:
+                cb = json.dumps({"chat_id": self._OWNER_CHAT}).encode()
+                urllib.request.urlopen(urllib.request.Request(
+                    "http://localhost:9000/api/media/clear", data=cb, method="POST",
+                    headers={"Content-Type": "application/json"}), timeout=5)
+            except Exception:
+                pass
+
+        if not res.get("success"):
+            return f"❌ {platform.title()}: {str(res.get('error', 'failed'))[:80]}"
+        tag = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to"
+        note = f" + {len(copies)} image(s)" if copies else ""
+        chars = f"{len(text)} chars" if text else "image only"
+        return f"{tag} {self._DIRECT_LABEL[platform]}\n{chars}{note} · via Buffer"
+
+    def _direct_post_all(self, text: str) -> str:
+        """Post to X + Facebook + Instagram at once (/post). Image optional;
+        Instagram is skipped with a note if no image is pending."""
+        lines = []
+        for platform in ("x", "facebook", "instagram"):
+            r = self._direct_post(platform, text, clear_after=False)
+            if r == "":
+                r = "(no content)"
+            lines.append(f"{self._DIRECT_LABEL[platform]}: {r.splitlines()[0]}")
+        # Clear pending images once, after all platforms have their copies.
+        try:
+            cb = json.dumps({"chat_id": self._OWNER_CHAT}).encode()
+            urllib.request.urlopen(urllib.request.Request(
+                "http://localhost:9000/api/media/clear", data=cb, method="POST",
+                headers={"Content-Type": "application/json"}), timeout=5)
+        except Exception:
+            pass
+        return "📤 Multi-platform post\n" + "\n".join(lines)
 
     # Fallback ports for operators that register dynamically with CREW.
     # Used when BEACON can't find the operator (duplicate CREW instances,
