@@ -60,6 +60,9 @@ COMMANDS: dict[str, dict] = {
     "/x_status":       {"operator": None,         "description": "X queue depth + recent posts"},
     "/x_approve":      {"operator": None,         "description": "Approve the scheduled X draft and send it"},
     "/x_skip":         {"operator": None,         "description": "Skip the scheduled X draft, move to next"},
+    "/fb_status":      {"operator": None,         "description": "Facebook queue depth + recent posts"},
+    "/fb_approve":     {"operator": None,         "description": "Approve the scheduled Facebook draft and send it"},
+    "/fb_skip":        {"operator": None,         "description": "Skip the scheduled Facebook draft, move to next"},
     "/help":           {"operator": None,         "description": "Show all commands"},
 }
 
@@ -177,7 +180,8 @@ def build_help_text() -> str:
         "/preview      Preview next outreach draft",
         "/social       Start social media campaign",
         "/x            Post to X (/x <text>)   /x_status  Queue + recent",
-        "/x_approve    Approve scheduled X draft   /x_skip  Skip it\n",
+        "/x_approve    Approve scheduled X draft   /x_skip  Skip it",
+        "/fb_status    Facebook queue   /fb_approve  Approve   /fb_skip  Skip\n",
 
         "Or just type naturally — CHIEF understands plain English.",
         "Examples:",
