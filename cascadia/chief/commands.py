@@ -70,6 +70,8 @@ COMMANDS: dict[str, dict] = {
     "/ig_approve":     {"operator": None,         "description": "Approve the Instagram draft — send image first"},
     "/ig_skip":        {"operator": None,         "description": "Skip the scheduled Instagram draft, move to next"},
     "/clear_image":    {"operator": None,         "description": "Discard pending images sent to the bot"},
+    "/email_approve":  {"operator": None,         "description": "Approve oldest Scout email reply draft and send it"},
+    "/email_skip":     {"operator": None,         "description": "Skip oldest Scout email reply draft (discard without sending)"},
     "/help":           {"operator": None,         "description": "Show all commands"},
 }
 

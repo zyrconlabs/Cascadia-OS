@@ -833,6 +833,18 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._ig_command("skip"),
                 ).to_dict()
+            if cmd == "/email_approve":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._email_approve_command(),
+                ).to_dict()
+            if cmd == "/email_skip":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._email_skip_command(),
+                ).to_dict()
             if cmd == "/ig_status":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -1734,6 +1746,79 @@ class ChiefService:
 
         return (f"❌ Unknown action: {action}\n"
                 f"Use /lead_{lead_id}_contacted or /lead_{lead_id}_skip")
+
+    def _email_approve_command(self) -> str:
+        """Approve and send the oldest pending Scout email reply draft."""
+        email_op = "http://localhost:8010"
+        try:
+            # Check what's pending first
+            with urllib.request.urlopen(
+                    f"{email_op}/api/email/reply_drafts", timeout=5) as r:
+                data = json.loads(r.read())
+        except Exception as exc:
+            return f"❌ Email operator unreachable: {str(exc)[:80]}"
+
+        if data.get('count', 0) == 0:
+            return "📭 No pending Scout reply drafts."
+
+        draft = data['drafts'][0]
+        to    = draft.get('to', '?')
+        subj  = draft.get('subject', '?')[:55]
+        stage = draft.get('stage', '?')
+        miss  = draft.get('missing', [])
+
+        try:
+            req = urllib.request.Request(
+                f"{email_op}/api/email/approve_reply",
+                data=b'{}', method='POST',
+                headers={'Content-Type': 'application/json'},
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                result = json.loads(r.read())
+        except Exception as exc:
+            return f"❌ Approve failed: {str(exc)[:80]}"
+
+        if result.get('ok'):
+            miss_str = f"  Missing collected: {', '.join(miss)}" if miss else ""
+            return (
+                f"✅ Scout reply sent\n"
+                f"To:      {to}\n"
+                f"Subject: {subj}\n"
+                f"Stage:   {stage}/5{miss_str}"
+            )
+        return f"❌ Send failed: {result.get('error', 'unknown')}"
+
+    def _email_skip_command(self) -> str:
+        """Skip (discard) the oldest pending Scout email reply draft."""
+        email_op = "http://localhost:8010"
+        try:
+            with urllib.request.urlopen(
+                    f"{email_op}/api/email/reply_drafts", timeout=5) as r:
+                data = json.loads(r.read())
+        except Exception as exc:
+            return f"❌ Email operator unreachable: {str(exc)[:80]}"
+
+        if data.get('count', 0) == 0:
+            return "📭 No pending Scout reply drafts."
+
+        draft = data['drafts'][0]
+        try:
+            req = urllib.request.Request(
+                f"{email_op}/api/email/skip_reply",
+                data=b'{}', method='POST',
+                headers={'Content-Type': 'application/json'},
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                result = json.loads(r.read())
+        except Exception as exc:
+            return f"❌ Skip failed: {str(exc)[:80]}"
+
+        remaining = data.get('count', 1) - 1
+        return (
+            f"🗑 Scout reply discarded\n"
+            f"To: {draft.get('to', '?')}\n"
+            f"Remaining drafts: {remaining}"
+        )
 
     _OWNER_CHAT = "1535010257"
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
