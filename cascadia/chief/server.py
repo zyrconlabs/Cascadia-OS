@@ -1735,6 +1735,18 @@ class ChiefService:
         if action == "skip":
             try:
                 req = urllib.request.Request(
+                    f"{crm}/api/crm/contact/{lead_id}/dismiss",
+                    data=b"{}", method="POST",
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=5):
+                    pass
+                return f"🚫 Lead #{lead_id} dismissed\nReminders stopped permanently."
+            except Exception as exc:
+                return f"❌ CRM error: {str(exc)[:80]}"
+
+        if action == "snooze":
+            try:
+                req = urllib.request.Request(
                     f"{crm}/api/crm/contact/{lead_id}/snooze",
                     data=b"{}", method="POST",
                     headers={"Content-Type": "application/json"})
@@ -1745,7 +1757,10 @@ class ChiefService:
                 return f"❌ CRM error: {str(exc)[:80]}"
 
         return (f"❌ Unknown action: {action}\n"
-                f"Use /lead_{lead_id}_contacted or /lead_{lead_id}_skip")
+                f"/lead_{lead_id}           → view\n"
+                f"/lead_{lead_id}_contacted → mark contacted\n"
+                f"/lead_{lead_id}_skip      → dismiss permanently\n"
+                f"/lead_{lead_id}_snooze    → snooze 1 hour")
 
     def _email_approve_command(self) -> str:
         """Approve and send the oldest pending Scout email reply draft."""
