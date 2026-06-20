@@ -643,6 +643,18 @@ class ChiefService:
         if parsed_cmd is not None:
             cmd = parsed_cmd["command"]
             if parsed_cmd.get("unknown"):
+                # Dynamic /lead_NNN[_action] commands are not in the static
+                # COMMANDS registry but are valid — intercept before rejecting.
+                if cmd.startswith("/lead_"):
+                    parts   = cmd[6:].split("_")   # strip "/lead_"
+                    lead_id = parts[0]
+                    action  = parts[1] if len(parts) > 1 else "view"
+                    if lead_id.isdigit():
+                        return 200, TaskResponse(
+                            ok=True, task_id=task_id,
+                            selected_type="status", selected_target=cmd,
+                            reply_text=self._lead_command(int(lead_id), action),
+                        ).to_dict()
                 reply_text = (
                     f"I don't know that command: {cmd}\n"
                     f"Try /help to see what's available."
@@ -1648,6 +1660,80 @@ class ChiefService:
             return f"🗑 Cleared {n} pending image(s)."
         except Exception as exc:
             return f"❌ Could not clear images: {str(exc)[:80]}"
+
+    def _lead_command(self, lead_id: int, action: str = "view") -> str:
+        """Handle /lead_NNN[_action] hot lead commands.
+
+        action: view (default) | contacted | skip
+        """
+        crm = "http://localhost:8015"
+
+        if action == "view":
+            try:
+                with urllib.request.urlopen(
+                        f"{crm}/api/contact/{lead_id}", timeout=5) as r:
+                    d = json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:
+                return f"❌ Lead {lead_id} not found (HTTP {e.code})"
+            except Exception as exc:
+                return f"❌ CRM error: {str(exc)[:80]}"
+            if not d.get("success"):
+                return f"❌ {d.get('error', 'not found')}"
+            c     = d["contact"]
+            name  = c.get("contact_name") or "Unknown"
+            bname = c.get("business_name") or "Unknown"
+            email = c.get("email") or "?"
+            phone = c.get("phone") or "not collected"
+            btype = c.get("business_type") or ""
+            city  = c.get("city") or ""
+            src   = c.get("hot_lead_source") or ""
+            stage = c.get("conversation_stage") or 0
+            booked = c.get("appointment_booked", 0)
+            miss  = [f for f in ("contact_name", "phone") if not c.get(f)]
+            loc   = f" · {city}" if city else ""
+            bt    = f" ({btype})" if btype else ""
+            return (
+                f"📋 Lead #{lead_id}\n"
+                f"{'─'*20}\n"
+                f"👤 {name}\n"
+                f"🏢 {bname}{bt}{loc}\n"
+                f"📧 {email}\n"
+                f"📱 {phone}\n"
+                f"{'─'*20}\n"
+                f"Source: {src}  Stage: {stage}/5\n"
+                f"Booked: {'✓' if booked else '✗'}\n"
+                f"Missing: {', '.join(miss) if miss else 'none'}\n"
+                f"{'─'*20}\n"
+                f"/lead_{lead_id}_contacted\n"
+                f"/lead_{lead_id}_skip"
+            )
+
+        if action == "contacted":
+            try:
+                req = urllib.request.Request(
+                    f"{crm}/api/crm/contact/{lead_id}/mark_contacted",
+                    data=b"{}", method="POST",
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=5):
+                    pass
+                return f"✅ Lead #{lead_id} marked contacted\nReminders stopped."
+            except Exception as exc:
+                return f"❌ CRM error: {str(exc)[:80]}"
+
+        if action == "skip":
+            try:
+                req = urllib.request.Request(
+                    f"{crm}/api/crm/contact/{lead_id}/snooze",
+                    data=b"{}", method="POST",
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=5):
+                    pass
+                return f"⏸ Lead #{lead_id} snoozed 1 hour\nReminders resume after 1h."
+            except Exception as exc:
+                return f"❌ CRM error: {str(exc)[:80]}"
+
+        return (f"❌ Unknown action: {action}\n"
+                f"Use /lead_{lead_id}_contacted or /lead_{lead_id}_skip")
 
     _OWNER_CHAT = "1535010257"
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
