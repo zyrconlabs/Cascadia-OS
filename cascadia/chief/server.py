@@ -655,6 +655,20 @@ class ChiefService:
                             selected_type="status", selected_target=cmd,
                             reply_text=self._lead_command(int(lead_id), action),
                         ).to_dict()
+                if cmd.startswith("/wp_approve_"):
+                    draft_id = cmd[len("/wp_approve_"):]
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._wp_command(draft_id, "approve"),
+                    ).to_dict()
+                if cmd.startswith("/wp_skip_"):
+                    draft_id = cmd[len("/wp_skip_"):]
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._wp_command(draft_id, "skip"),
+                    ).to_dict()
                 reply_text = (
                     f"I don't know that command: {cmd}\n"
                     f"Try /help to see what's available."
@@ -1834,6 +1848,37 @@ class ChiefService:
             f"To: {draft.get('to', '?')}\n"
             f"Remaining drafts: {remaining}"
         )
+
+    def _wp_command(self, draft_id: str, action: str = "approve") -> str:
+        """Handle /wp_approve_ID (publish) and /wp_skip_ID (delete draft)."""
+        WP = "http://localhost:9008"
+        endpoint = (
+            f"{WP}/api/wordpress/approve/{draft_id}"
+            if action == "approve"
+            else f"{WP}/api/wordpress/skip/{draft_id}"
+        )
+        try:
+            req = urllib.request.Request(
+                endpoint, data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=15) as r:
+                result = json.loads(r.read())
+        except Exception as exc:
+            return f"❌ WordPress connector error: {str(exc)[:80]}"
+
+        if result.get("success"):
+            if action == "approve":
+                url = result.get("public_url", "")
+                return f"✅ WordPress post published\n🔗 {url}"
+            else:
+                return f"⏭ WordPress draft deleted.\nDraft {draft_id} removed."
+        reason = result.get("reason", "")
+        if reason == "credentials_missing":
+            return "⚠️ WP credentials not yet configured in VAULT."
+        error = result.get("error", "Unknown error")
+        return f"❌ WP error: {error[:80]}"
 
     _OWNER_CHAT = "1535010257"
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
