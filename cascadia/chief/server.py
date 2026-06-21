@@ -1909,7 +1909,7 @@ class ChiefService:
             TELEGRAM   = "http://localhost:9000/send"
             OWNER_CHAT = "1535010257"
             payload = json.dumps(
-                {"chat_id": OWNER_CHAT, "text": text}
+                {"chat_id": OWNER_CHAT, "text": text, "parse_mode": "Markdown"}
             ).encode()
             req2 = urllib.request.Request(
                 TELEGRAM, data=payload,
