@@ -669,6 +669,16 @@ class ChiefService:
                         selected_type="status", selected_target=cmd,
                         reply_text=self._wp_command(draft_id, "skip"),
                     ).to_dict()
+                if cmd.startswith("/odometer"):
+                    # /odometer, /odometer_day, /odometer_week,
+                    # /odometer_month, /odometer_all
+                    suffix = cmd[len("/odometer"):]
+                    period = suffix.lstrip("_") or "default"
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._odometer_command(period),
+                    ).to_dict()
                 reply_text = (
                     f"I don't know that command: {cmd}\n"
                     f"Try /help to see what's available."
@@ -1879,6 +1889,37 @@ class ChiefService:
             return "⚠️ WP credentials not yet configured in VAULT."
         error = result.get("error", "Unknown error")
         return f"❌ WP error: {error[:80]}"
+
+    def _odometer_command(self, period: str = "default") -> str:
+        """Handle /odometer [day|week|month|all]. Fetches token report."""
+        ODOM = "http://localhost:8028"
+        valid = {"day", "week", "month", "all", "default"}
+        if period not in valid:
+            period = "default"
+        try:
+            req = urllib.request.Request(
+                f"{ODOM}/api/tokens/format?period={period}",
+                method="GET"
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                d = json.loads(r.read())
+            text = d.get("text", "")
+            if not text:
+                return "❌ Odometer returned empty report"
+            TELEGRAM   = "http://localhost:9000/send"
+            OWNER_CHAT = "1535010257"
+            payload = json.dumps(
+                {"chat_id": OWNER_CHAT, "text": text}
+            ).encode()
+            req2 = urllib.request.Request(
+                TELEGRAM, data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            urllib.request.urlopen(req2, timeout=5)
+            return "✓ Odometer sent"
+        except Exception as e:
+            return f"❌ Odometer error: {str(e)[:80]}"
 
     _OWNER_CHAT = "1535010257"
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
