@@ -170,7 +170,7 @@ def _build_inline_keyboard(rows: list[list[dict]]) -> dict:
     }
 
 
-_MENU_TEXT = "🏠 *Zyrcon Command Center*\nSelect a mission area:"
+_MENU_TEXT = "🏠 <b>Zyrcon Command Center</b>\nSelect a mission area:"
 
 def _main_menu_keyboard(counts: dict) -> dict:
     p = counts["pending"]
@@ -1909,7 +1909,7 @@ class ChiefService:
             TELEGRAM   = "http://localhost:9000/send"
             OWNER_CHAT = "1535010257"
             payload = json.dumps(
-                {"chat_id": OWNER_CHAT, "text": text, "parse_mode": "Markdown"}
+                {"chat_id": OWNER_CHAT, "text": text, "parse_mode": "HTML"}
             ).encode()
             req2 = urllib.request.Request(
                 TELEGRAM, data=payload,
@@ -3590,7 +3590,7 @@ class ChiefService:
                     {
                         "chat_id":      chat_id,
                         "text":         _MENU_TEXT,
-                        "parse_mode":   "Markdown",
+                        "parse_mode":   "HTML",
                         "reply_markup": markup,
                     },
                     timeout=8,
@@ -3631,7 +3631,7 @@ class ChiefService:
                 "chat_id":    chat_id,
                 "message_id": message_id,
                 "text":       text,
-                "parse_mode": "Markdown",
+                "parse_mode": "HTML",
             }
             if markup:
                 tg_payload["reply_markup"] = markup
