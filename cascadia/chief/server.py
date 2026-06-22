@@ -679,6 +679,33 @@ class ChiefService:
                         selected_type="status", selected_target=cmd,
                         reply_text=self._odometer_command(period),
                     ).to_dict()
+                if cmd == "/demo_status":
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._demo_command("status"),
+                    ).to_dict()
+                if cmd.startswith("/demo_start"):
+                    prospect_id = cmd[len("/demo_start"):].strip()
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._demo_command("start", prospect_id),
+                    ).to_dict()
+                if cmd.startswith("/demo_reset"):
+                    prospect_id = cmd[len("/demo_reset"):].strip()
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._demo_command("reset", prospect_id),
+                    ).to_dict()
+                if cmd.startswith("/demo_close"):
+                    prospect_id = cmd[len("/demo_close"):].strip()
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._demo_command("close", prospect_id),
+                    ).to_dict()
                 reply_text = (
                     f"I don't know that command: {cmd}\n"
                     f"Try /help to see what's available."
@@ -1890,6 +1917,69 @@ class ChiefService:
         error = result.get("error", "Unknown error")
         return f"❌ WP error: {error[:80]}"
 
+    def _demo_command(self, action: str = "status", chat_id: str = "") -> str:
+        """Handle /demo_start /demo_status /demo_reset /demo_close."""
+        DEMO = "http://localhost:8029"
+
+        def _post(path: str, body: dict) -> dict:
+            payload = json.dumps(body).encode()
+            req = urllib.request.Request(
+                f"{DEMO}{path}", data=payload,
+                headers={"Content-Type": "application/json"}, method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return json.loads(r.read())
+
+        try:
+            if action == "start":
+                if not chat_id:
+                    return "Usage: /demo_start [prospect_chat_id]"
+                d = _post("/api/demo/start", {"chat_id": chat_id})
+                if d.get("success"):
+                    return f"🚀 Demo started for {chat_id}\nPhase 1 greeting sent."
+                return f"❌ {d.get('error', 'Failed')}"
+
+            if action == "status":
+                req = urllib.request.Request(f"{DEMO}/api/demo/sessions", method="GET")
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    d = json.loads(r.read())
+                sessions = d.get("sessions", [])
+                if not sessions:
+                    return "📊 No active demo sessions"
+                lines = [f"📊 Active demos: {len(sessions)}"]
+                for s in sessions[:5]:
+                    name  = s.get("name", "") or "collecting..."
+                    biz   = s.get("business_name", "") or "?"
+                    phase = s.get("phase", 1)
+                    lines.append(
+                        f"  👤 {name} · {biz}\n"
+                        f"     Phase {phase}/5 · {s.get('industry', '?')}"
+                    )
+                return "\n".join(lines)
+
+            if action == "reset":
+                if not chat_id:
+                    return "Usage: /demo_reset [prospect_chat_id]"
+                _post(f"/api/demo/reset/{chat_id}", {})
+                return f"🔄 Demo reset for {chat_id}"
+
+            if action == "close":
+                if not chat_id:
+                    return "Usage: /demo_close [prospect_chat_id]"
+                _post(f"/api/demo/close/{chat_id}", {"converted": True})
+                return f"✅ Demo closed (converted) for {chat_id}"
+
+        except Exception as e:
+            return f"❌ Demo error: {str(e)[:100]}"
+
+        return (
+            "Demo commands:\n"
+            "/demo_status\n"
+            "/demo_start [chat_id]\n"
+            "/demo_reset [chat_id]\n"
+            "/demo_close [chat_id]"
+        )
+
     def _odometer_command(self, period: str = "default") -> str:
         """Handle /odometer [day|week|month|all]. Fetches token report."""
         ODOM = "http://localhost:8028"
@@ -2963,7 +3053,6 @@ class ChiefService:
                     except Exception as exc:
                         self.runtime.logger.warning(
                             "CHIEF approved callback (deferred) failed: %s", exc)
-                    _drop()
                     try:
                         _http_post(f"{TELEGRAM_URL}/send",
                                    {"chat_id": chat_id,
@@ -2975,6 +3064,7 @@ class ChiefService:
                     self.runtime.logger.error(
                         "CHIEF deferred send failed for %s: %s", biz, res)
 
+            _drop()
             threading.Thread(target=_deferred, daemon=True,
                              name=f"deferred-send-{row_id}").start()
             return f"✅ Queued — sending at {window_str}"
@@ -3542,6 +3632,9 @@ class ChiefService:
                 return int(m.group(1)) if m else 0
 
             free_gb       = pages("Pages free")       * page_size / 1e9
+            inactive_gb   = pages("Pages inactive")   * page_size / 1e9
+            spec_gb       = pages("Pages speculative") * page_size / 1e9
+            available_gb  = free_gb + inactive_gb + spec_gb
             active_gb     = pages("Pages active")     * page_size / 1e9
             wired_gb      = pages("Pages wired down") * page_size / 1e9
             compressed_gb = pages("Pages occupied by compressor") * page_size / 1e9
@@ -3566,7 +3659,7 @@ class ChiefService:
                 f"  Used:  {used_mb:.0f} MB / {total_mb:.0f} MB ({pct:.0f}%)\n"
                 f"  Free:  {free_mb:.0f} MB\n\n"
                 f"MEMORY\n"
-                f"  Free:       {free_gb:.1f} GB\n"
+                f"  Available:  {available_gb:.1f} GB\n"
                 f"  Active:     {active_gb:.1f} GB\n"
                 f"  Wired:      {wired_gb:.1f} GB\n"
                 f"  Compressed: {compressed_gb:.1f} GB\n\n"
