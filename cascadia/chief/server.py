@@ -669,11 +669,9 @@ class ChiefService:
                         selected_type="status", selected_target=cmd,
                         reply_text=self._wp_command(draft_id, "skip"),
                     ).to_dict()
-                if cmd.startswith("/odometer") or cmd.startswith("/token"):
-                    # /odometer, /odometer_day, /odometer_week,
-                    # /odometer_month, /odometer_all
+                if cmd.startswith("/token"):
                     # /token, /token_day, /token_week, /token_month, /token_all
-                    suffix = cmd[len("/odometer"):] if cmd.startswith("/odometer") else cmd[len("/token"):]
+                    suffix = cmd[len("/token"):]
                     period = suffix.lstrip("_") or "default"
                     return 200, TaskResponse(
                         ok=True, task_id=task_id,
@@ -1982,7 +1980,7 @@ class ChiefService:
         )
 
     def _odometer_command(self, period: str = "default") -> str:
-        """Handle /odometer [day|week|month|all]. Fetches token report."""
+        """Handle /token [day|week|month|all]. Fetches token report."""
         ODOM = "http://localhost:8028"
         valid = {"day", "week", "month", "all", "default"}
         if period not in valid:
