@@ -669,10 +669,11 @@ class ChiefService:
                         selected_type="status", selected_target=cmd,
                         reply_text=self._wp_command(draft_id, "skip"),
                     ).to_dict()
-                if cmd.startswith("/odometer"):
+                if cmd.startswith("/odometer") or cmd.startswith("/token"):
                     # /odometer, /odometer_day, /odometer_week,
                     # /odometer_month, /odometer_all
-                    suffix = cmd[len("/odometer"):]
+                    # /token, /token_day, /token_week, /token_month, /token_all
+                    suffix = cmd[len("/odometer"):] if cmd.startswith("/odometer") else cmd[len("/token"):]
                     period = suffix.lstrip("_") or "default"
                     return 200, TaskResponse(
                         ok=True, task_id=task_id,
