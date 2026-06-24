@@ -3510,7 +3510,7 @@ class ChiefService:
         for row_id, entry in outreach.items():
             biz = entry.get("business_name", f"lead #{row_id}")
             try:
-                _tg(self._handle_outreach_decision("approve", row_id, entry, chat_id))
+                self._handle_outreach_decision("approve", row_id, entry, chat_id)
                 approved.append(biz)
             except Exception as exc:
                 self.runtime.logger.error("approve_all outreach %s failed: %s", row_id, exc)
@@ -3524,7 +3524,7 @@ class ChiefService:
         for row_id, entry in quotes.items():
             biz = entry.get("business_name", f"quote #{row_id}")
             try:
-                _tg(self._handle_approval("approve", row_id, chat_id))
+                self._handle_approval("approve", row_id, chat_id)
                 approved.append(biz)
             except Exception as exc:
                 self.runtime.logger.error("approve_all quote %s failed: %s", row_id, exc)
@@ -3532,8 +3532,7 @@ class ChiefService:
             _time.sleep(0.5)
 
         if approved:
-            _tg("✅ Approved {} item(s):\n{}".format(
-                len(approved), "\n".join(f"• {b}" for b in approved)))
+            _tg(f"✅ Queued {len(approved)} — approved and sending")
         else:
             _tg("✅ Nothing pending — queue is empty.")
 
