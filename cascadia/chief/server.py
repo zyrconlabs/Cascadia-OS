@@ -997,11 +997,17 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._approve_all_platform("instagram"),
                 ).to_dict()
-            if cmd in ("/ig_gen_image", "/ig_generate", "/ig_regen"):
+            if cmd in ("/ig_gen_image", "/ig_generate"):
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
                     selected_type="status", selected_target=cmd,
                     reply_text=self._ig_gen_image_command(),
+                ).to_dict()
+            if cmd == "/ig_regen":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._ig_regen_command(),
                 ).to_dict()
             if cmd == "/email_approve":
                 return 200, TaskResponse(
@@ -1839,6 +1845,17 @@ class ChiefService:
         if not res.get("ok"):
             return f"❌ {res.get('error', 'gen_image failed')}"
         return (f"⏳ Generating… image will appear in Telegram shortly.\n"
+                f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
+
+    def _ig_regen_command(self) -> str:
+        """POST /api/ig/regen → new Pollinations seed for the same post."""
+        try:
+            res = _http_post("http://localhost:8011/api/ig/regen", {}, timeout=125)
+        except Exception as exc:
+            return f"❌ Image regen error: {str(exc)[:80]}"
+        if not res.get("ok"):
+            return f"❌ {res.get('error', 'regen failed')}"
+        return (f"🔄 Regenerating… new image will appear in Telegram.\n"
                 f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
 
     def _approve_all_platform(self, platform: str) -> str:
