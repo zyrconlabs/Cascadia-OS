@@ -1046,6 +1046,13 @@ class ChiefService:
                     selected_type="social", selected_target="social_generate",
                     reply_text=self._social_generate_command(),
                 ).to_dict()
+            if cmd in ("/x_post_now", "/fb_post_now", "/ig_post_now"):
+                platform = cmd.split("_")[0].lstrip("/")  # x / fb / ig
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="social", selected_target=cmd.lstrip("/"),
+                    reply_text=self._post_now_command(platform),
+                ).to_dict()
             if cmd == "/menu":
                 self._handle_menu(chat_id)
                 return 200, {"ok": True, "task_id": task_id, "silent": True}
@@ -1841,6 +1848,25 @@ class ChiefService:
         if nxt:
             msg += f"\nNext: post {nxt.get('position','?')} ({nxt.get('char_count','?')} chars)"
         return msg
+
+    def _post_now_command(self, platform: str) -> str:
+        """POST /api/{platform}/post_now → force-draft next pending post to Telegram."""
+        label = {"x": "X", "fb": "Facebook", "ig": "Instagram"}.get(platform, platform)
+        try:
+            res = _http_post(f"http://localhost:8011/api/{platform}/post_now", {}, timeout=20)
+        except Exception as exc:
+            return f"❌ {label} post_now error: {str(exc)[:80]}"
+        if res.get("queued") == 0 or res.get("message", "").startswith("queue empty"):
+            return f"📭 {label} queue is empty — nothing to draft."
+        if res.get("status") == "awaiting_approval" and res.get("reminder"):
+            pos = res.get("position", "?")
+            return f"⏳ {label} post {pos} is already awaiting your approval."
+        if res.get("success") or res.get("ok"):
+            pos = res.get("position", "?")
+            chars = res.get("char_count", "")
+            suffix = f" ({chars}/280)" if platform == "x" and chars else ""
+            return f"📝 {label} post {pos} drafted to Telegram{suffix}.\nUse /{platform}_approve to send."
+        return f"⚠️ {label}: {res.get('error', 'unexpected response')}"
 
     def _social_generate_command(self) -> str:
         """POST /api/generate_batch → fresh social posts across X + FB + IG."""
