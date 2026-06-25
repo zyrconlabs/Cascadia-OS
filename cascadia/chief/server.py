@@ -1683,10 +1683,12 @@ class ChiefService:
                 return f"❌ Approve error: {str(exc)[:80]}"
             if not res.get("success"):
                 return f"❌ {res.get('error', 'approve failed')}"
-            tag = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to X"
-            return (f"{tag} — post {res.get('position','?')}\n"
-                    f"Chars: {res.get('char_count','?')}/280\n"
-                    f"Remaining in queue: {res.get('remaining','?')}\n"
+            tag    = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to X"
+            rating = res.get("rating", "")
+            stars  = f" · ⭐ {rating}/10" if rating else ""
+            return (f"{tag}\n"
+                    f"Post {res.get('position','?')} · {res.get('char_count','?')} chars{stars}\n"
+                    f"{res.get('remaining','?')} remaining in queue\n"
                     f"https://x.com/beast_popovich")
         if body.lower() == "skip":
             try:
@@ -1780,10 +1782,12 @@ class ChiefService:
         if not res.get("success"):
             return f"❌ {res.get('error', action + ' failed')}"
         if action == "approve":
-            tag = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to Facebook"
-            return (f"{tag} — post {res.get('position','?')}\n"
-                    f"Chars: {res.get('char_count','?')}/450\n"
-                    f"Remaining in queue: {res.get('remaining','?')}")
+            tag    = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to Facebook"
+            rating = res.get("rating", "")
+            stars  = f" · ⭐ {rating}/10" if rating else ""
+            return (f"{tag}\n"
+                    f"Post {res.get('position','?')} · {res.get('char_count','?')} chars{stars}\n"
+                    f"{res.get('remaining','?')} remaining in queue")
         msg = f"⏭ Skipped post {res.get('skipped','?')}. Pending: {res.get('pending','?')}"
         nxt = res.get("next_post")
         if nxt:
@@ -1840,9 +1844,12 @@ class ChiefService:
         if not res.get("success"):
             return f"❌ {res.get('error', action + ' failed')}"
         if action == "approve":
-            tag = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to Instagram"
-            return (f"{tag} — post {res.get('position','?')}\n"
-                    f"Remaining in queue: {res.get('remaining','?')}")
+            tag    = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to Instagram"
+            rating = res.get("rating", "")
+            stars  = f" · ⭐ {rating}/10" if rating else ""
+            return (f"{tag}\n"
+                    f"Post {res.get('position','?')} · {res.get('char_count','?')} chars{stars}\n"
+                    f"{res.get('remaining','?')} remaining in queue")
         msg = f"⏭ Skipped post {res.get('skipped','?')}. Pending: {res.get('pending','?')}"
         nxt = res.get("next_post")
         if nxt:
@@ -2318,7 +2325,7 @@ class ChiefService:
         tag = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to"
         note = f" + {len(copies)} image(s)" if copies else ""
         chars = f"{len(text)} chars" if text else "image only"
-        return f"{tag} {self._DIRECT_LABEL[platform]}\n{chars}{note} · via Buffer"
+        return f"{tag} {self._DIRECT_LABEL[platform]}\n{chars}{note}"
 
     def _direct_post_all(self, text: str) -> str:
         """Post to X + Facebook + Instagram at once (/post). Image optional;
