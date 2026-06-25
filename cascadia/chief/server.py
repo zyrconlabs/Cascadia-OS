@@ -1833,7 +1833,7 @@ class ChiefService:
     def _ig_gen_image_command(self) -> str:
         """POST /api/ig/gen_image → LLM prompt + Pollinations download + Telegram photo preview."""
         try:
-            res = _http_post("http://localhost:8011/api/ig/gen_image", {}, timeout=90)
+            res = _http_post("http://localhost:8011/api/ig/gen_image", {}, timeout=125)
         except Exception as exc:
             return f"❌ Image gen error: {str(exc)[:80]}"
         if not res.get("ok"):
