@@ -1040,6 +1040,12 @@ class ChiefService:
                     selected_type="social", selected_target="social",
                     reply_text=self._social_start(topic, chat_id),
                 ).to_dict()
+            if cmd == "/social_generate":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="social", selected_target="social_generate",
+                    reply_text=self._social_generate_command(),
+                ).to_dict()
             if cmd == "/menu":
                 self._handle_menu(chat_id)
                 return 200, {"ok": True, "task_id": task_id, "silent": True}
@@ -1835,6 +1841,29 @@ class ChiefService:
         if nxt:
             msg += f"\nNext: post {nxt.get('position','?')} ({nxt.get('char_count','?')} chars)"
         return msg
+
+    def _social_generate_command(self) -> str:
+        """POST /api/generate_batch → fresh social posts across X + FB + IG."""
+        try:
+            res = _http_post(
+                "http://localhost:8011/api/generate_batch",
+                {"campaign_duration": "daily", "platforms": ["x", "facebook", "instagram"]},
+                timeout=120,
+            )
+        except Exception as exc:
+            return f"❌ Generate failed: {str(exc)[:80]}"
+        if not res.get("ok"):
+            return f"❌ {res.get('error', 'generate_batch failed')}"
+        gen    = res.get("generated", {})
+        depths = res.get("queue_depth", {})
+        total  = res.get("total", 0)
+        mode   = res.get("mode", "template")
+        lines  = [f"✅ Generated {total} new posts ({mode})"]
+        for slug, label in (("x", "X"), ("facebook", "Facebook"), ("instagram", "Instagram")):
+            n     = gen.get(slug, 0)
+            depth = depths.get(slug, "?")
+            lines.append(f"  {label:<12} +{n}  ({depth} pending)")
+        return "\n".join(lines)
 
     def _ig_gen_image_command(self) -> str:
         """POST /api/ig/gen_image → LLM prompt + Pollinations download + Telegram photo preview."""
