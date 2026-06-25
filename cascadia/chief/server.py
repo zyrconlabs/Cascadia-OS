@@ -768,6 +768,13 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=report,
                 ).to_dict()
+            if cmd.startswith("/check_credentials"):
+                live = "--live" in cmd
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._check_credentials_report(live),
+                ).to_dict()
             if cmd == "/ram":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -4146,6 +4153,79 @@ class ChiefService:
         if session is None:
             return 404, {'error': 'session not found'}
         return 200, {'session_id': session_id, 'messages': session.messages}
+
+    # ------------------------------------------------------------------
+    # /check_credentials command (v3.4 Phase 2)
+    # ------------------------------------------------------------------
+
+    def _check_credentials_report(self, live: bool = False) -> str:
+        """Poll all 6 operators for current readiness. /check_credentials command."""
+        OPERATORS = [
+            ("EMAIL",    8010),
+            ("SCOUT",    7002),
+            ("DEMO",     8029),
+            ("TELEGRAM", 9000),
+            ("BUFFER",   9007),
+            ("SOCIAL",   8011),
+        ]
+
+        vault_ok = False
+        try:
+            with urllib.request.urlopen(
+                "http://127.0.0.1:5101/health", timeout=3
+            ) as r:
+                vault_ok = json.loads(r.read()).get("ok", False)
+        except Exception:
+            pass
+
+        results = {}
+        for name, port in OPERATORS:
+            info: dict = {"status": "unreachable", "missing": []}
+            try:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/api/ready", timeout=4
+                ) as r:
+                    body = json.loads(r.read())
+                    info["status"]  = body.get("readiness_status", "unknown")
+                    info["missing"] = body.get("missing_credentials", [])
+            except Exception:
+                pass
+            results[name] = info
+
+        mode = " (live)" if live else ""
+        lines = [
+            f"\U0001f510 Credential Status{mode}",
+            "━" * 27,
+            ("✅ VAULT          ready"
+             if vault_ok else "❌ VAULT          unavailable"),
+            "",
+        ]
+        healthy = degraded = blocked = 0
+        for name, info in results.items():
+            st      = info["status"]
+            missing = info["missing"]
+            if st == "ready":
+                lines.append(f"✅ {name:<12} ready")
+                healthy += 1
+            elif st == "degraded":
+                ms = f" — {missing[0]}" if missing else ""
+                lines.append(f"⚠️  {name:<12} degraded{ms}")
+                degraded += 1
+            elif st == "unreachable":
+                lines.append(f"❓ {name:<12} unreachable")
+                blocked += 1
+            else:
+                ms = f" — {', '.join(missing)}" if missing else ""
+                lines.append(f"❌ {name:<12} {st}{ms}")
+                blocked += 1
+
+        lines += [
+            "",
+            f"Operators: {healthy} healthy  {degraded} degraded  {blocked} blocked",
+        ]
+        if not live:
+            lines += ["", "/check_credentials --live for fresh sweep"]
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Startup readiness summary (v3.4 Phase 1)
