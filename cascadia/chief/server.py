@@ -979,6 +979,24 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._ig_command("skip"),
                 ).to_dict()
+            if cmd == "/approve_all_x":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._approve_all_platform("x"),
+                ).to_dict()
+            if cmd == "/approve_all_fb":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._approve_all_platform("facebook"),
+                ).to_dict()
+            if cmd == "/approve_all_ig":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._approve_all_platform("instagram"),
+                ).to_dict()
             if cmd == "/email_approve":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -1805,6 +1823,24 @@ class ChiefService:
         if nxt:
             msg += f"\nNext: post {nxt.get('position','?')} ({nxt.get('char_count','?')} chars)"
         return msg
+
+    def _approve_all_platform(self, platform: str) -> str:
+        """POST /api/{x|fb|ig}/approve_all → move all awaiting_approval posts to pending."""
+        slug = {"x": "x", "facebook": "fb", "instagram": "ig"}[platform]
+        try:
+            req = urllib.request.Request(
+                f"http://localhost:8011/api/{slug}/approve_all",
+                data=b"{}", method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                res = json.loads(r.read().decode())
+        except Exception as exc:
+            return f"❌ approve_all_{slug} error: {str(exc)[:80]}"
+        n = res.get("approved", 0)
+        if n == 0:
+            return f"Nothing awaiting approval for {platform}."
+        return res.get("message", f"✅ {n} {platform} posts returned to queue.")
 
     def _clear_image_command(self) -> str:
         """Discard any images pending in the Telegram operator's memory."""
