@@ -39,6 +39,24 @@ from cascadia.shared.config import load_config
 from cascadia.shared.service_runtime import ServiceRuntime
 
 
+def _vault_read_secret(key: str, operator_id: str = 'email_operator',
+                       namespace: str = 'default') -> str:
+    """Read a secret from VAULT at startup. Returns '' on any error."""
+    import json, urllib.request
+    try:
+        payload = json.dumps(
+            {'operator_id': operator_id, 'key': key, 'namespace': namespace}
+        ).encode()
+        req = urllib.request.Request(
+            'http://127.0.0.1:5101/read', data=payload,
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return json.loads(r.read()).get('value', '') or ''
+    except Exception:
+        return ''
+
+
 # ---------------------------------------------------------------------------
 # Key derivation
 # ---------------------------------------------------------------------------
@@ -182,7 +200,8 @@ class CurtainService:
             log_dir=self.config['log_dir'],
         )
         curtain_cfg = self.config.get('curtain', {})
-        raw_secret = curtain_cfg.get('signing_secret', '')
+        raw_secret = (curtain_cfg.get('signing_secret', '')
+                      or _vault_read_secret('curtain.signing_secret'))
         self.signing_secret: str = raw_secret if raw_secret else generate_session_key()
         # Derive a separate AES key for field encryption from the master secret
         self._field_key: bytes = derive_field_key(self.signing_secret)

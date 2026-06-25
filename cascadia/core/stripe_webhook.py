@@ -62,8 +62,20 @@ _handler = StripeHandler(
     price_map=PRICE_TO_TIER or None,
 )
 
-# License signing secret: env var > config.json license_secret
+# License signing secret: env var > VAULT > config.json license_secret
 _LICENSE_SECRET: str = os.environ.get('LICENSE_SIGNING_SECRET', '')
+if not _LICENSE_SECRET:
+    try:
+        _vp = json.dumps(
+            {'operator_id': 'email_operator', 'key': 'license_secret', 'namespace': 'default'}
+        ).encode()
+        import urllib.request as _ur
+        _vreq = _ur.Request('http://127.0.0.1:5101/read', data=_vp,
+                            headers={'Content-Type': 'application/json'})
+        with _ur.urlopen(_vreq, timeout=3) as _vr:
+            _LICENSE_SECRET = json.loads(_vr.read()).get('value', '') or ''
+    except Exception:
+        pass
 if not _LICENSE_SECRET:
     try:
         _main_cfg = json.loads((_ROOT / 'config.json').read_text())
