@@ -6,7 +6,7 @@ __pycache__/
 venv/
 
 # Cascadia runtime — generated, never commit
-config.json
+# config.json removed from ignore: secrets migrated to VAULT (2026-06-24)
 cascadia.yaml
 data/
 *.heartbeat
@@ -94,7 +94,6 @@ claude_*.tmp
 scripts/record_demo.sh
 *.p8
 cascadia/operators/generic_alert/alerts.db
-config.json
 cascadia/missions/missions_registry.json
 
 # Backup and temp files (added 2026-06-16)
