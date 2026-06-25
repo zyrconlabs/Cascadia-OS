@@ -3598,14 +3598,15 @@ class ChiefService:
 
         lines: list[str] = []
         if approved:
-            lines.append(f"✅ Approved {len(approved)} item(s):")
-            lines.extend(f"• {b}" for b in approved)
+            display = approved[:3]
+            more    = len(approved) - len(display)
+            name_str = ", ".join(display) + (f" +{more} more" if more else "")
+            lines.append(f"✅ Sent {len(approved)}: {name_str}")
         else:
             lines.append("⚠️ Nothing was approved.")
         if failed:
-            lines.append("")
-            lines.append(f"⚠️ {len(failed)} failed:")
-            lines.extend(f"• {f}" for f in failed)
+            lines.append(f"⚠️ {len(failed)} failed: " +
+                         ", ".join(f.split(":")[0] for f in failed[:3]))
         return "\n".join(lines)
 
     def _preview_and_notify(self, chat_id: str) -> None:
@@ -3681,7 +3682,10 @@ class ChiefService:
             _time.sleep(0.5)
 
         if approved:
-            _tg(f"✅ Queued {len(approved)} — approved and sending")
+            display  = approved[:3]
+            more     = len(approved) - len(display)
+            name_str = ", ".join(display) + (f" +{more} more" if more else "")
+            _tg(f"✅ Sent {len(approved)}: {name_str}")
         else:
             _tg("✅ Nothing pending — queue is empty.")
 
