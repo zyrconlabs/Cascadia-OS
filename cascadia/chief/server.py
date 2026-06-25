@@ -4148,6 +4148,121 @@ class ChiefService:
         return 200, {'session_id': session_id, 'messages': session.messages}
 
     # ------------------------------------------------------------------
+    # Startup readiness summary (v3.4 Phase 1)
+    # ------------------------------------------------------------------
+
+    def _send_readiness_summary(self) -> None:
+        """Fires 30 s after startup. Polls /api/ready on all 6 operators.
+        Sends ONE Telegram alert only when issues are found.
+        Silence on clean healthy boot."""
+        def _run() -> None:
+            time.sleep(30)
+            try:
+                # Detect boot type: uptime < 300 s = power recovery
+                uptime_s = 9999
+                try:
+                    import subprocess as _sp, re as _re
+                    r = _sp.run(["sysctl", "kern.boottime"],
+                                capture_output=True, text=True)
+                    m = _re.search(r"sec = (\d+)", r.stdout)
+                    if m:
+                        uptime_s = int(time.time()) - int(m.group(1))
+                except Exception:
+                    pass
+
+                # VAULT root dependency
+                vault_ok = False
+                try:
+                    with urllib.request.urlopen(
+                        "http://127.0.0.1:5101/health", timeout=3
+                    ) as r:
+                        vault_ok = json.loads(r.read()).get("ok", False)
+                except Exception:
+                    pass
+
+                # Poll /api/ready on each patched operator
+                PATCHED = [
+                    ("EMAIL",    8010),
+                    ("SCOUT",    7002),
+                    ("DEMO",     8029),
+                    ("TELEGRAM", 9000),
+                    ("BUFFER",   9007),
+                    ("SOCIAL",   8011),
+                ]
+                issues: list[str] = []
+                op_lines: list[str] = []
+                for name, port in PATCHED:
+                    try:
+                        with urllib.request.urlopen(
+                            f"http://127.0.0.1:{port}/api/ready",
+                            timeout=3,
+                        ) as r:
+                            code = r.getcode()
+                            body = json.loads(r.read())
+                            st = body.get("readiness_status", "unknown")
+                            missing = body.get("missing_credentials", [])
+                            if code != 200:
+                                for item in (missing or [st]):
+                                    op_lines.append(f"❌ {name:<12} {item}")
+                                    issues.append(item)
+                            elif st == "degraded":
+                                for item in (missing or ["degraded"]):
+                                    op_lines.append(f"⚠️ {name:<12} {item}")
+                                    issues.append(item)
+                    except Exception:
+                        op_lines.append(f"❓ {name:<12} unreachable")
+                        issues.append(f"{name} unreachable")
+
+                if not vault_ok:
+                    issues.insert(0, "VAULT unavailable")
+
+                # Silence on healthy boot
+                if not issues:
+                    self.runtime.logger.info(
+                        "Startup readiness: all healthy — no alert sent"
+                    )
+                    return
+
+                # Build one focused message
+                boot_label = (
+                    f"⚡ Power recovery (uptime {uptime_s}s)"
+                    if uptime_s < 300 else "🔄 Restart"
+                )
+                n_ok = len(PATCHED) - sum(
+                    1 for l in op_lines
+                    if l.startswith(("❌", "⚠️", "❓"))
+                )
+                msg = "\n".join([
+                    boot_label,
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                    ("✅ VAULT ready" if vault_ok
+                     else "❌ VAULT unavailable — credentials blocked"),
+                    "",
+                    f"Operators: {n_ok}/{len(PATCHED)} healthy",
+                    "",
+                    *op_lines,
+                    "",
+                    "/startup_report for full report",
+                ])
+                _http_post(
+                    f"{TELEGRAM_URL}/send",
+                    {"chat_id": "1535010257", "text": msg},
+                    timeout=10,
+                )
+                self.runtime.logger.info(
+                    "Startup readiness alert sent (%d issue(s))",
+                    len(issues),
+                )
+            except Exception as exc:
+                self.runtime.logger.warning(
+                    "Startup readiness summary error: %s", exc
+                )
+
+        threading.Thread(
+            target=_run, daemon=True, name="startup-readiness"
+        ).start()
+
+    # ------------------------------------------------------------------
     # Start
     # ------------------------------------------------------------------
 
@@ -4155,6 +4270,7 @@ class ChiefService:
         threading.Thread(
             target=self._try_register_with_crew, daemon=True, name="chief-crew-reg"
         ).start()
+        self._send_readiness_summary()
         self.runtime.logger.info(
             "CHIEF orchestrator active — port %d | crew=%s | beacon=%s",
             CHIEF_PORT, CREW_URL, BEACON_URL,
