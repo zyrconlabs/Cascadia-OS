@@ -347,6 +347,95 @@ class ChatSession:
         }
 
 
+# ── Mission readiness + alert dedup (v3.4 Phase 2) ───────────────────────────
+
+_MISSIONS_DIR = os.path.expanduser(
+    "~/Zyrcon/operators/cascadia-os-operators/missions"
+)
+_ALERT_DEDUP_PATH = os.path.expanduser(
+    "~/Zyrcon/operators/cascadia-os-operators/core/data/readiness_alerts.json"
+)
+_ALERT_DEDUP_TTL = 4 * 3600  # suppress same issue for 4 hours
+
+
+def _load_dedup() -> dict:
+    try:
+        with open(_ALERT_DEDUP_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_dedup(d: dict) -> None:
+    try:
+        os.makedirs(os.path.dirname(_ALERT_DEDUP_PATH), exist_ok=True)
+        with open(_ALERT_DEDUP_PATH, "w") as f:
+            json.dump(d, f)
+    except Exception:
+        pass
+
+
+def _should_alert(issue_key: str) -> bool:
+    """Returns True (and records timestamp) if not already alerted within 4h."""
+    dedup = _load_dedup()
+    now   = time.time()
+    if now - dedup.get(issue_key, 0) < _ALERT_DEDUP_TTL:
+        return False
+    dedup[issue_key] = now
+    _save_dedup(dedup)
+    return True
+
+
+def _compute_mission_status(manifest: dict, op_readiness: dict) -> tuple[str, str | None]:
+    """Return (status, blocking_reason) for one mission manifest.
+    status: 'ready' | 'degraded' | 'blocked'"""
+    crit_blocked = False
+    imp_missing  = False
+    blocking     = None
+    for req in manifest.get("required_capabilities", []):
+        op   = req.get("operator", "")
+        cap  = req.get("capability", "")
+        crit = req.get("criticality", "critical")
+        st   = op_readiness.get(op, {}).get("readiness_status", "unreachable")
+        is_ok = st in ("ready", "healthy")
+        if not is_ok:
+            if crit == "critical":
+                crit_blocked = True
+                blocking = f"{op.upper()} unavailable"
+            elif crit == "important":
+                imp_missing = True
+    if crit_blocked:
+        return "blocked", blocking
+    if imp_missing:
+        return "degraded", "some capabilities degraded"
+    return "ready", None
+
+
+def _compute_all_missions(op_readiness: dict) -> dict:
+    """Load all top-level *.json manifests in missions/ and compute status.
+    Returns {mission_id: (status, reason, display_name)}"""
+    results: dict = {}
+    try:
+        for fname in sorted(os.listdir(_MISSIONS_DIR)):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(_MISSIONS_DIR, fname)
+            try:
+                with open(fpath) as f:
+                    manifest = json.load(f)
+                if "required_capabilities" not in manifest:
+                    continue
+                mid   = manifest.get("id", fname[:-5])
+                name  = manifest.get("name", mid)
+                st, reason = _compute_mission_status(manifest, op_readiness)
+                results[mid] = (st, reason, name)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return results
+
+
 class ChiefService:
     """
     CHIEF - Task orchestrator.
@@ -4233,8 +4322,8 @@ class ChiefService:
 
     def _send_readiness_summary(self) -> None:
         """Fires 30 s after startup. Polls /api/ready on all 6 operators.
-        Sends ONE Telegram alert only when issues are found.
-        Silence on clean healthy boot."""
+        Sends ONE Telegram alert with mission impact only when issues found.
+        Silence on clean healthy boot. Deduplicates same issue for 4 h."""
         def _run() -> None:
             time.sleep(30)
             try:
@@ -4260,18 +4349,20 @@ class ChiefService:
                 except Exception:
                     pass
 
-                # Poll /api/ready on each patched operator
+                # Poll /api/ready on each operator
                 PATCHED = [
-                    ("EMAIL",    8010),
-                    ("SCOUT",    7002),
-                    ("DEMO",     8029),
-                    ("TELEGRAM", 9000),
-                    ("BUFFER",   9007),
-                    ("SOCIAL",   8011),
+                    ("EMAIL",    "email",    8010),
+                    ("SCOUT",    "scout",    7002),
+                    ("DEMO",     "demo",     8029),
+                    ("TELEGRAM", "telegram", 9000),
+                    ("BUFFER",   "buffer",   9007),
+                    ("SOCIAL",   "social",   8011),
                 ]
                 issues: list[str] = []
                 op_lines: list[str] = []
-                for name, port in PATCHED:
+                op_readiness: dict = {}
+                for display, key, port in PATCHED:
+                    op_readiness[key] = {"readiness_status": "unreachable", "missing": []}
                     try:
                         with urllib.request.urlopen(
                             f"http://127.0.0.1:{port}/api/ready",
@@ -4279,19 +4370,20 @@ class ChiefService:
                         ) as r:
                             code = r.getcode()
                             body = json.loads(r.read())
-                            st = body.get("readiness_status", "unknown")
+                            st      = body.get("readiness_status", "unknown")
                             missing = body.get("missing_credentials", [])
+                            op_readiness[key] = {"readiness_status": st, "missing": missing}
                             if code != 200:
                                 for item in (missing or [st]):
-                                    op_lines.append(f"❌ {name:<12} {item}")
+                                    op_lines.append(f"❌ {display:<12} {item}")
                                     issues.append(item)
                             elif st == "degraded":
                                 for item in (missing or ["degraded"]):
-                                    op_lines.append(f"⚠️ {name:<12} {item}")
+                                    op_lines.append(f"⚠️ {display:<12} {item}")
                                     issues.append(item)
                     except Exception:
-                        op_lines.append(f"❓ {name:<12} unreachable")
-                        issues.append(f"{name} unreachable")
+                        op_lines.append(f"❓ {display:<12} unreachable")
+                        issues.append(f"{display} unreachable")
 
                 if not vault_ok:
                     issues.insert(0, "VAULT unavailable")
@@ -4301,29 +4393,55 @@ class ChiefService:
                     self.runtime.logger.info(
                         "Startup readiness: all healthy — no alert sent"
                     )
+                    _save_dedup({})  # reset dedup on clean boot
                     return
 
-                # Build one focused message
+                # Deduplication — suppress repeat alerts for 4 h
+                issue_key = "|".join(sorted(issues))
+                if not _should_alert(issue_key):
+                    self.runtime.logger.info(
+                        "Startup readiness alert suppressed (dedup, same %d issue(s))",
+                        len(issues),
+                    )
+                    return
+
+                # Build message with mission impact section
                 boot_label = (
                     f"⚡ Power recovery (uptime {uptime_s}s)"
                     if uptime_s < 300 else "🔄 Restart"
                 )
                 n_ok = len(PATCHED) - sum(
-                    1 for l in op_lines
-                    if l.startswith(("❌", "⚠️", "❓"))
+                    1 for l in op_lines if l.startswith(("❌", "⚠️", "❓"))
                 )
-                msg = "\n".join([
+
+                # Mission readiness section
+                missions = _compute_all_missions(op_readiness)
+                mission_lines: list[str] = []
+                ICONS = {"ready": "✅", "degraded": "⚠️", "blocked": "❌"}
+                for _mid, (mst, mreason, mname) in missions.items():
+                    if mst != "ready":
+                        rs = f" — {mreason}" if mreason else ""
+                        mission_lines.append(
+                            f"{ICONS.get(mst, '❓')} {mname}{rs}"
+                        )
+
+                msg_parts = [
                     boot_label,
                     "━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                     ("✅ VAULT ready" if vault_ok
                      else "❌ VAULT unavailable — credentials blocked"),
+                ]
+                if mission_lines:
+                    msg_parts += ["", "Missions affected:"] + mission_lines
+                msg_parts += [
                     "",
                     f"Operators: {n_ok}/{len(PATCHED)} healthy",
                     "",
                     *op_lines,
                     "",
-                    "/startup_report for full report",
-                ])
+                    "/check_credentials for details",
+                ]
+                msg = "\n".join(msg_parts)
                 _http_post(
                     f"{TELEGRAM_URL}/send",
                     {"chat_id": "1535010257", "text": msg},
