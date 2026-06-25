@@ -997,6 +997,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._approve_all_platform("instagram"),
                 ).to_dict()
+            if cmd in ("/ig_gen_image", "/ig_generate", "/ig_regen"):
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._ig_gen_image_command(),
+                ).to_dict()
             if cmd == "/email_approve":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -1823,6 +1829,17 @@ class ChiefService:
         if nxt:
             msg += f"\nNext: post {nxt.get('position','?')} ({nxt.get('char_count','?')} chars)"
         return msg
+
+    def _ig_gen_image_command(self) -> str:
+        """POST /api/ig/gen_image → LLM prompt + Pollinations download + Telegram photo preview."""
+        try:
+            res = _http_post("http://localhost:8011/api/ig/gen_image", {}, timeout=90)
+        except Exception as exc:
+            return f"❌ Image gen error: {str(exc)[:80]}"
+        if not res.get("ok"):
+            return f"❌ {res.get('error', 'gen_image failed')}"
+        return (f"⏳ Generating… image will appear in Telegram shortly.\n"
+                f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
 
     def _approve_all_platform(self, platform: str) -> str:
         """POST /api/{x|fb|ig}/approve_all → move all awaiting_approval posts to pending."""
