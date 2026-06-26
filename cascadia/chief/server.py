@@ -3223,16 +3223,17 @@ class ChiefService:
             f"🔧 {btype} | {city}\n"
             f"📧 {email}\n\n"
             f"Subject: {subject}\n\n"
-            f"{body}\n\n"
-            "──────────────────────────\n"
-            f"/approve_{row_id} ✅ Send this email\n"
-            f"/reject_{row_id} ❌ Skip this lead"
+            f"{body}"
         )
+        buttons = {"inline_keyboard": [[
+            {"text": "✅ Send",  "callback_data": f"approve:{row_id}"},
+            {"text": "❌ Skip",  "callback_data": f"reject:{row_id}"},
+        ]]}
         if chat_id:
             try:
                 _http_post(
                     f"{TELEGRAM_URL}/send",
-                    {"chat_id": chat_id, "text": msg},
+                    {"chat_id": chat_id, "text": msg, "reply_markup": buttons},
                     timeout=5,
                 )
             except Exception as exc:
@@ -4302,6 +4303,49 @@ class ChiefService:
         if data == "do_help":
             from cascadia.chief.commands import build_help_text as _bht
             _send(_bht())
+            return "ok"
+
+        # ── Social approval buttons ────────────────────────────────────
+        if data == "x_approve":
+            _edit("⏳ Posting to X...")
+            _edit(self._x_command("approve"))
+            return "ok"
+        if data == "x_skip":
+            _edit(self._x_command("skip"))
+            return "ok"
+        if data == "fb_approve":
+            _edit("⏳ Posting to Facebook...")
+            _edit(self._fb_command("approve"))
+            return "ok"
+        if data == "fb_skip":
+            _edit(self._fb_command("skip"))
+            return "ok"
+        if data == "ig_approve":
+            _edit("⏳ Posting to Instagram...")
+            _edit(self._ig_command("approve"))
+            return "ok"
+        if data == "ig_skip":
+            _edit(self._ig_command("skip"))
+            return "ok"
+        if data == "ig_gen_image":
+            _edit("⏳ Generating image — 30-60s...")
+            threading.Thread(
+                target=lambda: _edit(self._ig_gen_image_command()),
+                daemon=True, name="chief-cb-iggen",
+            ).start()
+            return "ok"
+        if data == "ig_regen":
+            _edit("⏳ Regenerating image — 30-60s...")
+            threading.Thread(
+                target=lambda: _edit(self._ig_regen_command()),
+                daemon=True, name="chief-cb-igregen",
+            ).start()
+            return "ok"
+
+        # ── Outreach/followup approval buttons ─────────────────────────
+        if data.startswith("approve:") or data.startswith("reject:"):
+            action, row_id = data.split(":", 1)
+            _edit(self._handle_approval(action, row_id, chat_id))
             return "ok"
 
         self.runtime.logger.warning("CHIEF unknown callback_data: %s", data)
