@@ -1742,7 +1742,7 @@ class ChiefService:
             return "✅ CRM awake — :8015 healthy." if ok else "⚠️ CRM wake timed out."
         return "Usage: /crm_sleep | /crm_wake"
 
-    def _x_command(self, args: str) -> str:
+    def _x_command(self, args: str, post_id=None) -> str:
         """Post to X via the Social operator (single brain → Buffer → X).
 
           /x <text>    → post immediately
@@ -1756,8 +1756,9 @@ class ChiefService:
         # ── APPROVE / SKIP (approval gate for scheduled drafts) ──
         if body.lower() == "approve":
             try:
+                _body = json.dumps({"post_id": post_id}).encode() if post_id else b"{}"
                 req = urllib.request.Request(
-                    f"{social_url}/api/x/approve", data=b"{}", method="POST",
+                    f"{social_url}/api/x/approve", data=_body, method="POST",
                     headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(req, timeout=30) as r:
                     res = json.loads(r.read().decode())
@@ -1778,8 +1779,9 @@ class ChiefService:
                     f"https://x.com/beast_popovich")
         if body.lower() == "skip":
             try:
+                _body = json.dumps({"post_id": post_id}).encode() if post_id else b"{}"
                 req = urllib.request.Request(
-                    f"{social_url}/api/x/skip", data=b"{}", method="POST",
+                    f"{social_url}/api/x/skip", data=_body, method="POST",
                     headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(req, timeout=10) as r:
                     res = json.loads(r.read().decode())
@@ -1829,7 +1831,7 @@ class ChiefService:
         # ── IMMEDIATE POST (attaches any pending image) ───────
         return self._direct_post("x", body)
 
-    def _fb_command(self, action: str) -> str:
+    def _fb_command(self, action: str, post_id=None) -> str:
         """Facebook queue actions via the Social operator (approval gate).
 
         action: approve | skip | status
@@ -1852,8 +1854,9 @@ class ChiefService:
 
         path = "/api/fb/approve" if action == "approve" else "/api/fb/skip"
         try:
+            _body = json.dumps({"post_id": post_id}).encode() if post_id else b"{}"
             req = urllib.request.Request(
-                f"{social_url}{path}", data=b"{}", method="POST",
+                f"{social_url}{path}", data=_body, method="POST",
                 headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=30) as r:
                 res = json.loads(r.read().decode())
@@ -4306,19 +4309,27 @@ class ChiefService:
             return "ok"
 
         # ── Social approval buttons ────────────────────────────────────
-        if data == "x_approve":
+        if data.startswith("x_approve"):
+            parts = data.split("_")
+            post_id = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else None
             _edit("⏳ Posting to X...")
-            _edit(self._x_command("approve"))
+            _edit(self._x_command("approve", post_id=post_id))
             return "ok"
-        if data == "x_skip":
-            _edit(self._x_command("skip"))
+        if data.startswith("x_skip"):
+            parts = data.split("_")
+            post_id = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else None
+            _edit(self._x_command("skip", post_id=post_id))
             return "ok"
-        if data == "fb_approve":
+        if data.startswith("fb_approve"):
+            parts = data.split("_")
+            post_id = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else None
             _edit("⏳ Posting to Facebook...")
-            _edit(self._fb_command("approve"))
+            _edit(self._fb_command("approve", post_id=post_id))
             return "ok"
-        if data == "fb_skip":
-            _edit(self._fb_command("skip"))
+        if data.startswith("fb_skip"):
+            parts = data.split("_")
+            post_id = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else None
+            _edit(self._fb_command("skip", post_id=post_id))
             return "ok"
         if data == "ig_approve":
             _edit("⏳ Posting to Instagram...")
