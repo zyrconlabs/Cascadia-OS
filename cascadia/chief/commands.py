@@ -84,6 +84,11 @@ COMMANDS: dict[str, dict] = {
     "/email_skip":     {"operator": None,         "description": "Skip oldest Scout email reply draft (discard without sending)"},
     "/wizard":         {"operator": None,         "description": "Guided setup assistant — VAULT health + all 6 operator credentials"},
     "/help":           {"operator": None,         "description": "Show all commands"},
+    "/demo_status":    {"operator": None,         "description": "Demo bot status"},
+    "/token":          {"operator": None,         "description": "Token usage today"},
+    "/token_week":     {"operator": None,         "description": "Token usage this week"},
+    "/token_month":    {"operator": None,         "description": "Token usage this month"},
+    "/token_all":      {"operator": None,         "description": "Token usage all time"},
 }
 
 
