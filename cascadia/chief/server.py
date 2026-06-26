@@ -4309,6 +4309,50 @@ class ChiefService:
             return "ok"
 
         # ── Social approval buttons ────────────────────────────────────
+        if data.startswith("xfb_approve"):
+            # format: "xfb_approve_<x_id>_<fb_id>"
+            parts = data.split("_")
+            x_id  = int(parts[2]) if len(parts) == 4 and parts[2].isdigit() else None
+            fb_id = int(parts[3]) if len(parts) == 4 and parts[3].isdigit() else None
+            _edit("⏳ Posting to X + Facebook...")
+            try:
+                res_x = _http_post("http://localhost:8011/api/x/approve",
+                                   {"post_id": x_id} if x_id else {}, timeout=30)
+            except Exception as exc:
+                res_x = {"success": False, "error": str(exc)[:60]}
+            try:
+                res_fb = _http_post("http://localhost:8011/api/fb/approve",
+                                    {"post_id": fb_id} if fb_id else {}, timeout=30)
+            except Exception as exc:
+                res_fb = {"success": False, "error": str(exc)[:60]}
+            x_ok  = res_x.get("success")
+            fb_ok = res_fb.get("success")
+            if x_ok and fb_ok:
+                _edit("✅ Posted to X + Facebook")
+            elif x_ok:
+                _edit(f"✅ X posted · ❌ FB failed: {res_fb.get('error','unknown')[:40]}")
+            elif fb_ok:
+                _edit(f"❌ X failed · ✅ FB posted: {res_x.get('error','unknown')[:40]}")
+            else:
+                _edit("❌ Both failed")
+            return "ok"
+        if data.startswith("xfb_skip"):
+            # format: "xfb_skip_<x_id>_<fb_id>"
+            parts = data.split("_")
+            x_id  = int(parts[2]) if len(parts) == 4 and parts[2].isdigit() else None
+            fb_id = int(parts[3]) if len(parts) == 4 and parts[3].isdigit() else None
+            try:
+                _http_post("http://localhost:8011/api/x/skip",
+                           {"post_id": x_id} if x_id else {}, timeout=10)
+            except Exception:
+                pass
+            try:
+                _http_post("http://localhost:8011/api/fb/skip",
+                           {"post_id": fb_id} if fb_id else {}, timeout=10)
+            except Exception:
+                pass
+            _edit("⏭ Both skipped")
+            return "ok"
         if data.startswith("x_approve"):
             parts = data.split("_")
             post_id = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else None
