@@ -82,6 +82,7 @@ COMMANDS: dict[str, dict] = {
     "/clear_image":    {"operator": None,         "description": "Discard pending images sent to the bot"},
     "/email_approve":  {"operator": None,         "description": "Approve oldest Scout email reply draft and send it"},
     "/email_skip":     {"operator": None,         "description": "Skip oldest Scout email reply draft (discard without sending)"},
+    "/wizard":         {"operator": None,         "description": "Guided setup assistant — VAULT health + all 6 operator credentials"},
     "/help":           {"operator": None,         "description": "Show all commands"},
 }
 

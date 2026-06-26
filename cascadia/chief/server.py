@@ -105,11 +105,18 @@ def _http_post(url: str, payload: dict, timeout: int = 30) -> dict:
         return json.loads(r.read().decode())
 
 
-def _tg_send(chat_id: str, text: str, reply_markup: dict | None = None) -> None:
+def _tg_send(
+    chat_id: str,
+    text: str,
+    reply_markup: dict | None = None,
+    parse_mode: str | None = None,
+) -> None:
     """Send a Telegram message via the connector. Optionally attach a keyboard."""
     tg_payload: dict = {"chat_id": chat_id, "text": text}
     if reply_markup:
         tg_payload["reply_markup"] = reply_markup
+    if parse_mode:
+        tg_payload["parse_mode"] = parse_mode
     try:
         _http_post(
             os.environ.get("TELEGRAM_URL", "http://127.0.0.1:9000") + "/send",
@@ -434,6 +441,85 @@ def _compute_all_missions(op_readiness: dict) -> dict:
     except Exception:
         pass
     return results
+
+
+_HELP_TEXT = """\
+🤖 <b>ZYRCON BOT</b>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 <b>MISSIONS</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💼 <b>SALES</b>
+
+  📡 <b>RECON</b> — lead generation
+  /recon · /leads · /pipeline
+  /outreach · /preview · /send_outreach
+  /approve_all · /followups · /replies
+  /reactivate · /archive
+  /recon_start · /recon_stop
+
+  🎯 <b>SCOUT</b> — qualification
+  /scout · /funnel
+  /email_approve · /email_skip
+
+  📧 <b>EMAIL</b> — outreach &amp; inbox
+  /inbox_check · /email_status
+
+  👥 <b>CRM</b> — customer relationships
+  /crm · /crm_sleep · /crm_wake
+
+  🎪 <b>DEMO</b>
+  /demo_status
+
+💰 <b>FINANCES</b>
+
+  📋 <b>QUOTE</b> — proposals
+  /quote · /close · /invoice · /review
+
+📣 <b>MARKETING</b>
+
+  𝕏 <b>X</b>
+  /x_post_now · /x_approve · /x_skip
+  /approve_all_x · /x · /x_status
+
+  📘 <b>FACEBOOK</b>
+  /fb_post_now · /fb_approve · /fb_skip
+  /approve_all_fb · /fb · /fb_status
+
+  📸 <b>INSTAGRAM</b>
+  /ig_post_now · /ig_gen_image · /ig_regen
+  /ig_approve · /ig_skip · /approve_all_ig
+  /ig · /ig_status · /clear_image
+
+  🚀 <b>CAMPAIGNS</b>
+  /social_generate · /social
+
+🏃 <b>MANAGEMENT</b>
+
+  📅 <b>DAILY OPS</b>
+  /brief · /schedule · /blockers
+  /eod · /weekly · /missions
+
+  ⚙️ <b>ORCHESTRATION</b>
+  /status · /operators · /version
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 <b>REPORTS</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/startup_report · /email_status
+/token · /token_week · /token_month · /ram
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚙️ <b>SYSTEM</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/check_credentials · /check_credentials --live
+/wizard · /help
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔬 <b>ADVANCED</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/node_sync · /node_sync_status"""
 
 
 class ChiefService:
@@ -803,11 +889,11 @@ class ChiefService:
                     reply_text=reply_text,
                 ).to_dict()
             if cmd == "/help":
-                return 200, TaskResponse(
-                    ok=True, task_id=task_id,
-                    selected_type="status", selected_target=cmd,
-                    reply_text=build_help_text(),
-                ).to_dict()
+                _tg_send(chat_id, _HELP_TEXT, parse_mode="HTML")
+                return 200, {"ok": True, "task_id": task_id, "silent": True}
+            if cmd == "/wizard":
+                _tg_send(chat_id, self._cmd_wizard(), parse_mode="HTML")
+                return 200, {"ok": True, "task_id": task_id, "silent": True}
             if cmd == "/operators":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -2549,6 +2635,92 @@ class ChiefService:
             f"  Current: {recon['task_rows']} rows / {recon['task_emails']} emails "
             f"({recon['email_rate']}% email rate)"
         )
+        return "\n".join(lines)
+
+    def _cmd_wizard(self) -> str:
+        """Guided 3-step setup assistant: VAULT → credentials → recommendations."""
+        lines: list[str] = ["🧙 <b>ZYRCON SETUP WIZARD</b>", ""]
+
+        VAULT_URL  = "http://127.0.0.1:5101"
+        OPERATORS_MAP = [
+            ("EMAIL",    8010),
+            ("SCOUT",    7002),
+            ("DEMO",     8029),
+            ("TELEGRAM", 9000),
+            ("BUFFER",   9007),
+            ("SOCIAL",   8011),
+        ]
+
+        # ── Step 1: VAULT ─────────────────────────────────────────────────────
+        lines += ["━━━━━━━━━━━━━━━━━━━━", "Step 1 of 3 — VAULT", "━━━━━━━━━━━━━━━━━━━━"]
+        vault_ok = False
+        try:
+            d = _http_get(f"{VAULT_URL}/health", timeout=3)
+            vault_ok = bool(d.get("ok"))
+        except Exception:
+            vault_ok = False
+
+        if vault_ok:
+            lines.append("✅ VAULT is healthy")
+        else:
+            lines.append("❌ VAULT is offline")
+            lines.append("Fix: restart via FLINT or check VAULT_ENCRYPTION_KEY in .env")
+
+        # ── Step 2: Operator credentials ─────────────────────────────────────
+        lines += ["", "━━━━━━━━━━━━━━━━━━━━", "Step 2 of 3 — Credentials", "━━━━━━━━━━━━━━━━━━━━"]
+        issues: list[tuple[str, str, list[str]]] = []
+        for name, port in OPERATORS_MAP:
+            try:
+                body = _http_get(f"http://127.0.0.1:{port}/api/ready", timeout=3)
+                st   = body.get("readiness_status", "?")
+                miss = body.get("missing_credentials", [])
+                if st in ("ready", "healthy"):
+                    lines.append(f"✅ {name}")
+                elif st == "degraded":
+                    m = miss[0] if miss else "unknown"
+                    lines.append(f"⚠️ {name} — {m}")
+                    issues.append((name, "degraded", miss))
+                else:
+                    m = ", ".join(miss) if miss else st
+                    lines.append(f"❌ {name} — {m}")
+                    issues.append((name, "blocked", miss))
+            except Exception:
+                lines.append(f"❓ {name} — unreachable")
+                issues.append((name, "unreachable", []))
+
+        # ── Step 3: Recommendations ──────────────────────────────────────────
+        lines += ["", "━━━━━━━━━━━━━━━━━━━━", "Step 3 of 3 — Next Steps", "━━━━━━━━━━━━━━━━━━━━"]
+        if not vault_ok:
+            lines.append("1. Fix VAULT first — all credentials depend on it")
+        elif not issues:
+            lines += [
+                "✅ Everything looks good!",
+                "All operators have valid credentials.",
+            ]
+        else:
+            lines.append(f"{len(issues)} item(s) need attention:\n")
+            for name, status, miss in issues:
+                if status == "unreachable":
+                    lines.append(
+                        f"• {name}: operator is not running\n"
+                        f"  Check LaunchAgent: ai.zyrcon.{name.lower()}.plist"
+                    )
+                elif miss:
+                    lines.append(
+                        f"• {name}: missing {', '.join(miss)}\n"
+                        f"  Run /check_credentials for details"
+                    )
+                else:
+                    lines.append(
+                        f"• {name}: {status}\n"
+                        f"  Run /check_credentials --live"
+                    )
+            lines += [
+                "",
+                "💡 Use /check_credentials for full detail",
+                "💡 Contact support@zyrcon.ai for setup help",
+            ]
+
         return "\n".join(lines)
 
     def _read_pipeline_stats(self) -> dict | None:
