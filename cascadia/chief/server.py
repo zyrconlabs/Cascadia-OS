@@ -179,56 +179,334 @@ def _build_inline_keyboard(rows: list[list[dict]]) -> dict:
 
 _MENU_TEXT = "🏠 <b>Zyrcon Command Center</b>\nSelect a mission area:"
 
-def _main_menu_keyboard(counts: dict) -> dict:
-    p = counts["pending"]
-    r = counts["replies"]
-    approve_label = f"✅ Approve ({p})" if p else "✅ Approve All"
-    inbox_label   = f"📥 Inbox ({r})"   if r else "📥 Inbox"
-    return _build_inline_keyboard([
-        [{"text": "🔍 Find Work",  "data": "menu_find"},
-         {"text": "💼 Win Work",   "data": "menu_win"}],
-        [{"text": "⚙️ Run Work",   "data": "menu_run"},
-         {"text": "📊 Status",     "data": "do_status"}],
-        [{"text": approve_label,   "data": "do_approve_all"},
-         {"text": inbox_label,     "data": "do_inbox"}],
-        [{"text": "❓ Help",       "data": "do_help"}],
-    ])
+def _main_menu_keyboard(pending_count: int = 0) -> dict:
+    approve_label = f"✅ Approve ({pending_count})" if pending_count > 0 else "✅ Approve"
+    return {"inline_keyboard": [
+        [
+            {"text": "💼 Sales",       "callback_data": "menu_sales"},
+            {"text": "💰 Finances",    "callback_data": "menu_finances"},
+        ],
+        [
+            {"text": "📣 Marketing",   "callback_data": "menu_marketing"},
+            {"text": "🏃 Management",  "callback_data": "menu_management"},
+        ],
+        [
+            {"text": approve_label,    "callback_data": "menu_approve"},
+            {"text": "📥 Inbox",       "callback_data": "menu_inbox"},
+        ],
+        [
+            {"text": "📊 Reports",     "callback_data": "menu_reports"},
+            {"text": "⚙️ System",      "callback_data": "menu_system"},
+        ],
+    ]}
 
 
-def _find_work_keyboard() -> dict:
-    return _build_inline_keyboard([
-        [{"text": "🔍 New Leads",    "data": "do_new_leads"},
-         {"text": "📥 Inbound Lead", "data": "do_inbound"}],
-        [{"text": "📧 Outreach",     "data": "do_outreach"},
-         {"text": "🔄 Follow-ups",   "data": "do_followups"}],
-        [{"text": "💬 Replies",      "data": "do_replies"},
-         {"text": "♻️ Reactivate",   "data": "do_reactivate"}],
-        [{"text": "🚀 Start RECON",  "data": "do_recon_start"},
-         {"text": "⬅️ Main Menu",    "data": "menu_main"}],
-    ])
+def _sales_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "📡 RECON",   "callback_data": "menu_recon"},
+            {"text": "🎯 SCOUT",   "callback_data": "menu_scout"},
+        ],
+        [
+            {"text": "📧 EMAIL",   "callback_data": "menu_email"},
+            {"text": "👥 CRM",     "callback_data": "menu_crm"},
+        ],
+        [
+            {"text": "🎪 DEMO",    "callback_data": "menu_demo"},
+            {"text": "🏠 Menu",    "callback_data": "back_to_menu"},
+        ],
+    ]}
 
 
-def _win_work_keyboard() -> dict:
-    return _build_inline_keyboard([
-        [{"text": "📄 Quote Builder",   "data": "do_quote"},
-         {"text": "🔄 Quote Follow-up", "data": "do_quote_fu"}],
-        [{"text": "✅ Close Job",       "data": "do_close"},
-         {"text": "💰 Get Paid",        "data": "do_invoice"}],
-        [{"text": "🎯 Sales Funnel",    "data": "do_funnel"},
-         {"text": "⬅️ Main Menu",       "data": "menu_main"}],
-    ])
+def _finances_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "📋 Quote",   "callback_data": "menu_quote"},
+            {"text": "🏠 Menu",    "callback_data": "back_to_menu"},
+        ],
+    ]}
 
 
-def _run_work_keyboard() -> dict:
-    return _build_inline_keyboard([
-        [{"text": "🌅 Morning Brief",   "data": "do_brief"},
-         {"text": "📅 Schedule",        "data": "do_schedule"}],
-        [{"text": "🚧 Blockers",        "data": "do_blockers"},
-         {"text": "🌙 End of Day",      "data": "do_eod"}],
-        [{"text": "⭐ Review Request",  "data": "do_review"},
-         {"text": "📊 Weekly Summary",  "data": "do_weekly"}],
-        [{"text": "⬅️ Main Menu",       "data": "menu_main"}],
-    ])
+def _marketing_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "𝕏 X",            "callback_data": "menu_x"},
+            {"text": "📘 Facebook",     "callback_data": "menu_facebook"},
+        ],
+        [
+            {"text": "📸 Instagram",    "callback_data": "menu_instagram"},
+            {"text": "🚀 Campaigns",    "callback_data": "menu_campaigns"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _management_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "📅 Daily Ops",    "callback_data": "menu_daily_ops"},
+            {"text": "⚙️ Orchestration","callback_data": "menu_orchestration"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _recon_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "📡 Run RECON",    "callback_data": "cmd_recon"},
+            {"text": "📋 Leads",        "callback_data": "cmd_leads"},
+        ],
+        [
+            {"text": "📊 Pipeline",     "callback_data": "cmd_pipeline"},
+            {"text": "📤 Outreach",     "callback_data": "cmd_outreach"},
+        ],
+        [
+            {"text": "✅ Approve All",  "callback_data": "cmd_approve_all"},
+            {"text": "🔄 Follow-ups",   "callback_data": "cmd_followups"},
+        ],
+        [
+            {"text": "📥 Replies",      "callback_data": "cmd_replies"},
+            {"text": "♻️ Reactivate",   "callback_data": "cmd_reactivate"},
+        ],
+        [
+            {"text": "▶️ Start",        "callback_data": "cmd_recon_start"},
+            {"text": "⏹ Stop",          "callback_data": "cmd_recon_stop"},
+        ],
+        [
+            {"text": "💼 Sales",        "callback_data": "menu_sales"},
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _scout_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "🎯 Scout",        "callback_data": "cmd_scout"},
+            {"text": "🔻 Funnel",       "callback_data": "cmd_funnel"},
+        ],
+        [
+            {"text": "✅ Email Approve","callback_data": "cmd_email_approve"},
+            {"text": "⏭ Email Skip",    "callback_data": "cmd_email_skip"},
+        ],
+        [
+            {"text": "💼 Sales",        "callback_data": "menu_sales"},
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _email_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "📥 Inbox Check",  "callback_data": "cmd_inbox_check"},
+            {"text": "📊 Email Status", "callback_data": "cmd_email_status"},
+        ],
+        [
+            {"text": "💼 Sales",        "callback_data": "menu_sales"},
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _crm_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "👥 CRM",          "callback_data": "cmd_crm"},
+            {"text": "😴 Sleep",        "callback_data": "cmd_crm_sleep"},
+        ],
+        [
+            {"text": "⏰ Wake",          "callback_data": "cmd_crm_wake"},
+            {"text": "💼 Sales",        "callback_data": "menu_sales"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _demo_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "🎪 Demo Status",  "callback_data": "cmd_demo_status"},
+            {"text": "💼 Sales",        "callback_data": "menu_sales"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _quote_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "📋 Quote",        "callback_data": "cmd_quote"},
+            {"text": "🤝 Close",        "callback_data": "cmd_close"},
+        ],
+        [
+            {"text": "🧾 Invoice",      "callback_data": "cmd_invoice"},
+            {"text": "⭐ Review",       "callback_data": "cmd_review"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _x_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "✅ Approve",      "callback_data": "cmd_x_approve"},
+            {"text": "⏭ Skip",          "callback_data": "cmd_x_skip"},
+        ],
+        [
+            {"text": "✅ Approve All",  "callback_data": "cmd_approve_all_x"},
+            {"text": "🚀 Post Now",     "callback_data": "cmd_x_post_now"},
+        ],
+        [
+            {"text": "📊 Status",       "callback_data": "cmd_x_status"},
+            {"text": "📣 Marketing",    "callback_data": "menu_marketing"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _facebook_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "✅ Approve",      "callback_data": "cmd_fb_approve"},
+            {"text": "⏭ Skip",          "callback_data": "cmd_fb_skip"},
+        ],
+        [
+            {"text": "✅ Approve All",  "callback_data": "cmd_approve_all_fb"},
+            {"text": "🚀 Post Now",     "callback_data": "cmd_fb_post_now"},
+        ],
+        [
+            {"text": "📊 Status",       "callback_data": "cmd_fb_status"},
+            {"text": "📣 Marketing",    "callback_data": "menu_marketing"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _instagram_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "✅ Approve",      "callback_data": "cmd_ig_approve"},
+            {"text": "⏭ Skip",          "callback_data": "cmd_ig_skip"},
+        ],
+        [
+            {"text": "✅ Approve All",  "callback_data": "cmd_approve_all_ig"},
+            {"text": "🚀 Post Now",     "callback_data": "cmd_ig_post_now"},
+        ],
+        [
+            {"text": "🖼 Gen Image",    "callback_data": "cmd_ig_gen_image"},
+            {"text": "🔄 Regen",        "callback_data": "cmd_ig_regen"},
+        ],
+        [
+            {"text": "📊 Status",       "callback_data": "cmd_ig_status"},
+            {"text": "🗑 Clear Image",  "callback_data": "cmd_clear_image"},
+        ],
+        [
+            {"text": "📣 Marketing",    "callback_data": "menu_marketing"},
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _campaigns_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "🚀 Generate",     "callback_data": "cmd_social_generate"},
+            {"text": "📊 Social",       "callback_data": "cmd_social"},
+        ],
+        [
+            {"text": "📣 Marketing",    "callback_data": "menu_marketing"},
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _daily_ops_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "🌅 Brief",        "callback_data": "cmd_brief"},
+            {"text": "📅 Schedule",     "callback_data": "cmd_schedule"},
+        ],
+        [
+            {"text": "🚧 Blockers",     "callback_data": "cmd_blockers"},
+            {"text": "🌆 EOD",          "callback_data": "cmd_eod"},
+        ],
+        [
+            {"text": "📆 Weekly",       "callback_data": "cmd_weekly"},
+            {"text": "🎯 Missions",     "callback_data": "cmd_missions"},
+        ],
+        [
+            {"text": "🏃 Management",   "callback_data": "menu_management"},
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _orchestration_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "📊 Status",       "callback_data": "cmd_status"},
+            {"text": "🤖 Operators",    "callback_data": "cmd_operators"},
+        ],
+        [
+            {"text": "🔢 Version",      "callback_data": "cmd_version"},
+            {"text": "🏃 Management",   "callback_data": "menu_management"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _reports_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "📊 Startup",      "callback_data": "cmd_startup_report"},
+            {"text": "📧 Email Status", "callback_data": "cmd_email_status"},
+        ],
+        [
+            {"text": "🪙 Tokens Today", "callback_data": "cmd_token"},
+            {"text": "📅 Token Week",   "callback_data": "cmd_token_week"},
+        ],
+        [
+            {"text": "📆 Token Month",  "callback_data": "cmd_token_month"},
+            {"text": "🧠 RAM",          "callback_data": "cmd_ram"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
+
+
+def _system_menu_keyboard() -> dict:
+    return {"inline_keyboard": [
+        [
+            {"text": "🔑 Check Creds",  "callback_data": "cmd_check_credentials"},
+            {"text": "🔑 Check Live",   "callback_data": "cmd_check_credentials_live"},
+        ],
+        [
+            {"text": "🧙 Wizard",       "callback_data": "cmd_wizard"},
+            {"text": "❓ Help",          "callback_data": "cmd_help"},
+        ],
+        [
+            {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
+        ],
+    ]}
 
 def _persistent_keyboard() -> dict:
     """ReplyKeyboardMarkup pinned above the text input at all times."""
@@ -443,83 +721,64 @@ def _compute_all_missions(op_readiness: dict) -> dict:
     return results
 
 
-_HELP_TEXT = """\
-🤖 <b>ZYRCON BOT</b>
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 <b>MISSIONS</b>
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-💼 <b>SALES</b>
-
-  📡 <b>RECON</b> — lead generation
-  /recon · /leads · /pipeline
-  /outreach · /preview · /send_outreach
-  /approve_all · /followups · /replies
-  /reactivate · /archive
-  /recon_start · /recon_stop
-
-  🎯 <b>SCOUT</b> — qualification
-  /scout · /funnel
-  /email_approve · /email_skip
-
-  📧 <b>EMAIL</b> — outreach &amp; inbox
-  /inbox_check · /email_status
-
-  👥 <b>CRM</b> — customer relationships
-  /crm · /crm_sleep · /crm_wake
-
-  🎪 <b>DEMO</b>
-  /demo_status
-
-💰 <b>FINANCES</b>
-
-  📋 <b>QUOTE</b> — proposals
-  /quote · /close · /invoice · /review
-
-📣 <b>MARKETING</b>
-
-  𝕏 <b>X</b>
-  /x_post_now · /x_approve · /x_skip
-  /approve_all_x · /x · /x_status
-
-  📘 <b>FACEBOOK</b>
-  /fb_post_now · /fb_approve · /fb_skip
-  /approve_all_fb · /fb · /fb_status
-
-  📸 <b>INSTAGRAM</b>
-  /ig_post_now · /ig_gen_image · /ig_regen
-  /ig_approve · /ig_skip · /approve_all_ig
-  /ig · /ig_status · /clear_image
-
-  🚀 <b>CAMPAIGNS</b>
-  /social_generate · /social
-
-🏃 <b>MANAGEMENT</b>
-
-  📅 <b>DAILY OPS</b>
-  /brief · /schedule · /blockers
-  /eod · /weekly · /missions
-
-  ⚙️ <b>ORCHESTRATION</b>
-  /status · /operators · /version
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 <b>REPORTS</b>
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-/startup_report · /email_status
-/token · /token_week · /token_month · /ram
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚙️ <b>SYSTEM</b>
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-/check_credentials · /check_credentials --live
-/wizard · /help
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔬 <b>ADVANCED</b>
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-/node_sync · /node_sync_status"""
+_HELP_TEXT = (
+    "🤖 <b>ZYRCON BOT</b>\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "🎯 <b>MISSIONS</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    "💼 <b>SALES</b>\n\n"
+    "  📡 <b>RECON</b>\n"
+    "  /recon · /leads · /pipeline\n"
+    "  /outreach · /preview · /send_outreach\n"
+    "  /approve_all · /followups · /replies\n"
+    "  /reactivate · /archive\n"
+    "  /recon_start · /recon_stop\n\n"
+    "  🎯 <b>SCOUT</b>\n"
+    "  /scout · /funnel\n"
+    "  /email_approve · /email_skip\n\n"
+    "  📧 <b>EMAIL</b>\n"
+    "  /inbox_check · /email_status\n\n"
+    "  👥 <b>CRM</b>\n"
+    "  /crm · /crm_sleep · /crm_wake\n\n"
+    "  🎪 <b>DEMO</b>\n"
+    "  /demo_status\n\n"
+    "💰 <b>FINANCES</b>\n\n"
+    "  📋 <b>QUOTE</b>\n"
+    "  /quote · /close · /invoice · /review\n\n"
+    "📣 <b>MARKETING</b>\n\n"
+    "  𝕏 <b>X</b>\n"
+    "  /x_approve · /x_skip · /approve_all_x\n"
+    "  /x_post_now · /x_status\n\n"
+    "  📘 <b>FACEBOOK</b>\n"
+    "  /fb_approve · /fb_skip · /approve_all_fb\n"
+    "  /fb_post_now · /fb_status\n\n"
+    "  📸 <b>INSTAGRAM</b>\n"
+    "  /ig_approve · /ig_skip · /approve_all_ig\n"
+    "  /ig_post_now · /ig_gen_image · /ig_regen\n"
+    "  /clear_image · /ig_status\n\n"
+    "  🚀 <b>CAMPAIGNS</b>\n"
+    "  /social_generate · /social\n\n"
+    "🏃 <b>MANAGEMENT</b>\n\n"
+    "  📅 <b>DAILY OPS</b>\n"
+    "  /brief · /schedule · /blockers\n"
+    "  /eod · /weekly · /missions\n\n"
+    "  ⚙️ <b>ORCHESTRATION</b>\n"
+    "  /status · /operators · /version\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "📊 <b>REPORTS</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "/startup_report · /email_status\n"
+    "/token · /token_week · /token_month · /ram\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "⚙️ <b>SYSTEM</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "/check_credentials · /check_credentials --live\n"
+    "/wizard · /help\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "🔬 <b>ADVANCED</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "/node_sync · /node_sync_status"
+)
 
 
 class ChiefService:
@@ -4081,7 +4340,7 @@ class ChiefService:
     def _handle_menu(self, chat_id: str | None) -> str:
         """Send the main menu as an inline keyboard. Returns ack text for non-Telegram callers."""
         counts  = _get_menu_counts()
-        markup  = _main_menu_keyboard(counts)
+        markup  = _main_menu_keyboard(counts["pending"])
         if chat_id:
             try:
                 _http_post(
@@ -4150,19 +4409,67 @@ class ChiefService:
                 self.runtime.logger.warning("CHIEF send after callback failed: %s", exc)
 
         # ── Navigation ────────────────────────────────────────────────
-        if data == "menu_main":
-            counts = _get_menu_counts()
-            _edit(_MENU_TEXT, _main_menu_keyboard(counts))
+        if data in ("menu_main", "back_to_menu"):
+            _edit(_MENU_TEXT, _main_menu_keyboard(_get_menu_counts()["pending"]))
             return "ok"
-        if data == "menu_find":
-            _edit("🔍 *Find Work*\nSelect a workflow:", _find_work_keyboard())
+        if data == "menu_sales":
+            _edit("💼 <b>Sales</b>\nSelect an area:", _sales_menu_keyboard())
             return "ok"
-        if data == "menu_win":
-            _edit("💼 *Win Work*\nSelect a workflow:", _win_work_keyboard())
+        if data == "menu_finances":
+            _edit("💰 <b>Finances</b>\nSelect an area:", _finances_menu_keyboard())
             return "ok"
-        if data == "menu_run":
-            _edit("⚙️ *Run Work*\nSelect a workflow:", _run_work_keyboard())
+        if data == "menu_marketing":
+            _edit("📣 <b>Marketing</b>\nSelect a platform:", _marketing_menu_keyboard())
             return "ok"
+        if data == "menu_management":
+            _edit("🏃 <b>Management</b>\nSelect an area:", _management_menu_keyboard())
+            return "ok"
+        if data == "menu_recon":
+            _edit("📡 <b>RECON</b>\nLead generation:", _recon_menu_keyboard())
+            return "ok"
+        if data == "menu_scout":
+            _edit("🎯 <b>SCOUT</b>\nQualification:", _scout_menu_keyboard())
+            return "ok"
+        if data == "menu_email":
+            _edit("📧 <b>EMAIL</b>\nOutreach &amp; inbox:", _email_menu_keyboard())
+            return "ok"
+        if data == "menu_crm":
+            _edit("👥 <b>CRM</b>\nCustomer relationships:", _crm_menu_keyboard())
+            return "ok"
+        if data == "menu_demo":
+            _edit("🎪 <b>DEMO</b>", _demo_menu_keyboard())
+            return "ok"
+        if data == "menu_quote":
+            _edit("📋 <b>QUOTE</b>\nProposals &amp; billing:", _quote_menu_keyboard())
+            return "ok"
+        if data == "menu_x":
+            _edit("𝕏 <b>X (Twitter)</b>", _x_menu_keyboard())
+            return "ok"
+        if data == "menu_facebook":
+            _edit("📘 <b>Facebook</b>", _facebook_menu_keyboard())
+            return "ok"
+        if data == "menu_instagram":
+            _edit("📸 <b>Instagram</b>", _instagram_menu_keyboard())
+            return "ok"
+        if data == "menu_campaigns":
+            _edit("🚀 <b>Campaigns</b>", _campaigns_menu_keyboard())
+            return "ok"
+        if data == "menu_daily_ops":
+            _edit("📅 <b>Daily Ops</b>", _daily_ops_menu_keyboard())
+            return "ok"
+        if data == "menu_orchestration":
+            _edit("⚙️ <b>Orchestration</b>", _orchestration_menu_keyboard())
+            return "ok"
+        if data == "menu_reports":
+            _edit("📊 <b>Reports</b>", _reports_menu_keyboard())
+            return "ok"
+        if data == "menu_system":
+            _edit("⚙️ <b>System</b>", _system_menu_keyboard())
+            return "ok"
+        if data == "menu_approve":
+            data = "do_approve_all"
+        if data == "menu_inbox":
+            data = "do_inbox"
 
         # ── Find Work actions ─────────────────────────────────────────
         if data == "do_new_leads":
