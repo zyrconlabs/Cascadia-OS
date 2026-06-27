@@ -1607,6 +1607,23 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._inbox_check(n),
                 ).to_dict()
+            if cmd in ("/node_sync", "/node_sync_status"):
+                try:
+                    import urllib.request as _ur, json as _j
+                    _url = ("http://localhost:7015/api/sync"
+                            if cmd == "/node_sync"
+                            else "http://localhost:7015/api/sync/status")
+                    with _ur.urlopen(_url, timeout=5) as _r:
+                        _d = _j.loads(_r.read())
+                    reply = f"🔄 Grid sync: {_d}"
+                except Exception as _e:
+                    reply = (f"⚠️ Grid not reachable: {_e}\n"
+                             f"Start Grid first or check port 7015.")
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=reply,
+                ).to_dict()
             if parsed_cmd["operator"]:
                 target = parsed_cmd["operator"]
                 self.runtime.logger.info(
@@ -4841,6 +4858,269 @@ class ChiefService:
             return "ok"
         if data == "cmd_performance_history":
             _edit(self._performance_command("history"))
+            return "ok"
+
+        # ── RECON / FIND WORK ─────────────────────────────────────────
+        if data == "cmd_recon":
+            _edit("📡 <b>RECON</b>\nType /recon &lt;trade&gt; &lt;city&gt; to search for leads.\nExample: /recon HVAC Houston TX")
+            return "ok"
+        if data == "cmd_leads":
+            _edit(self._pipeline_snapshot())
+            return "ok"
+        if data == "cmd_pipeline":
+            _edit(self._pipeline_snapshot())
+            return "ok"
+        if data == "cmd_outreach":
+            if not chat_id:
+                return "no chat_id"
+            threading.Thread(
+                target=self._run_outreach_and_notify, args=(chat_id, 20),
+                daemon=True, name="chief-cb-cmd-outreach",
+            ).start()
+            _edit("📤 Pulling top 20 leads for outreach — stand by...")
+            return "ok"
+        if data == "cmd_followups":
+            _edit(self._followups_snapshot())
+            return "ok"
+        if data == "cmd_replies":
+            _edit(self._replies_snapshot())
+            return "ok"
+        if data == "cmd_reactivate":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("find_work", "lead_reactivation", chat_id)),
+                daemon=True, name="chief-cb-cmd-reactivate",
+            ).start()
+            _edit("♻️ Triggering lead reactivation — stand by...")
+            return "ok"
+        if data == "cmd_recon_start":
+            threading.Thread(
+                target=lambda: _send(self._recon_start()),
+                daemon=True, name="chief-cb-cmd-recon-start",
+            ).start()
+            _edit("🚀 Starting RECON scraper — stand by...")
+            return "ok"
+        if data == "cmd_recon_stop":
+            _edit(self._recon_stop())
+            return "ok"
+        if data == "cmd_approve_all":
+            if not chat_id:
+                return "no chat_id"
+            n_out = len(self._load_outreach_approvals())
+            n_q   = len(self._load_approvals())
+            if n_out + n_q == 0:
+                _edit("✅ Nothing pending — queue is empty.")
+                return "ok"
+            threading.Thread(
+                target=self._approve_all_and_notify, args=(chat_id,),
+                daemon=True, name="chief-cb-cmd-approve-all",
+            ).start()
+            _edit(f"⚙️ Approving {n_out + n_q} pending item(s)... Stand by.")
+            return "ok"
+
+        # ── SCOUT / QUALIFIER ──────────────────────────────────────────
+        if data == "cmd_scout":
+            _edit("🎯 <b>SCOUT</b>\nType /scout &lt;lead description&gt; to qualify a lead.\nExample: /scout John Smith HVAC contractor reply")
+            return "ok"
+        if data == "cmd_funnel":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("win_work", "sales_funnel", chat_id)),
+                daemon=True, name="chief-cb-cmd-funnel",
+            ).start()
+            _edit("🎯 Triggering sales funnel — stand by...")
+            return "ok"
+
+        # ── EMAIL ──────────────────────────────────────────────────────
+        if data == "cmd_email_approve":
+            _edit(self._email_approve_command())
+            return "ok"
+        if data == "cmd_email_skip":
+            _edit(self._email_skip_command())
+            return "ok"
+        if data == "cmd_inbox_check":
+            threading.Thread(
+                target=lambda: _send(self._inbox_check(1)),
+                daemon=True, name="chief-cb-cmd-inbox",
+            ).start()
+            _edit("📥 Checking inbox — stand by...")
+            return "ok"
+        if data == "cmd_email_status":
+            _edit(self._email_status())
+            return "ok"
+
+        # ── CRM ────────────────────────────────────────────────────────
+        if data == "cmd_crm":
+            _edit(self._crm_command(""))
+            return "ok"
+        if data == "cmd_crm_sleep":
+            _edit(self._crm_command("sleep"))
+            return "ok"
+        if data == "cmd_crm_wake":
+            _edit(self._crm_command("wake"))
+            return "ok"
+
+        # ── DEMO ───────────────────────────────────────────────────────
+        if data == "cmd_demo_status":
+            _edit(self._demo_command("status"))
+            return "ok"
+
+        # ── WIN WORK / QUOTE ───────────────────────────────────────────
+        if data == "cmd_quote":
+            _edit("📋 <b>Quote Builder</b>\nType /quote [description] or /quote_N to draft for a specific lead.")
+            return "ok"
+        if data == "cmd_close":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("win_work", "close_the_job", chat_id)),
+                daemon=True, name="chief-cb-cmd-close",
+            ).start()
+            _edit("✅ Triggering close job workflow — stand by...")
+            return "ok"
+        if data == "cmd_invoice":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("win_work", "get_paid", chat_id)),
+                daemon=True, name="chief-cb-cmd-invoice",
+            ).start()
+            _edit("💰 Triggering invoice follow-up — stand by...")
+            return "ok"
+        if data == "cmd_review":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "review_request", chat_id)),
+                daemon=True, name="chief-cb-cmd-review",
+            ).start()
+            _edit("⭐ Triggering review request — stand by...")
+            return "ok"
+
+        # ── X / TWITTER ────────────────────────────────────────────────
+        if data == "cmd_x_approve":
+            _edit(self._x_command("approve"))
+            return "ok"
+        if data == "cmd_x_skip":
+            _edit(self._x_command("skip"))
+            return "ok"
+        if data == "cmd_approve_all_x":
+            _edit(self._approve_all_platform("x"))
+            return "ok"
+        if data == "cmd_x_post_now":
+            _edit(self._post_now_command("x"))
+            return "ok"
+        if data == "cmd_x_status":
+            _edit(self._x_command("status"))
+            return "ok"
+
+        # ── FACEBOOK ───────────────────────────────────────────────────
+        if data == "cmd_fb_approve":
+            _edit(self._fb_command("approve"))
+            return "ok"
+        if data == "cmd_fb_skip":
+            _edit(self._fb_command("skip"))
+            return "ok"
+        if data == "cmd_approve_all_fb":
+            _edit(self._approve_all_platform("facebook"))
+            return "ok"
+        if data == "cmd_fb_post_now":
+            _edit(self._post_now_command("fb"))
+            return "ok"
+        if data == "cmd_fb_status":
+            _edit(self._fb_command("status"))
+            return "ok"
+
+        # ── INSTAGRAM ──────────────────────────────────────────────────
+        if data == "cmd_ig_approve":
+            _edit(self._ig_command("approve"))
+            return "ok"
+        if data == "cmd_ig_skip":
+            _edit(self._ig_command("skip"))
+            return "ok"
+        if data == "cmd_approve_all_ig":
+            _edit(self._approve_all_platform("instagram"))
+            return "ok"
+        if data == "cmd_ig_post_now":
+            _edit(self._post_now_command("ig"))
+            return "ok"
+        if data == "cmd_ig_gen_image":
+            threading.Thread(
+                target=lambda: _send(self._ig_gen_image_command()),
+                daemon=True, name="chief-cb-cmd-ig-gen",
+            ).start()
+            _edit("🖼 Generating image — stand by (~30s)...")
+            return "ok"
+        if data == "cmd_ig_regen":
+            threading.Thread(
+                target=lambda: _send(self._ig_regen_command()),
+                daemon=True, name="chief-cb-cmd-ig-regen",
+            ).start()
+            _edit("🔄 Regenerating image — stand by (~30s)...")
+            return "ok"
+        if data == "cmd_ig_status":
+            _edit(self._ig_command("status"))
+            return "ok"
+        if data == "cmd_clear_image":
+            _edit(self._clear_image_command())
+            return "ok"
+
+        # ── CAMPAIGNS ──────────────────────────────────────────────────
+        if data == "cmd_social":
+            threading.Thread(
+                target=lambda: _send(self._social_start("daily social campaign", chat_id)),
+                daemon=True, name="chief-cb-cmd-social",
+            ).start()
+            _edit("🚀 Starting social campaign — stand by...")
+            return "ok"
+        if data == "cmd_social_generate":
+            threading.Thread(
+                target=lambda: _send(self._social_generate_command()),
+                daemon=True, name="chief-cb-cmd-social-gen",
+            ).start()
+            _edit("🚀 Generating social content — stand by...")
+            return "ok"
+
+        # ── ORCHESTRATION ──────────────────────────────────────────────
+        if data == "cmd_status":
+            _edit(self._status_summary())
+            return "ok"
+        if data == "cmd_operators":
+            _edit(build_operators_text(OPERATOR_CATALOG))
+            return "ok"
+        if data == "cmd_version":
+            _edit(self._version_info())
+            return "ok"
+
+        # ── REPORTS ────────────────────────────────────────────────────
+        if data == "cmd_startup_report":
+            threading.Thread(
+                target=lambda: _send(self._build_startup_report()),
+                daemon=True, name="chief-cb-cmd-startup",
+            ).start()
+            _edit("📊 Running startup report — stand by...")
+            return "ok"
+        if data == "cmd_ram":
+            _edit(self._ram_status())
+            return "ok"
+        if data == "cmd_token":
+            _edit(self._meter_command("default"))
+            return "ok"
+        if data == "cmd_token_week":
+            _edit(self._meter_command("week"))
+            return "ok"
+        if data == "cmd_token_month":
+            _edit(self._meter_command("month"))
+            return "ok"
+
+        # ── SYSTEM ─────────────────────────────────────────────────────
+        if data == "cmd_wizard":
+            _edit(self._cmd_wizard())
+            return "ok"
+        if data == "cmd_help":
+            _edit(build_help_text())
+            return "ok"
+        if data == "cmd_check_credentials":
+            _edit(self._check_credentials_report(False))
+            return "ok"
+        if data == "cmd_check_credentials_live":
+            threading.Thread(
+                target=lambda: _send(self._check_credentials_report(True)),
+                daemon=True, name="chief-cb-cmd-creds-live",
+            ).start()
+            _edit("🔑 Checking credentials live — stand by...")
             return "ok"
 
         self.runtime.logger.warning("CHIEF unknown callback_data: %s", data)
