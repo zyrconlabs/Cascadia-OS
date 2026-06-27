@@ -1123,16 +1123,23 @@ document.getElementById('key').addEventListener('keydown', function(e){
         # onto each operator, matched by id. Operators not in CREW →
         # 'unregistered'. CREW unavailable → all 'unregistered' (non-fatal).
         crew_status_map: Dict[str, str] = {}
+        crew_records: Dict[str, dict] = {}
+        # Alias map: CREW operator_id → registry.json id
+        crew_alias = {'email_operator': 'email', 'social': 'social_chat_operator'}
         try:
             crew = _http_get(self._ports.get('crew', 5100), '/crew') or {}
             crew_ops = crew.get('operators', {})
             if isinstance(crew_ops, list):
                 crew_ops = {o['operator_id']: o for o in crew_ops
                             if isinstance(o, dict) and 'operator_id' in o}
-            crew_status_map = {
-                k: v.get('status', 'unknown')
-                for k, v in crew_ops.items() if isinstance(v, dict)
-            }
+            for cid, crec in crew_ops.items():
+                if not isinstance(crec, dict):
+                    continue
+                gid = crew_alias.get(cid, cid)
+                st = crec.get('status', 'unknown')
+                crew_status_map[gid] = st
+                crew_status_map[cid] = st  # also index by original CREW id
+                crew_records[gid] = crec
         except Exception:
             pass
 
@@ -1164,6 +1171,38 @@ document.getElementById('key').addEventListener('keydown', function(e){
                     op.get("id"), "unregistered"),
                 "ui_url":      f"http://localhost:{port}/" if port else None,
                 "sample_output": op.get("sample_output"),
+            })
+
+        # H1 Phase 2: union CREW-only operators (registered in CREW but
+        # absent from registry.json) so all live operators appear with status.
+        _grid_ids = {o.get("id") for o in result}
+        for gid, crec in crew_records.items():
+            if gid in _grid_ids:
+                continue
+            cport = crec.get("port")
+            chook = crec.get("health_hook", "/api/health")
+            cstatus = "offline"
+            if cport:
+                try:
+                    with _ur.urlopen(
+                        f"http://127.0.0.1:{cport}{chook}", timeout=1
+                    ) as r:
+                        cstatus = json.loads(r.read().decode()).get("status", "online")
+                except Exception:
+                    cstatus = "offline"
+            result.append({
+                "id":          gid,
+                "name":        gid.replace("-", " ").replace("_", " ").title(),
+                "category":    "operator",
+                "description": "",
+                "status":      cstatus,
+                "port":        cport,
+                "autonomy":    crec.get("autonomy_level"),
+                "op_status":   None,
+                "crew_status": crew_status_map.get(gid, "alive"),
+                "ui_url":      f"http://localhost:{cport}/" if cport else None,
+                "sample_output": None,
+                "source":      "crew",
             })
 
         online = sum(1 for o in result if o["status"] != "offline")

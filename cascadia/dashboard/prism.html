@@ -731,6 +731,12 @@ input[type="file"]{display:none}
 .first-run-banner{display:flex;align-items:center;justify-content:space-between;background:#1a1a2e;color:#e2e8f0;font-size:13px;padding:10px 20px;gap:12px;z-index:100}
 .first-run-banner button{background:none;border:none;color:#e2e8f0;cursor:pointer;font-size:16px;line-height:1;padding:0 4px;opacity:.7}
 .first-run-banner button:hover{opacity:1}
+/* H1 Phase 2: CREW 4-state liveness badges */
+.crew-badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle;text-transform:uppercase}
+.crew-alive{background:#00C853;color:#fff}
+.crew-unknown{background:#FF9500;color:#fff}
+.crew-stale{background:#FF3B30;color:#fff}
+.crew-unregistered{background:#8E8E93;color:#fff}
 </style>
 </head>
 <body>
@@ -1426,6 +1432,7 @@ async function refreshOperators() {
           name: op.name,
           role: op.category ? op.category.charAt(0).toUpperCase()+op.category.slice(1) : 'Operator',
           status: op.status === 'offline' ? 'offline' : op.op_status === 'production' ? 'active' : 'standby',
+          crewStatus: op.crew_status,
           model: S.model || '—',
           routing: 'local',
           port: op.port,
@@ -1527,7 +1534,7 @@ function buildOpItem(c) {
   const runsToday=ovOp?.runs_today||0;
   const lastRunRel=ovOp?.last_run?relativeTime(new Date(ovOp.last_run)):'';
   const runCount=(S.runs[c.id]||[]).length;
-  return `<div class="op-item${a}" onclick="selectOperator('${c.id}')"><div class="op-avatar ${avCls}">${initials(c.name)}<div class="op-dot ${d}"></div></div><div class="op-body"><div class="op-name">${esc(c.name)}</div><div class="op-role">${esc(c.role)}</div><div class="op-meta"><span class="tag ${tg}">${lb}</span><span class="tag ${c.isWorker?'tag--worker':'tag--neutral'}">${c.isWorker?'Worker':'Operator'}</span>${pend?`<span class="tag tag--approval">⚠${pend}</span>`:''}${runsToday?`<span class="tag tag--neutral">${runsToday} today</span>`:''}${lastRunRel?`<span class="tag tag--neutral">${lastRunRel}</span>`:runCount?`<span class="tag tag--neutral">${runCount} runs</span>`:''}</div></div></div>`;
+  return `<div class="op-item${a}" onclick="selectOperator('${c.id}')"><div class="op-avatar ${avCls}">${initials(c.name)}<div class="op-dot ${d}"></div></div><div class="op-body"><div class="op-name">${esc(c.name)}</div><div class="op-role">${esc(c.role)}</div><div class="op-meta"><span class="tag ${tg}">${lb}</span>${crewBadge(c.crewStatus)}<span class="tag ${c.isWorker?'tag--worker':'tag--neutral'}">${c.isWorker?'Worker':'Operator'}</span>${pend?`<span class="tag tag--approval">⚠${pend}</span>`:''}${runsToday?`<span class="tag tag--neutral">${runsToday} today</span>`:''}${lastRunRel?`<span class="tag tag--neutral">${lastRunRel}</span>`:runCount?`<span class="tag tag--neutral">${runCount} runs</span>`:''}</div></div></div>`;
 }
 function buildConnItem(c) {
   const a=S.selected===c.id?' op-item--active':'', d=SD[c.status]||'dot--offline', tg=ST[c.status]||'tag--offline', lb=SL[c.status]||'Offline';
@@ -4923,6 +4930,12 @@ function _gspRemoveTag(key, idx) {
   current.splice(idx, 1);
   _gspChange(key, current.join(', '));
   _gspRender();
+}
+// H1 Phase 2: CREW liveness badge
+function crewBadge(s){
+  const map={alive:['ALIVE','crew-alive'],unknown:['?','crew-unknown'],stale:['STALE','crew-stale'],unregistered:['—','crew-unregistered']};
+  const [label,cls]=map[(s||'unregistered').toLowerCase()]||['—','crew-unregistered'];
+  return `<span class="crew-badge ${cls}" title="CREW: ${s||'unregistered'}">${label}</span>`;
 }
 </script>
 <!-- ALMANAC OVERLAY -->
