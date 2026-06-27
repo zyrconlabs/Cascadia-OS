@@ -4164,7 +4164,7 @@ class ChiefService:
             "Run /recon_start to resume."
         )
 
-    _PULSE_URL = "http://127.0.0.1:8012"
+    _PULSE_URL = "http://127.0.0.1:8016"
 
     def _archive_leads(self) -> str:
         """Trigger PULSE to move completed (exhausted/skipped) leads out of
