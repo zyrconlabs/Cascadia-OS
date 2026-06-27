@@ -89,8 +89,8 @@ COMMANDS: dict[str, dict] = {
     "/token_week":     {"operator": None,         "description": "Token usage this week"},
     "/token_month":    {"operator": None,         "description": "Token usage this month"},
     "/token_all":      {"operator": None,         "description": "Token usage all time"},
-    # Jr Programmer
-    "/code":                {"operator": None, "description": "Start a Jr Programmer project"},
+    # Code
+    "/code":                {"operator": None, "description": "Start a code project"},
     # Grid
     "/node_sync":           {"operator": None, "description": "Sync Grid nodes"},
     "/node_sync_status":    {"operator": None, "description": "Grid node sync status"},
