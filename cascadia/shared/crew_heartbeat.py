@@ -39,7 +39,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 CREW_URL            = "http://127.0.0.1:5100"
-HEARTBEAT_INTERVAL  = 30   # seconds between re-registrations
+HEARTBEAT_INTERVAL  = 300  # seconds between re-registrations (liveness only; CREW reconciles health every 30s + persists registry)
 BOOT_RETRY_INTERVAL = 3    # seconds between retries on first boot
 
 

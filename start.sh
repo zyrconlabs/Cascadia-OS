@@ -372,7 +372,7 @@ if [ -f "$_MW_PID_FILE" ]; then
 fi
 echo "▸ Starting memory pressure watchdog..."
 (
-    _IDLE_OPS="aurelia debrief collect brief social jr-programmer competition-researcher"
+    _IDLE_OPS="aurelia debrief collect brief social code competition-researcher"
     while true; do
         sleep 300
         _SWAP=$(sysctl vm.swapusage 2>/dev/null \
