@@ -250,6 +250,10 @@ def _management_menu_keyboard() -> dict:
             {"text": "⚙️ Orchestration","callback_data": "menu_orchestration"},
         ],
         [
+            {"text": "👨‍💻 Code",         "callback_data": "cmd_code"},
+            {"text": "📋 Code Projects", "callback_data": "cmd_code_list"},
+        ],
+        [
             {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
         ],
     ]}
@@ -2694,7 +2698,7 @@ class ChiefService:
             return f"❌ Performance operator error: {str(e)[:80]}"
 
     def _code_command(self, args: str = "", chat_id: str = None) -> str:
-        """Handle /code — create Jr Programmer project or show status."""
+        """Handle /code — create Code operator project or show status."""
         JR = "http://localhost:8004"
         chat_id = chat_id or self._OWNER_CHAT
         args = (args or "").strip()
@@ -2716,7 +2720,7 @@ class ChiefService:
                     lines.append(f"{icon} {p['project_num']} — {name} [{p['status']}]")
                 return "\n".join(lines)
             except Exception as exc:
-                return f"❌ Jr Programmer not reachable: {exc}"
+                return f"❌ Code operator not reachable: {exc}"
 
         m = re.match(r"^status\s+(\d{4})$", args, re.I)
         if m:
@@ -2757,7 +2761,7 @@ class ChiefService:
 
         if not args:
             return (
-                "👨‍💻 <b>Jr Programmer</b>\n\n"
+                "👨‍💻 <b>Code</b>\n\n"
                 "Usage:\n"
                 "/code &lt;describe what you need&gt;\n"
                 "/code list — recent projects\n"
@@ -2766,7 +2770,7 @@ class ChiefService:
                 "Example: /code Sort my customer list alphabetically"
             )
 
-        # Create new project — post to Jr Programmer async
+        # Create new project — post to Code operator async
         try:
             payload = json.dumps({
                 "action":   "create_project",
@@ -2782,7 +2786,7 @@ class ChiefService:
                 json.loads(r.read())
             return ""  # Operator sends proposal directly to Telegram
         except Exception as exc:
-            return f"❌ Jr Programmer not reachable: {exc}"
+            return f"❌ Code operator not reachable: {exc}"
 
     _OWNER_CHAT = "1535010257"
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
@@ -4962,7 +4966,15 @@ class ChiefService:
             _edit(self._performance_command("history"))
             return "ok"
 
-        # ── Jr Programmer proposal buttons ────────────────────────────
+        # ── Code operator menu buttons ─────────────────────────────────
+        if data == "cmd_code":
+            _edit(self._code_command("", chat_id=chat_id))
+            return "ok"
+        if data == "cmd_code_list":
+            _edit(self._code_command("list", chat_id=chat_id))
+            return "ok"
+
+        # ── Code operator proposal buttons ────────────────────────────
         if data.startswith("code_approve_"):
             project_num = data[len("code_approve_"):]
             try:
