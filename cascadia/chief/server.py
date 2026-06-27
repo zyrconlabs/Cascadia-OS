@@ -1111,59 +1111,6 @@ class ChiefService:
                         selected_type="status", selected_target=cmd,
                         reply_text=self._wp_command(draft_id, "skip"),
                     ).to_dict()
-                if cmd.startswith("/token") or cmd.startswith("/meter"):
-                    # /token, /token_day, /token_week, /token_month, /token_all
-                    # /meter, /meter_today, /meter_week, /meter_month, /meter_all
-                    if cmd.startswith("/token"):
-                        suffix = cmd[len("/token"):]
-                    else:
-                        suffix = cmd[len("/meter"):]
-                    period = suffix.lstrip("_") or "default"
-                    if period == "today":
-                        period = "default"
-                    return 200, TaskResponse(
-                        ok=True, task_id=task_id,
-                        selected_type="status", selected_target=cmd,
-                        reply_text=self._meter_command(period),
-                    ).to_dict()
-                if cmd.startswith("/code"):
-                    code_args = (cmd[5:].lstrip("_").strip() + " " +
-                                 parsed_cmd.get("args", "")).strip()
-                    reply = self._code_command(code_args, chat_id=chat_id)
-                    if not reply:
-                        reply = "⏳ Creating project — you'll receive a proposal shortly..."
-                    return 200, TaskResponse(
-                        ok=True, task_id=task_id,
-                        selected_type="status", selected_target=cmd,
-                        reply_text=reply,
-                    ).to_dict()
-                if cmd == "/demo_status":
-                    return 200, TaskResponse(
-                        ok=True, task_id=task_id,
-                        selected_type="status", selected_target=cmd,
-                        reply_text=self._demo_command("status"),
-                    ).to_dict()
-                if cmd.startswith("/demo_start"):
-                    prospect_id = cmd[len("/demo_start"):].strip()
-                    return 200, TaskResponse(
-                        ok=True, task_id=task_id,
-                        selected_type="status", selected_target=cmd,
-                        reply_text=self._demo_command("start", prospect_id),
-                    ).to_dict()
-                if cmd.startswith("/demo_reset"):
-                    prospect_id = cmd[len("/demo_reset"):].strip()
-                    return 200, TaskResponse(
-                        ok=True, task_id=task_id,
-                        selected_type="status", selected_target=cmd,
-                        reply_text=self._demo_command("reset", prospect_id),
-                    ).to_dict()
-                if cmd.startswith("/demo_close"):
-                    prospect_id = cmd[len("/demo_close"):].strip()
-                    return 200, TaskResponse(
-                        ok=True, task_id=task_id,
-                        selected_type="status", selected_target=cmd,
-                        reply_text=self._demo_command("close", prospect_id),
-                    ).to_dict()
                 reply_text = (
                     f"I don't know that command: {cmd}\n"
                     f"Try /help to see what's available."
@@ -1174,7 +1121,7 @@ class ChiefService:
                 ).to_dict()
             if cmd.startswith("/performance"):
                 # /performance, /performance_morning, /performance_noon,
-                # /performance_kpis, /performance_history
+                # /performance_evening, /performance_kpis, /performance_history
                 suffix = cmd[len("/performance"):].lstrip("_") or "morning"
                 if suffix in ("kpis", "snapshot"):
                     action = "snapshot"
@@ -1182,12 +1129,67 @@ class ChiefService:
                     action = "history"
                 elif suffix == "noon":
                     action = "noon"
+                elif suffix == "evening":
+                    action = "evening"
                 else:
                     action = "morning"
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
                     selected_type="status", selected_target=cmd,
                     reply_text=self._performance_command(action),
+                ).to_dict()
+            if cmd.startswith("/token") or cmd.startswith("/meter"):
+                # /token, /token_day, /token_week, /token_month, /token_all
+                # /meter, /meter_today, /meter_week, /meter_month, /meter_all
+                if cmd.startswith("/token"):
+                    suffix = cmd[len("/token"):]
+                else:
+                    suffix = cmd[len("/meter"):]
+                period = suffix.lstrip("_") or "default"
+                if period == "today":
+                    period = "default"
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._meter_command(period),
+                ).to_dict()
+            if cmd.startswith("/code"):
+                code_args = (cmd[5:].lstrip("_").strip() + " " +
+                             parsed_cmd.get("args", "")).strip()
+                reply = self._code_command(code_args, chat_id=chat_id)
+                if not reply:
+                    reply = "⏳ Creating project — you'll receive a proposal shortly..."
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=reply,
+                ).to_dict()
+            if cmd == "/demo_status":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._demo_command("status"),
+                ).to_dict()
+            if cmd.startswith("/demo_start"):
+                prospect_id = cmd[len("/demo_start"):].strip()
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._demo_command("start", prospect_id),
+                ).to_dict()
+            if cmd.startswith("/demo_reset"):
+                prospect_id = cmd[len("/demo_reset"):].strip()
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._demo_command("reset", prospect_id),
+                ).to_dict()
+            if cmd.startswith("/demo_close"):
+                prospect_id = cmd[len("/demo_close"):].strip()
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._demo_command("close", prospect_id),
                 ).to_dict()
             if cmd == "/help":
                 _tg_send(chat_id, _HELP_TEXT, parse_mode="HTML")
@@ -2651,6 +2653,7 @@ class ChiefService:
         endpoints = {
             "morning":  f"{PERF}/api/performance/morning",
             "noon":     f"{PERF}/api/performance/noon",
+            "evening":  f"{PERF}/api/performance/evening",
             "snapshot": f"{PERF}/api/performance/snapshot",
             "history":  f"{PERF}/api/performance/history",
         }
@@ -2658,10 +2661,10 @@ class ChiefService:
         try:
             with urllib.request.urlopen(url, timeout=10) as r:
                 data = json.loads(r.read())
-            if action in ("morning", "noon"):
+            if action in ("morning", "noon", "evening"):
                 sent = data.get("sent", False)
                 return ("✅ Performance report sent to Telegram" if sent
-                        else "✅ Noon check: on track — no alert needed")
+                        else "✅ Check complete — on track, no alert needed")
             if action == "snapshot":
                 kpis = data.get("kpis", {})
                 lines = ["📊 <b>Performance KPIs</b>\n"]

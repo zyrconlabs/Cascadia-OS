@@ -89,6 +89,10 @@ COMMANDS: dict[str, dict] = {
     "/token_week":     {"operator": None,         "description": "Token usage this week"},
     "/token_month":    {"operator": None,         "description": "Token usage this month"},
     "/token_all":      {"operator": None,         "description": "Token usage all time"},
+    "/meter":          {"operator": None,         "description": "Token usage today (alias)"},
+    "/meter_week":     {"operator": None,         "description": "Token usage this week (alias)"},
+    "/meter_month":    {"operator": None,         "description": "Token usage this month (alias)"},
+    "/meter_all":      {"operator": None,         "description": "Token usage all time (alias)"},
     # Code
     "/code":                {"operator": None, "description": "Start a code project"},
     # Grid
@@ -98,6 +102,7 @@ COMMANDS: dict[str, dict] = {
     "/performance":         {"operator": "performance", "description": "Trigger morning performance report now"},
     "/performance_noon":    {"operator": "performance", "description": "Trigger noon KPI check now"},
     "/performance_kpis":    {"operator": "performance", "description": "Show current KPI snapshot"},
+    "/performance_evening": {"operator": "performance", "description": "Trigger evening performance scorecard"},
     "/performance_history": {"operator": "performance", "description": "Show 7-day KPI trend"},
 }
 
