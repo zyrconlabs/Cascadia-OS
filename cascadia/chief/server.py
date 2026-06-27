@@ -4443,6 +4443,7 @@ class ChiefService:
             f"✅ <b>Follow-ups approved: {sent}</b>"
             f"{f'  ({failed} failed)' if failed else ''}\n"
             f"Leads advance to next touch or archive when done.",
+            parse_mode="HTML",
         )
 
     def _cancel_followup_batch(self, chat_id: str) -> None:
@@ -4481,6 +4482,7 @@ class ChiefService:
             chat_id,
             f"🗑 <b>Follow-up batch cancelled.</b>\n"
             f"{cleared} lead(s) remain due for the next run.",
+            parse_mode="HTML",
         )
 
     def _run_outreach_and_notify(self, chat_id: str, limit: int = 20) -> None:
