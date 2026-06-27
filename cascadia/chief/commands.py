@@ -89,6 +89,11 @@ COMMANDS: dict[str, dict] = {
     "/token_week":     {"operator": None,         "description": "Token usage this week"},
     "/token_month":    {"operator": None,         "description": "Token usage this month"},
     "/token_all":      {"operator": None,         "description": "Token usage all time"},
+    # Performance
+    "/performance":         {"operator": "performance", "description": "Trigger morning performance report now"},
+    "/performance_noon":    {"operator": "performance", "description": "Trigger noon KPI check now"},
+    "/performance_kpis":    {"operator": "performance", "description": "Show current KPI snapshot"},
+    "/performance_history": {"operator": "performance", "description": "Show 7-day KPI trend"},
 }
 
 
