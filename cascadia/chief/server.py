@@ -451,6 +451,10 @@ def _daily_ops_menu_keyboard() -> dict:
             {"text": "🎯 Missions",     "callback_data": "cmd_missions"},
         ],
         [
+            {"text": "📊 Performance",  "callback_data": "cmd_performance"},
+            {"text": "📈 KPIs",         "callback_data": "cmd_performance_kpis"},
+        ],
+        [
             {"text": "🏃 Management",   "callback_data": "menu_management"},
             {"text": "🏠 Menu",         "callback_data": "back_to_menu"},
         ],
@@ -1117,6 +1121,23 @@ class ChiefService:
                         ok=True, task_id=task_id,
                         selected_type="status", selected_target=cmd,
                         reply_text=self._meter_command(period),
+                    ).to_dict()
+                if cmd.startswith("/performance"):
+                    # /performance, /performance_morning, /performance_noon,
+                    # /performance_kpis, /performance_history
+                    suffix = cmd[len("/performance"):].lstrip("_") or "morning"
+                    if suffix in ("kpis", "snapshot"):
+                        action = "snapshot"
+                    elif suffix == "history":
+                        action = "history"
+                    elif suffix == "noon":
+                        action = "noon"
+                    else:
+                        action = "morning"
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=self._performance_command(action),
                     ).to_dict()
                 if cmd == "/demo_status":
                     return 200, TaskResponse(
@@ -2591,6 +2612,58 @@ class ChiefService:
             return "✓ Meter sent"
         except Exception as e:
             return f"❌ Meter error: {str(e)[:80]}"
+
+    def _performance_command(self, action: str = "morning") -> str:
+        """Handle /performance* commands. Calls performance operator at :8030."""
+        PERF = "http://localhost:8030"
+        endpoints = {
+            "morning":  f"{PERF}/api/performance/morning",
+            "noon":     f"{PERF}/api/performance/noon",
+            "snapshot": f"{PERF}/api/performance/snapshot",
+            "history":  f"{PERF}/api/performance/history",
+        }
+        url = endpoints.get(action, endpoints["morning"])
+        try:
+            with urllib.request.urlopen(url, timeout=10) as r:
+                data = json.loads(r.read())
+            if action in ("morning", "noon"):
+                sent = data.get("sent", False)
+                return ("✅ Performance report sent to Telegram" if sent
+                        else "✅ Noon check: on track — no alert needed")
+            if action == "snapshot":
+                kpis = data.get("kpis", {})
+                lines = ["📊 <b>Performance KPIs</b>\n"]
+                labels = {
+                    "leads_researched": "Leads",
+                    "emails_sent":      "Emails sent",
+                    "hot_leads":        "Hot leads",
+                    "token_cost_usd":   "Token cost",
+                    "demo_sessions":    "Demo sessions",
+                    "operator_uptime":  "Operators up",
+                }
+                for k, label in labels.items():
+                    v = kpis.get(k, "—")
+                    if k == "token_cost_usd" and isinstance(v, (int, float)):
+                        v = f"${v:.4f}"
+                    lines.append(f"  {label}: {v}")
+                return "\n".join(lines)
+            if action == "history":
+                days = data.get("days", [])
+                if not days:
+                    return "No KPI history yet."
+                lines = ["📈 <b>Performance — Last 7 Days</b>\n"]
+                for d in days:
+                    cost = d.get("token_cost_usd", 0)
+                    lines.append(
+                        f"  {d.get('snap_date','?')}  "
+                        f"leads={d.get('leads_researched',0)}  "
+                        f"emails={d.get('emails_sent',0)}  "
+                        f"cost=${cost:.2f}"
+                    )
+                return "\n".join(lines)
+            return "✅ Done"
+        except Exception as e:
+            return f"❌ Performance operator error: {str(e)[:80]}"
 
     _OWNER_CHAT = "1535010257"
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
@@ -4714,6 +4787,20 @@ class ChiefService:
         if data.startswith("approve:") or data.startswith("reject:"):
             action, row_id = data.split(":", 1)
             _edit(self._handle_approval(action, row_id, chat_id))
+            return "ok"
+
+        # ── Performance operator buttons ──────────────────────────────
+        if data == "cmd_performance":
+            _edit(self._performance_command("morning"))
+            return "ok"
+        if data == "cmd_performance_kpis":
+            _edit(self._performance_command("snapshot"))
+            return "ok"
+        if data == "cmd_performance_noon":
+            _edit(self._performance_command("noon"))
+            return "ok"
+        if data == "cmd_performance_history":
+            _edit(self._performance_command("history"))
             return "ok"
 
         self.runtime.logger.warning("CHIEF unknown callback_data: %s", data)
