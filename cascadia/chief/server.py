@@ -1126,23 +1126,6 @@ class ChiefService:
                         selected_type="status", selected_target=cmd,
                         reply_text=self._meter_command(period),
                     ).to_dict()
-                if cmd.startswith("/performance"):
-                    # /performance, /performance_morning, /performance_noon,
-                    # /performance_kpis, /performance_history
-                    suffix = cmd[len("/performance"):].lstrip("_") or "morning"
-                    if suffix in ("kpis", "snapshot"):
-                        action = "snapshot"
-                    elif suffix == "history":
-                        action = "history"
-                    elif suffix == "noon":
-                        action = "noon"
-                    else:
-                        action = "morning"
-                    return 200, TaskResponse(
-                        ok=True, task_id=task_id,
-                        selected_type="status", selected_target=cmd,
-                        reply_text=self._performance_command(action),
-                    ).to_dict()
                 if cmd.startswith("/code"):
                     code_args = (cmd[5:].lstrip("_").strip() + " " +
                                  parsed_cmd.get("args", "")).strip()
@@ -1188,6 +1171,23 @@ class ChiefService:
                 return 200, TaskResponse(
                     ok=True, task_id=task_id, selected_type="none",
                     reply_text=reply_text,
+                ).to_dict()
+            if cmd.startswith("/performance"):
+                # /performance, /performance_morning, /performance_noon,
+                # /performance_kpis, /performance_history
+                suffix = cmd[len("/performance"):].lstrip("_") or "morning"
+                if suffix in ("kpis", "snapshot"):
+                    action = "snapshot"
+                elif suffix == "history":
+                    action = "history"
+                elif suffix == "noon":
+                    action = "noon"
+                else:
+                    action = "morning"
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._performance_command(action),
                 ).to_dict()
             if cmd == "/help":
                 _tg_send(chat_id, _HELP_TEXT, parse_mode="HTML")
