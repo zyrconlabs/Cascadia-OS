@@ -1119,6 +1119,23 @@ document.getElementById('key').addEventListener('keydown', function(e){
         except Exception:
             operators = []
 
+        # H1 Phase 2: overlay CREW liveness status (alive/unknown/stale)
+        # onto each operator, matched by id. Operators not in CREW →
+        # 'unregistered'. CREW unavailable → all 'unregistered' (non-fatal).
+        crew_status_map: Dict[str, str] = {}
+        try:
+            crew = _http_get(self._ports.get('crew', 5100), '/crew') or {}
+            crew_ops = crew.get('operators', {})
+            if isinstance(crew_ops, list):
+                crew_ops = {o['operator_id']: o for o in crew_ops
+                            if isinstance(o, dict) and 'operator_id' in o}
+            crew_status_map = {
+                k: v.get('status', 'unknown')
+                for k, v in crew_ops.items() if isinstance(v, dict)
+            }
+        except Exception:
+            pass
+
         result = []
         for op in operators:
             port = op.get("port")
@@ -1143,6 +1160,8 @@ document.getElementById('key').addEventListener('keydown', function(e){
                 "port":        port,
                 "autonomy":    op.get("autonomy"),
                 "op_status":   op.get("status"),  # production/beta
+                "crew_status": crew_status_map.get(  # H1: liveness overlay
+                    op.get("id"), "unregistered"),
                 "ui_url":      f"http://localhost:{port}/" if port else None,
                 "sample_output": op.get("sample_output"),
             })
