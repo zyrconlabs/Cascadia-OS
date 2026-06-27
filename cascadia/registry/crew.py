@@ -72,6 +72,55 @@ def _save_registry(path: Path, reg: dict) -> None:
     path.write_text(json.dumps(reg, indent=2))
 
 
+def _runtime_registry_path(config: dict) -> Path:
+    """
+    Path to the runtime CREW registry JSON. Persists registered operators
+    across CREW restarts. Separate from install-time registry.json.
+    Default: cascadia-os/data/runtime/crew_registry.json
+    """
+    data_dir = Path(
+        config.get("data_dir", Path(__file__).parent.parent.parent / "data")
+    )
+    return data_dir / "runtime" / "crew_registry.json"
+
+
+def _save_runtime_registry(config: dict, registry: dict) -> None:
+    """Persist the in-memory CREW registry to disk atomically."""
+    try:
+        path = _runtime_registry_path(config)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(registry, indent=2, default=str))
+        tmp.replace(path)
+    except Exception:
+        pass  # Non-fatal — registry still works in-memory
+
+
+def _load_runtime_registry(config: dict) -> dict:
+    """
+    Load persisted CREW registry from disk on startup. All restored operators
+    get status='unknown' and must pass a health check before considered alive.
+    """
+    try:
+        path = _runtime_registry_path(config)
+        if not path.exists():
+            return {}
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict):
+            return {}
+        restored = {}
+        for op_id, record in data.items():
+            if isinstance(record, dict):
+                record = dict(record)
+                record['status'] = 'unknown'
+                record['restored_at'] = _now_iso()
+                record.pop('stale_since', None)
+                restored[op_id] = record
+        return restored
+    except Exception:
+        return {}
+
+
 def _install_log_path(config: dict) -> Path:
     db_path = config.get('database_path', './data/runtime/cascadia.db')
     return Path(db_path).parent / 'install_log.json'
@@ -229,6 +278,15 @@ class CrewService:
         )
         self._config = config
         self.registry: Dict[str, Dict[str, Any]] = {}
+        # H1: restore operators from disk (status=unknown until health-verified)
+        _hydrated = _load_runtime_registry(self._config)
+        if _hydrated:
+            self.registry.update(_hydrated)
+            self.runtime.logger.info(
+                '[CREW] Restored %d operators from disk '
+                '(status=unknown, pending health verification)',
+                len(_hydrated)
+            )
         self._health_failures: Dict[str, int] = {}
         self._watchdog = OperatorWatchdog(config, self.runtime.logger)
         self._kill_switch = kill_switch_provider or NoopKillSwitchProvider()
@@ -249,8 +307,14 @@ class CrewService:
         op_id = payload.get('operator_id')
         if not op_id:
             return 400, {'error': 'operator_id required'}
+        # H1: stamp liveness metadata before storing, then persist
+        payload = dict(payload)
+        payload.setdefault('status', 'alive')
+        payload['last_seen'] = _now_iso()
+        payload.pop('stale_since', None)
         self.registry[op_id] = payload
         self._health_failures.pop(op_id, None)  # clear stale failure count on re-registration
+        _save_runtime_registry(self._config, self.registry)
         self.runtime.logger.info('CREW registered operator: %s', op_id)
         return 201, {'registered': op_id, 'crew_size': len(self.registry)}
 
@@ -258,12 +322,21 @@ class CrewService:
         """Remove an operator from the Crew."""
         op_id = payload.get('operator_id')
         self.registry.pop(op_id, None)
+        _save_runtime_registry(self._config, self.registry)  # H1: persist on remove
         return 200, {'removed': op_id}
 
     def validate(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Validate that a sender holds a required capability."""
         sender = payload.get('sender', '')
         capability = payload.get('capability', '')
+        # H1: deny capability if the sending operator is stale
+        if self.registry.get(sender, {}).get('status') == 'stale':
+            return 200, {
+                'ok': False,
+                'reason': 'operator_stale',
+                'sender': sender,
+                'capability': capability,
+            }
         manifest = self.registry.get(sender, {}).get('capabilities', [])
         # Support wildcard: crm.* covers crm.read and crm.write
         allowed = capability in manifest or any(
@@ -285,6 +358,9 @@ class CrewService:
                 r['port'] = rec['port']
             if rec.get('task_hook'):
                 r['task_hook'] = rec['task_hook']
+            # H1: expose liveness status
+            r['status'] = rec.get('status', 'unknown')
+            r['last_seen'] = rec.get('last_seen')
             return r
 
         return 200, {
@@ -1160,6 +1236,7 @@ class CrewService:
             while True:
                 _time.sleep(_HEALTH_POLL_INTERVAL)
                 to_evict = []
+                _changed = False
                 for op_id, rec in list(self.registry.items()):
                     port = rec.get('port')
                     if not port:
@@ -1174,18 +1251,54 @@ class CrewService:
                         alive = False
                     if alive:
                         self._health_failures.pop(op_id, None)
+                        # H1: stamp alive + last_seen; persist if status changed
+                        _prev = rec.get('status')
+                        _upd = dict(rec)
+                        _upd['status'] = 'alive'
+                        _upd['last_seen'] = _now_iso()
+                        _upd.pop('stale_since', None)
+                        self.registry[op_id] = _upd
+                        if _prev != 'alive':
+                            self.runtime.logger.info(
+                                '[CREW] %s: %s → alive', op_id, _prev or 'unknown'
+                            )
+                            _changed = True
                     else:
                         count = self._health_failures.get(op_id, 0) + 1
                         self._health_failures[op_id] = count
                         if count >= _HEALTH_EVICT_AFTER:
                             to_evict.append(op_id)
+                # H1 Option C: first threshold → mark stale (kept, excluded from
+                # validate/dispatch); evict only after stale for > 1 hour.
                 for op_id in to_evict:
-                    self.registry.pop(op_id, None)
-                    self._health_failures.pop(op_id, None)
-                    self.runtime.logger.warning(
-                        'CREW: evicted %s — unreachable for %d consecutive checks',
-                        op_id, _HEALTH_EVICT_AFTER,
-                    )
+                    rec = dict(self.registry.get(op_id, {}))
+                    stale_since = rec.get('stale_since')
+                    if stale_since is None:
+                        rec['status'] = 'stale'
+                        rec['stale_since'] = _now_iso()
+                        self.registry[op_id] = rec
+                        _changed = True
+                        self.runtime.logger.warning(
+                            '[CREW] %s: → stale (unreachable %d consecutive checks)',
+                            op_id, _HEALTH_EVICT_AFTER,
+                        )
+                    else:
+                        try:
+                            age = (
+                                datetime.now(timezone.utc)
+                                - datetime.fromisoformat(stale_since)
+                            ).total_seconds()
+                        except Exception:
+                            age = 0
+                        if age > 3600:
+                            self.registry.pop(op_id, None)
+                            self._health_failures.pop(op_id, None)
+                            _changed = True
+                            self.runtime.logger.warning(
+                                '[CREW] %s: evicted (stale > 1hr)', op_id,
+                            )
+                if _changed:
+                    _save_runtime_registry(self._config, self.registry)
 
         threading.Thread(target=_loop, daemon=True, name='crew-health-poller').start()
         self.runtime.logger.info(
