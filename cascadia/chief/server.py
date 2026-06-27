@@ -4790,6 +4790,46 @@ class ChiefService:
             return "ok"
 
         # ── Performance operator buttons ──────────────────────────────
+        # ── Daily Ops menu buttons ────────────────────────────────────
+        if data == "cmd_brief":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "morning_brief", chat_id)),
+                daemon=True, name="chief-cb-cmd-brief",
+            ).start()
+            _edit("🌅 Triggering morning brief — stand by...")
+            return "ok"
+        if data == "cmd_schedule":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "schedule_check", chat_id)),
+                daemon=True, name="chief-cb-cmd-schedule",
+            ).start()
+            _edit("📅 Triggering schedule check — stand by...")
+            return "ok"
+        if data == "cmd_blockers":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "blocker_watch", chat_id)),
+                daemon=True, name="chief-cb-cmd-blockers",
+            ).start()
+            _edit("🚧 Triggering blocker watch — stand by...")
+            return "ok"
+        if data == "cmd_eod":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "end_of_day_report", chat_id)),
+                daemon=True, name="chief-cb-cmd-eod",
+            ).start()
+            _edit("🌙 Triggering end of day report — stand by...")
+            return "ok"
+        if data == "cmd_weekly":
+            threading.Thread(
+                target=lambda: _send(self._trigger_mission("run_work", "weekly_summary", chat_id)),
+                daemon=True, name="chief-cb-cmd-weekly",
+            ).start()
+            _edit("📆 Triggering weekly summary — stand by...")
+            return "ok"
+        if data == "cmd_missions":
+            _edit(self._missions_summary())
+            return "ok"
+
         if data == "cmd_performance":
             _edit(self._performance_command("morning"))
             return "ok"
