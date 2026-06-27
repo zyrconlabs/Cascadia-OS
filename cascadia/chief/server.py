@@ -1139,6 +1139,17 @@ class ChiefService:
                         selected_type="status", selected_target=cmd,
                         reply_text=self._performance_command(action),
                     ).to_dict()
+                if cmd.startswith("/code"):
+                    code_args = (cmd[5:].lstrip("_").strip() + " " +
+                                 parsed_cmd.get("args", "")).strip()
+                    reply = self._code_command(code_args, chat_id=chat_id)
+                    if not reply:
+                        reply = "⏳ Creating project — you'll receive a proposal shortly..."
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text=reply,
+                    ).to_dict()
                 if cmd == "/demo_status":
                     return 200, TaskResponse(
                         ok=True, task_id=task_id,
@@ -2681,6 +2692,97 @@ class ChiefService:
             return "✅ Done"
         except Exception as e:
             return f"❌ Performance operator error: {str(e)[:80]}"
+
+    def _code_command(self, args: str = "", chat_id: str = None) -> str:
+        """Handle /code — create Jr Programmer project or show status."""
+        JR = "http://localhost:8004"
+        chat_id = chat_id or self._OWNER_CHAT
+        args = (args or "").strip()
+
+        if args.lower() == "list":
+            try:
+                with urllib.request.urlopen(f"{JR}/api/projects", timeout=5) as r:
+                    d = json.loads(r.read())
+                projects = d.get("projects", [])
+                if not projects:
+                    return ("No projects yet.\nUse /code &lt;describe what you need&gt; "
+                            "to start one.")
+                icons = {"done": "✅", "executing": "⚙️",
+                         "awaiting_approval": "⏳", "cancelled": "🗑", "error": "❌"}
+                lines = ["📁 <b>Recent Projects</b>\n"]
+                for p in projects[:8]:
+                    icon = icons.get(p.get("status", ""), "📋")
+                    name = p["folder_name"].replace(p["project_num"] + "-", "")
+                    lines.append(f"{icon} {p['project_num']} — {name} [{p['status']}]")
+                return "\n".join(lines)
+            except Exception as exc:
+                return f"❌ Jr Programmer not reachable: {exc}"
+
+        m = re.match(r"^status\s+(\d{4})$", args, re.I)
+        if m:
+            project_num = m.group(1)
+            try:
+                payload = json.dumps({"action": "get", "project_num": project_num}).encode()
+                req = urllib.request.Request(
+                    f"{JR}/api/task", data=payload, method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    d = json.loads(r.read())
+                if not d:
+                    return f"Project {project_num} not found."
+                return (f"📁 <b>Project {project_num}</b>\n"
+                        f"Status: {d.get('status')}\n"
+                        f"Folder: {d.get('folder_name')}\n"
+                        f"Created: {(d.get('created_at') or '')[:16]}")
+            except Exception as exc:
+                return f"❌ Error: {exc}"
+
+        m_edit = re.match(r"^edit\s+(\d{4})\s+(.+)$", args, re.I | re.S)
+        if m_edit:
+            project_num  = m_edit.group(1)
+            adjustment   = m_edit.group(2).strip()
+            try:
+                payload = json.dumps({"adjustment": adjustment}).encode()
+                req = urllib.request.Request(
+                    f"{JR}/api/project/{project_num}/edit",
+                    data=payload, method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=45) as r:
+                    json.loads(r.read())
+                return f"✏️ Project {project_num} plan updated. Revised proposal sent."
+            except Exception as exc:
+                return f"❌ Edit failed: {exc}"
+
+        if not args:
+            return (
+                "👨‍💻 <b>Jr Programmer</b>\n\n"
+                "Usage:\n"
+                "/code &lt;describe what you need&gt;\n"
+                "/code list — recent projects\n"
+                "/code status NNNN — check project\n"
+                "/code edit NNNN &lt;adjustments&gt; — revise plan\n\n"
+                "Example: /code Sort my customer list alphabetically"
+            )
+
+        # Create new project — post to Jr Programmer async
+        try:
+            payload = json.dumps({
+                "action":   "create_project",
+                "request":  args,
+                "chat_id":  str(chat_id),
+                "files":    {},
+            }).encode()
+            req = urllib.request.Request(
+                f"{JR}/api/task", data=payload, method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                json.loads(r.read())
+            return ""  # Operator sends proposal directly to Telegram
+        except Exception as exc:
+            return f"❌ Jr Programmer not reachable: {exc}"
 
     _OWNER_CHAT = "1535010257"
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
@@ -4858,6 +4960,46 @@ class ChiefService:
             return "ok"
         if data == "cmd_performance_history":
             _edit(self._performance_command("history"))
+            return "ok"
+
+        # ── Jr Programmer proposal buttons ────────────────────────────
+        if data.startswith("code_approve_"):
+            project_num = data[len("code_approve_"):]
+            try:
+                req = urllib.request.Request(
+                    f"http://localhost:8004/api/project/{project_num}/approve",
+                    data=b"{}", method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    json.loads(r.read())
+                _edit(f"⚙️ Project {project_num} approved — executing now...")
+            except Exception as exc:
+                _edit(f"❌ Approval failed: {str(exc)[:80]}")
+            return "ok"
+
+        if data.startswith("code_edit_"):
+            project_num = data[len("code_edit_"):]
+            _edit(
+                f"✏️ <b>Edit Project {project_num}</b>\n\n"
+                f"Type your adjustments as:\n"
+                f"/code edit {project_num} &lt;what to change&gt;"
+            )
+            return "ok"
+
+        if data.startswith("code_cancel_"):
+            project_num = data[len("code_cancel_"):]
+            try:
+                req = urllib.request.Request(
+                    f"http://localhost:8004/api/project/{project_num}/cancel",
+                    data=b"{}", method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    pass
+            except Exception:
+                pass
+            _edit(f"🗑 Project {project_num} cancelled.")
             return "ok"
 
         # ── RECON / FIND WORK ─────────────────────────────────────────
