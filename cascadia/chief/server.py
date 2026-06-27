@@ -1103,14 +1103,20 @@ class ChiefService:
                         selected_type="status", selected_target=cmd,
                         reply_text=self._wp_command(draft_id, "skip"),
                     ).to_dict()
-                if cmd.startswith("/token"):
+                if cmd.startswith("/token") or cmd.startswith("/meter"):
                     # /token, /token_day, /token_week, /token_month, /token_all
-                    suffix = cmd[len("/token"):]
+                    # /meter, /meter_today, /meter_week, /meter_month, /meter_all
+                    if cmd.startswith("/token"):
+                        suffix = cmd[len("/token"):]
+                    else:
+                        suffix = cmd[len("/meter"):]
                     period = suffix.lstrip("_") or "default"
+                    if period == "today":
+                        period = "default"
                     return 200, TaskResponse(
                         ok=True, task_id=task_id,
                         selected_type="status", selected_target=cmd,
-                        reply_text=self._odometer_command(period),
+                        reply_text=self._meter_command(period),
                     ).to_dict()
                 if cmd == "/demo_status":
                     return 200, TaskResponse(
@@ -2555,8 +2561,8 @@ class ChiefService:
             "/demo_close [chat_id]"
         )
 
-    def _odometer_command(self, period: str = "default") -> str:
-        """Handle /token [day|week|month|all]. Fetches token report."""
+    def _meter_command(self, period: str = "default") -> str:
+        """Handle /token and /meter [day|week|month|all]. Fetches token report."""
         ODOM = "http://localhost:8028"
         valid = {"day", "week", "month", "all", "default"}
         if period not in valid:
@@ -2570,7 +2576,7 @@ class ChiefService:
                 d = json.loads(r.read())
             text = d.get("text", "")
             if not text:
-                return "❌ Odometer returned empty report"
+                return "❌ Meter returned empty report"
             TELEGRAM   = "http://localhost:9000/send"
             OWNER_CHAT = "1535010257"
             payload = json.dumps(
@@ -2582,9 +2588,9 @@ class ChiefService:
                 method="POST"
             )
             urllib.request.urlopen(req2, timeout=5)
-            return "✓ Odometer sent"
+            return "✓ Meter sent"
         except Exception as e:
-            return f"❌ Odometer error: {str(e)[:80]}"
+            return f"❌ Meter error: {str(e)[:80]}"
 
     _OWNER_CHAT = "1535010257"
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
@@ -2702,7 +2708,7 @@ class ChiefService:
         "quote_brief": (8006, "/api/task"),
         "scout":       (7002, "/api/run"),
         "email":       (8010, "/api/task"),
-        "debrief":     (8008, "/api/task"),
+        "brief":       (8008, "/api/task"),
         "quote":       (8007, "/api/task"),
         "social":      (8011, "/api/task"),
     }
