@@ -3696,6 +3696,11 @@ class ChiefService:
             {"text": "✅ Send",  "callback_data": f"approve:{row_id}"},
             {"text": "❌ Skip",  "callback_data": f"reject:{row_id}"},
         ]]}
+        # RC-2 silent staging (batch mode): entry is already persisted above;
+        # skip the per-lead Telegram post so PULSE can send ONE consolidated
+        # preview for the whole batch instead.
+        if payload.get("silent"):
+            return 200, {"ok": True, "queued": True, "row_id": row_id}
         if chat_id:
             try:
                 _http_post(
@@ -4408,6 +4413,76 @@ class ChiefService:
         else:
             _tg("✅ Nothing pending — queue is empty.")
 
+    def _batch_approve_followups(self, chat_id: str) -> None:
+        """RC-2: approve ONLY the pending follow-up entries (kind=='followup').
+        Each goes through _handle_outreach_decision, so the per-lead safety
+        re-check + business-hours gate still apply. 0.5s spacing between sends."""
+        import time as _time
+        with self._outreach_lock:
+            store = dict(self._load_outreach_approvals())
+        followups = {
+            k: v for k, v in store.items()
+            if isinstance(v, dict) and v.get("kind") == "followup"
+        }
+        if not followups:
+            _tg_send(chat_id, "ℹ️ No pending follow-ups in queue.")
+            return
+        sent = failed = 0
+        for row_id, entry in followups.items():
+            try:
+                self._handle_outreach_decision("approve", row_id, entry, chat_id)
+                sent += 1
+            except Exception as exc:
+                failed += 1
+                self.runtime.logger.error(
+                    "batch followup approve %s failed: %s", row_id, exc
+                )
+            _time.sleep(0.5)
+        _tg_send(
+            chat_id,
+            f"✅ <b>Follow-ups approved: {sent}</b>"
+            f"{f'  ({failed} failed)' if failed else ''}\n"
+            f"Leads advance to next touch or archive when done.",
+        )
+
+    def _cancel_followup_batch(self, chat_id: str) -> None:
+        """RC-2: cancel staged follow-ups. Remove kind=='followup' entries from
+        the approval store, then tell PULSE to clear followup_pending via
+        /api/outreach/unqueue — leads stay DUE (NEVER exhausted)."""
+        import urllib.request as _ur
+        with self._outreach_lock:
+            store = self._load_outreach_approvals()
+            followup_keys = [
+                k for k, v in store.items()
+                if isinstance(v, dict) and v.get("kind") == "followup"
+            ]
+            if not followup_keys:
+                _tg_send(chat_id, "ℹ️ No pending follow-ups to cancel.")
+                return
+            for k in followup_keys:
+                store.pop(k, None)
+            self._save_outreach_approvals(store)
+
+        cleared = len(followup_keys)
+        try:
+            data = json.dumps({"row_ids": followup_keys}).encode()
+            req = _ur.Request(
+                f"{self._PULSE_URL}/api/outreach/unqueue",
+                data=data, method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with _ur.urlopen(req, timeout=10) as r:
+                result = json.loads(r.read().decode())
+            cleared = result.get("cleared", cleared)
+        except Exception as exc:
+            self.runtime.logger.warning("PULSE unqueue failed: %s", exc)
+
+        _tg_send(
+            chat_id,
+            f"🗑 <b>Follow-up batch cancelled.</b>\n"
+            f"{cleared} lead(s) remain due for the next run.",
+        )
+
     def _run_outreach_and_notify(self, chat_id: str, limit: int = 20) -> None:
         """Background: POST to RECON /api/outreach with chat_id and lead limit."""
         try:
@@ -4954,6 +5029,21 @@ class ChiefService:
             return "ok"
         if data == "cmd_missions":
             _edit(self._missions_summary())
+            return "ok"
+
+        if data == "fu_approve_all":
+            threading.Thread(
+                target=self._batch_approve_followups, args=(chat_id,),
+                daemon=True, name="chief-cb-fu-approve-all",
+            ).start()
+            _edit("⚙️ Approving all follow-ups — stand by...")
+            return "ok"
+        if data == "fu_cancel":
+            threading.Thread(
+                target=self._cancel_followup_batch, args=(chat_id,),
+                daemon=True, name="chief-cb-fu-cancel",
+            ).start()
+            _edit("🗑 Cancelling follow-up batch...")
             return "ok"
 
         if data == "cmd_performance":
