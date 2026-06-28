@@ -59,6 +59,7 @@ stripe_test_*.json
 # Additional database journal files
 *.db-journal
 *.db-wal
+*.db-shm
 
 # Additional editor artifacts
 *.swp
