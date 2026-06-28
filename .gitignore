@@ -6,7 +6,10 @@ __pycache__/
 venv/
 
 # Cascadia runtime — generated, never commit
-# config.json removed from ignore: secrets migrated to VAULT (2026-06-24)
+# config.json is per-node (rewritten by installers); secrets live in VAULT.
+# Untracked so `git pull --ff-only` never conflicts on booted nodes (2026-06-28).
+/config.json
+!config.example.json
 cascadia.yaml
 data/
 *.heartbeat
