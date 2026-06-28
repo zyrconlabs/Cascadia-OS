@@ -2329,6 +2329,31 @@ class ChiefService:
         return (f"🔄 Regenerating… new image will appear in Telegram.\n"
                 f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
 
+    def _x_gen_image_command(self, post_id=None) -> str:
+        """POST /api/x/gen_image → Pollinations image for the awaiting X post;
+        preview appears in Telegram with [Post with Image / New Image / Skip]."""
+        try:
+            res = _http_post("http://localhost:8011/api/x/gen_image",
+                             {"post_id": post_id} if post_id else {}, timeout=125)
+        except Exception as exc:
+            return f"❌ X image gen error: {str(exc)[:80]}"
+        if not res.get("ok"):
+            return f"❌ {res.get('error', 'gen_image failed')}"
+        return (f"⏳ Generating X image… preview will appear shortly.\n"
+                f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
+
+    def _fb_gen_image_command(self, post_id=None) -> str:
+        """POST /api/fb/gen_image → Pollinations image for the awaiting FB post."""
+        try:
+            res = _http_post("http://localhost:8011/api/fb/gen_image",
+                             {"post_id": post_id} if post_id else {}, timeout=125)
+        except Exception as exc:
+            return f"❌ Facebook image gen error: {str(exc)[:80]}"
+        if not res.get("ok"):
+            return f"❌ {res.get('error', 'gen_image failed')}"
+        return (f"⏳ Generating Facebook image… preview will appear shortly.\n"
+                f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
+
     def _approve_all_platform(self, platform: str) -> str:
         """POST /api/{x|fb|ig}/approve_all → move all awaiting_approval posts to pending."""
         slug = {"x": "x", "facebook": "fb", "instagram": "ig"}[platform]
@@ -5008,6 +5033,25 @@ class ChiefService:
             parts = data.split("_")
             post_id = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else None
             _edit(self._fb_command("skip", post_id=post_id))
+            return "ok"
+        if data.startswith("x_gen_image"):
+            # x_gen_image_{id} → ['x','gen','image','{id}']
+            parts = data.split("_")
+            post_id = int(parts[3]) if len(parts) == 4 and parts[3].isdigit() else None
+            _edit("⏳ Generating X image — 30-60s...")
+            threading.Thread(
+                target=lambda: _edit(self._x_gen_image_command(post_id)),
+                daemon=True, name="chief-cb-xgen",
+            ).start()
+            return "ok"
+        if data.startswith("fb_gen_image"):
+            parts = data.split("_")
+            post_id = int(parts[3]) if len(parts) == 4 and parts[3].isdigit() else None
+            _edit("⏳ Generating Facebook image — 30-60s...")
+            threading.Thread(
+                target=lambda: _edit(self._fb_gen_image_command(post_id)),
+                daemon=True, name="chief-cb-fbgen",
+            ).start()
             return "ok"
         if data == "ig_approve":
             _edit("⏳ Posting to Instagram...")
