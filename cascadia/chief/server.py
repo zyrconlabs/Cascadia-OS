@@ -2818,9 +2818,9 @@ class ChiefService:
         except Exception:
             pass
 
-        if platform == "instagram" and not orig_paths:
-            return ("❌ Instagram requires an image.\nSend an image to this chat "
-                    "first, then /ig (optionally with a caption).")
+        if platform == "instagram" and not orig_paths and not text:
+            return ("❌ Instagram needs a caption or an image.\nSend /ig <caption> "
+                    "(image auto-generated), or send an image first then /ig.")
         if not text and not orig_paths:
             return ""  # nothing to post → caller shows usage
         if platform == "x" and text and len(text) > 280:
