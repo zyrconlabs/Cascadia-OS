@@ -2822,7 +2822,7 @@ async function refreshOpCards() {
   };
   const INITIALS = {
     'recon':'RC','scout':'SC','quote':'QT','chief':'CH',
-    'aurelia':'AU','debrief':'DB','competition-researcher':'CR','jr-programmer':'JP'
+    'aurelia':'AU','debrief':'DB','competition-researcher':'CR','code':'CO'
   };
 
   container.innerHTML = d.operators.map(op => {
@@ -4105,7 +4105,7 @@ function demoDB() {
     {id:'aurelia',                name:'Aurelia',             role:'Executive',    desc:'Personal executive assistant'},
     {id:'debrief',                name:'Debrief',             role:'Sales',        desc:'Post-call intelligence logger'},
     {id:'competition-researcher', name:'Competition Research',role:'Intelligence', desc:'Competitive intelligence agent'},
-    {id:'jr-programmer',          name:'Jr. Programmer',      role:'Engineering',  desc:'Software development assistant'},
+    {id:'code',                   name:'Code',                role:'Engineering',  desc:'Software development assistant'},
   ];
   const beaconEntry = {
     id:'beacon', name:'Beacon', role:'System Orchestrator',
