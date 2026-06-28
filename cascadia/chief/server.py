@@ -31,6 +31,31 @@ from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.chief.models import TaskRequest, TaskResponse
 from cascadia.chief.operator_selector import select_target
 from cascadia.chief.fallback import intelligent_fallback
+
+# ── gen_image debounce ───────────────────────────────────────────────────────
+# Ignore repeat gen_image taps (or Telegram callback re-deliveries) while a gen
+# for the same post is in-flight. Cleared when the gen thread finishes, so a
+# deliberate 🔄 New Image after seeing the result still works.
+_gen_in_flight: Dict[str, float] = {}
+_gen_lock = threading.Lock()
+_GEN_DEBOUNCE_TTL = 60  # seconds
+
+
+def _gen_acquire(key: str) -> bool:
+    """True if a gen for `key` may start; False if one is already in-flight
+    (within the TTL). Marks it in-flight on success."""
+    now = time.time()
+    with _gen_lock:
+        ts = _gen_in_flight.get(key)
+        if ts is not None and (now - ts) < _GEN_DEBOUNCE_TTL:
+            return False
+        _gen_in_flight[key] = now
+        return True
+
+
+def _gen_release(key: str) -> None:
+    with _gen_lock:
+        _gen_in_flight.pop(key, None)
 from cascadia.chief.commands import (
     parse_command, build_help_text, build_operators_text,
     parse_contact_command, parse_quote_command, parse_approval_command,
@@ -5038,20 +5063,30 @@ class ChiefService:
             # x_gen_image_{id} → ['x','gen','image','{id}']
             parts = data.split("_")
             post_id = int(parts[3]) if len(parts) == 4 and parts[3].isdigit() else None
+            if not _gen_acquire(data):
+                _edit("⏳ Already generating that image — hold on…")
+                return "ok"
             _edit("⏳ Generating X image — 30-60s...")
-            threading.Thread(
-                target=lambda: _edit(self._x_gen_image_command(post_id)),
-                daemon=True, name="chief-cb-xgen",
-            ).start()
+            def _run_xgen():
+                try:
+                    _edit(self._x_gen_image_command(post_id))
+                finally:
+                    _gen_release(data)
+            threading.Thread(target=_run_xgen, daemon=True, name="chief-cb-xgen").start()
             return "ok"
         if data.startswith("fb_gen_image"):
             parts = data.split("_")
             post_id = int(parts[3]) if len(parts) == 4 and parts[3].isdigit() else None
+            if not _gen_acquire(data):
+                _edit("⏳ Already generating that image — hold on…")
+                return "ok"
             _edit("⏳ Generating Facebook image — 30-60s...")
-            threading.Thread(
-                target=lambda: _edit(self._fb_gen_image_command(post_id)),
-                daemon=True, name="chief-cb-fbgen",
-            ).start()
+            def _run_fbgen():
+                try:
+                    _edit(self._fb_gen_image_command(post_id))
+                finally:
+                    _gen_release(data)
+            threading.Thread(target=_run_fbgen, daemon=True, name="chief-cb-fbgen").start()
             return "ok"
         if data == "ig_approve":
             _edit("⏳ Posting to Instagram...")
@@ -5061,18 +5096,28 @@ class ChiefService:
             _edit(self._ig_command("skip"))
             return "ok"
         if data == "ig_gen_image":
+            if not _gen_acquire(data):
+                _edit("⏳ Already generating that image — hold on…")
+                return "ok"
             _edit("⏳ Generating image — 30-60s...")
-            threading.Thread(
-                target=lambda: _edit(self._ig_gen_image_command()),
-                daemon=True, name="chief-cb-iggen",
-            ).start()
+            def _run_iggen():
+                try:
+                    _edit(self._ig_gen_image_command())
+                finally:
+                    _gen_release(data)
+            threading.Thread(target=_run_iggen, daemon=True, name="chief-cb-iggen").start()
             return "ok"
         if data == "ig_regen":
+            if not _gen_acquire(data):
+                _edit("⏳ Already regenerating — hold on…")
+                return "ok"
             _edit("⏳ Regenerating image — 30-60s...")
-            threading.Thread(
-                target=lambda: _edit(self._ig_regen_command()),
-                daemon=True, name="chief-cb-igregen",
-            ).start()
+            def _run_igregen():
+                try:
+                    _edit(self._ig_regen_command())
+                finally:
+                    _gen_release(data)
+            threading.Thread(target=_run_igregen, daemon=True, name="chief-cb-igregen").start()
             return "ok"
 
         # ── Outreach/followup approval buttons ─────────────────────────
