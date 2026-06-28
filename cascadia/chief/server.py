@@ -2797,31 +2797,39 @@ class ChiefService:
     _DIRECT_LABEL = {"x": "@beast_popovich", "facebook": "Facebook",
                      "instagram": "Instagram"}
 
-    def _direct_post(self, platform: str, text: str, clear_after: bool = True) -> str:
+    def _direct_post(self, platform: str, text: str, clear_after: bool = True,
+                     image_urls: list | None = None) -> str:
         """Post immediately to a platform (no queue, no gate).
 
         Attaches any image(s) pending in the Telegram operator. Because Buffer
         deletes the files it receives, we pass COPIES (so a later /post platform
         still has them) and clear the originals after, unless clear_after=False.
+        image_urls: pre-hosted, publicly fetchable URL(s) (e.g. Telegram CDN).
+        When supplied (by /post's single re-host), the local pending fetch is
+        skipped and the URL(s) are passed straight to social → social skips its
+        own per-platform re-host (avoids 3× inject latency + 3× echo).
         Returns a reply string, or '' to signal 'no content' (caller shows usage).
         """
         import os as _os, uuid as _uuid, shutil
         text = (text or "").strip()
+        image_urls = image_urls or []
 
-        # Fetch pending images from the Telegram operator.
+        # Fetch pending images from the Telegram operator. Skipped when a
+        # pre-hosted image_urls list is supplied (CHIEF /post re-hosts once).
         orig_paths = []
-        try:
-            with urllib.request.urlopen(
-                f"http://localhost:9000/api/media/pending?chat_id={self._OWNER_CHAT}",
-                timeout=5) as r:
-                orig_paths = json.loads(r.read().decode()).get("image_paths", []) or []
-        except Exception:
-            pass
+        if not image_urls:
+            try:
+                with urllib.request.urlopen(
+                    f"http://localhost:9000/api/media/pending?chat_id={self._OWNER_CHAT}",
+                    timeout=5) as r:
+                    orig_paths = json.loads(r.read().decode()).get("image_paths", []) or []
+            except Exception:
+                pass
 
-        if platform == "instagram" and not orig_paths and not text:
+        if platform == "instagram" and not orig_paths and not image_urls and not text:
             return ("❌ Instagram needs a caption or an image.\nSend /ig <caption> "
                     "(image auto-generated), or send an image first then /ig.")
-        if not text and not orig_paths:
+        if not text and not orig_paths and not image_urls:
             return ""  # nothing to post → caller shows usage
         if platform == "x" and text and len(text) > 280:
             return f"❌ Too long for X — {len(text)}/280. Trim and resend."
@@ -2837,8 +2845,11 @@ class ChiefService:
                 log.warning("direct_post image copy failed %s: %s", src, exc)
 
         try:
-            body = json.dumps({"content": text, "image_paths": copies,
-                               "source": "direct_command"}).encode()
+            _bd = {"content": text, "image_paths": copies,
+                   "source": "direct_command"}
+            if image_urls:
+                _bd["image_urls"] = image_urls
+            body = json.dumps(_bd).encode()
             req = urllib.request.Request(
                 f"http://localhost:8011{self._DIRECT_EP[platform]}", data=body,
                 method="POST", headers={"Content-Type": "application/json"})
@@ -2876,16 +2887,50 @@ class ChiefService:
         if not res.get("success"):
             return f"❌ {platform.title()}: {str(res.get('error', 'failed'))[:80]}"
         tag = "⚠️ Posted (simulated)" if res.get("simulated") else "✅ Posted to"
-        note = f" + {len(copies)} image(s)" if copies else ""
+        _nimg = len(copies) or len(image_urls)
+        note = f" + {_nimg} image(s)" if _nimg else ""
         chars = f"{len(text)} chars" if text else "image only"
         return f"{tag} {self._DIRECT_LABEL[platform]}\n{chars}{note}"
 
     def _direct_post_all(self, text: str) -> str:
         """Post to X + Facebook + Instagram at once (/post). Image optional;
         Instagram is skipped with a note if no image is pending."""
+        # Re-host the attached image ONCE on Telegram CDN (was 3× — social
+        # re-hosted per platform, adding ~15-45s latency + 3× chat echo). Pass
+        # the resulting URL(s) to all platforms; social skips its own re-host.
+        image_urls: list = []
+        try:
+            with urllib.request.urlopen(
+                f"http://localhost:9000/api/media/pending?chat_id={self._OWNER_CHAT}",
+                timeout=5) as r:
+                _paths = json.loads(r.read().decode()).get("image_paths", []) or []
+        except Exception:
+            _paths = []
+        if _paths:
+            _cdns: list = []
+            for _p in _paths:
+                try:
+                    _inj = json.dumps({"chat_id": self._OWNER_CHAT,
+                                       "file_path": _p}).encode()
+                    with urllib.request.urlopen(urllib.request.Request(
+                            "http://localhost:9000/api/media/inject", data=_inj,
+                            method="POST",
+                            headers={"Content-Type": "application/json"}),
+                            timeout=15) as r:
+                        _cdn = json.loads(r.read().decode()).get("cdn_url")
+                except Exception as _exc:
+                    log.warning("direct_post_all inject failed: %s", _exc)
+                    _cdn = None
+                if _cdn:
+                    _cdns.append(_cdn)
+                else:
+                    _cdns = []        # any failure → fall back to per-platform path
+                    break
+            image_urls = _cdns
         lines = []
         for platform in ("x", "facebook", "instagram"):
-            r = self._direct_post(platform, text, clear_after=False)
+            r = self._direct_post(platform, text, clear_after=False,
+                                  image_urls=(image_urls or None))
             if r == "":
                 r = "(no content)"
             lines.append(f"{self._DIRECT_LABEL[platform]}: {r.splitlines()[0]}")
