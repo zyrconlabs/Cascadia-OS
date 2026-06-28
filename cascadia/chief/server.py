@@ -2340,7 +2340,7 @@ class ChiefService:
             return f"❌ Image gen error: {str(exc)[:80]}"
         if not res.get("ok"):
             return f"❌ {res.get('error', 'gen_image failed')}"
-        return (f"⏳ Generating… image will appear in Telegram shortly.\n"
+        return (f"✅ Image preview sent below 👇\n"
                 f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
 
     def _ig_regen_command(self) -> str:
@@ -2351,7 +2351,7 @@ class ChiefService:
             return f"❌ Image regen error: {str(exc)[:80]}"
         if not res.get("ok"):
             return f"❌ {res.get('error', 'regen failed')}"
-        return (f"🔄 Regenerating… new image will appear in Telegram.\n"
+        return (f"✅ New image preview sent below 👇\n"
                 f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
 
     def _x_gen_image_command(self, post_id=None) -> str:
@@ -2364,7 +2364,7 @@ class ChiefService:
             return f"❌ X image gen error: {str(exc)[:80]}"
         if not res.get("ok"):
             return f"❌ {res.get('error', 'gen_image failed')}"
-        return (f"⏳ Generating X image… preview will appear shortly.\n"
+        return (f"✅ X image preview sent below 👇\n"
                 f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
 
     def _fb_gen_image_command(self, post_id=None) -> str:
@@ -2376,7 +2376,7 @@ class ChiefService:
             return f"❌ Facebook image gen error: {str(exc)[:80]}"
         if not res.get("ok"):
             return f"❌ {res.get('error', 'gen_image failed')}"
-        return (f"⏳ Generating Facebook image… preview will appear shortly.\n"
+        return (f"✅ Facebook image preview sent below 👇\n"
                 f"Post {res.get('position','?')} — {res.get('prompt','')[:60]}")
 
     def _approve_all_platform(self, platform: str) -> str:
@@ -5066,7 +5066,7 @@ class ChiefService:
             if not _gen_acquire(data):
                 _edit("⏳ Already generating that image — hold on…")
                 return "ok"
-            _edit("⏳ Generating X image — 30-60s...")
+            _edit("🎨 On it — preview coming shortly…")
             def _run_xgen():
                 try:
                     _edit(self._x_gen_image_command(post_id))
@@ -5080,7 +5080,7 @@ class ChiefService:
             if not _gen_acquire(data):
                 _edit("⏳ Already generating that image — hold on…")
                 return "ok"
-            _edit("⏳ Generating Facebook image — 30-60s...")
+            _edit("🎨 On it — preview coming shortly…")
             def _run_fbgen():
                 try:
                     _edit(self._fb_gen_image_command(post_id))
@@ -5099,7 +5099,7 @@ class ChiefService:
             if not _gen_acquire(data):
                 _edit("⏳ Already generating that image — hold on…")
                 return "ok"
-            _edit("⏳ Generating image — 30-60s...")
+            _edit("🎨 On it — preview coming shortly…")
             def _run_iggen():
                 try:
                     _edit(self._ig_gen_image_command())
@@ -5111,7 +5111,7 @@ class ChiefService:
             if not _gen_acquire(data):
                 _edit("⏳ Already regenerating — hold on…")
                 return "ok"
-            _edit("⏳ Regenerating image — 30-60s...")
+            _edit("🔄 On it — a fresh image is coming…")
             def _run_igregen():
                 try:
                     _edit(self._ig_regen_command())
