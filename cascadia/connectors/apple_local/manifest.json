@@ -1,0 +1,139 @@
+{
+  "id": "apple-local-connector",
+  "name": "Apple Local Connector",
+  "type": "connector",
+  "version": "1.0.0",
+  "description": "Local-only Phase 1 connector skeleton for Apple Calendar, Reminders, and Notes.",
+  "author": "Zyrcon",
+  "price": 0,
+  "tier_required": "pro",
+  "port": 9601,
+  "entry_point": "connector.py",
+  "dependencies": [],
+  "install_hook": "install.sh",
+  "uninstall_hook": "uninstall.sh",
+  "category": "productivity",
+  "industries": [
+    "general"
+  ],
+  "installed_by_default": false,
+  "safe_to_uninstall": true,
+  "auth_type": "none",
+  "actions": [
+    "calendar.list_calendars",
+    "calendar.list_events",
+    "calendar.get_event",
+    "calendar.create_event",
+    "calendar.update_event",
+    "calendar.delete_event",
+    "reminders.list_lists",
+    "reminders.list_items",
+    "reminders.get_item",
+    "reminders.create_item",
+    "reminders.update_item",
+    "reminders.complete_item",
+    "reminders.delete_item",
+    "notes.list_folders",
+    "notes.search",
+    "notes.get_note",
+    "notes.create_note",
+    "notes.update_note",
+    "notes.archive_note",
+    "notes.delete_note"
+  ],
+  "approval_required_for_writes": true,
+  "nats_subjects": [
+    "cascadia.connectors.apple-local-connector.>"
+  ],
+  "risk_level": "medium",
+  "permissions": [
+    "apple.calendar.read",
+    "apple.calendar.write",
+    "apple.calendar.delete",
+    "apple.reminders.read",
+    "apple.reminders.write",
+    "apple.reminders.delete",
+    "apple.notes.read",
+    "apple.notes.write",
+    "apple.notes.delete"
+  ],
+  "requires_approval_for": [
+    "calendar.create_event",
+    "calendar.update_event",
+    "calendar.delete_event",
+    "reminders.create_item",
+    "reminders.update_item",
+    "reminders.complete_item",
+    "reminders.delete_item",
+    "notes.create_note",
+    "notes.update_note",
+    "notes.archive_note",
+    "notes.delete_note"
+  ],
+  "data_access": [
+    "apple_calendar",
+    "apple_reminders",
+    "apple_notes"
+  ],
+  "writes_external_systems": true,
+  "network_access": false,
+  "setup_fields": [
+    {
+      "name": "enabled_domains",
+      "type": "multiselect",
+      "default": [
+        "calendar",
+        "reminders",
+        "notes"
+      ],
+      "options": [
+        "calendar",
+        "reminders",
+        "notes"
+      ],
+      "required": false
+    },
+    {
+      "name": "default_calendar",
+      "type": "string",
+      "default": "",
+      "required": false
+    },
+    {
+      "name": "default_reminders_list",
+      "type": "string",
+      "default": "",
+      "required": false
+    },
+    {
+      "name": "notes_folder",
+      "type": "string",
+      "default": "",
+      "required": false
+    },
+    {
+      "name": "notes_hard_delete_enabled",
+      "type": "boolean",
+      "default": false,
+      "required": false
+    },
+    {
+      "name": "sync_enabled",
+      "type": "boolean",
+      "default": false,
+      "required": false
+    },
+    {
+      "name": "sync_interval_seconds",
+      "type": "integer",
+      "default": 300,
+      "required": false
+    },
+    {
+      "name": "dry_run_default",
+      "type": "boolean",
+      "default": true,
+      "required": false
+    }
+  ]
+}
