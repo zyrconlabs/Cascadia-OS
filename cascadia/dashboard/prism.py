@@ -127,6 +127,7 @@ class PrismService:
 
         # Register all PRISM routes
         self.runtime.register_route('GET',  '/',                      self.serve_ui)
+        self.runtime.register_route('GET',  '/api/version',           self.api_version)
         self.runtime.register_route('GET',  '/api/prism/overview',    self.overview)
         self.runtime.register_route('GET',  '/api/prism/system',      self.system_status)
         self.runtime.register_route('GET',  '/api/prism/crew',        self.crew_status)
@@ -885,6 +886,23 @@ class PrismService:
             'operators': crew.get('operators', {}),
             'generated_at': _now(),
         }
+
+    def api_version(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Deployed release (current_release.json) + live CREW service count."""
+        cr_path = Path(__file__).parents[2] / 'data' / 'runtime' / 'current_release.json'
+        try:
+            data = json.loads(cr_path.read_text())
+        except FileNotFoundError:
+            return 404, {'error': 'current_release.json not found',
+                         'hint': 'run update_node.sh first'}
+        except Exception as exc:
+            return 500, {'error': str(exc)}
+        try:
+            crew = _http_get(self._ports.get('crew', 0), '/crew') or {}
+            data['healthy_services'] = crew.get('crew_size', 0)
+        except Exception:
+            data['healthy_services'] = 0
+        return 200, data
 
     def run_summary(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Summary of recent runs. Readable by a non-technical user."""
