@@ -1319,8 +1319,9 @@ class ChiefService:
                         reply_text="🔒 /update is owner-only.",
                     ).to_dict()
                 try:
-                    _cr = json.load(open(os.path.expanduser(
-                        "~/cascadia-os/data/runtime/current_release.json")))
+                    _cr_path = os.path.normpath(os.path.join(
+                        os.path.dirname(__file__), "..", "..", "data", "runtime", "current_release.json"))
+                    _cr = json.load(open(_cr_path))
                     _v, _nr = _cr.get("version", "?"), _cr.get("node_role", "?")
                 except Exception:
                     _v, _nr = "?", "?"
@@ -1992,7 +1993,8 @@ class ChiefService:
         import os as _os, time as _time
         from datetime import datetime as _dt
         from zoneinfo import ZoneInfo as _ZI
-        cr_path = _os.path.expanduser("~/cascadia-os/data/runtime/current_release.json")
+        cr_path = _os.path.normpath(_os.path.join(
+            _os.path.dirname(__file__), "..", "..", "data", "runtime", "current_release.json"))
         try:
             cr = json.load(open(cr_path))
         except FileNotFoundError:
