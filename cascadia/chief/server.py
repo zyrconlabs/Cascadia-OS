@@ -63,7 +63,7 @@ def _gen_release(key: str) -> None:
 # the top-level "gpu_yield" flag from operator_intent.json each cycle and skips
 # its qualify call while it is True. Always cleared in a finally so RECON is
 # never permanently locked out.
-_GPU_YIELD_INTENT = Path("/Users/zyrcon/cascadia-os/data/runtime/operator_intent.json")
+_GPU_YIELD_INTENT = Path(__file__).parent.parent.parent / "data" / "runtime" / "operator_intent.json"
 
 
 def _set_gpu_yield(busy: bool) -> None:
