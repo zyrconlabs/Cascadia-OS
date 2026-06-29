@@ -2079,8 +2079,14 @@ class ChiefService:
             cr_h = (cr_repos.get(key) or "unknown")[:7]
             st_e = st_repos.get(key, {})
             st_h = ((st_e.get("commit", "unknown") if isinstance(st_e, dict) else st_e) or "unknown")[:7]
-            match = cr_h == st_h
-            lines.append(f"{'✅' if match else '⚠️'} {label:<10} {cr_h} {'=' if match else '≠'} {st_h}")
+            if key == "cascadia-os-operators":
+                # OPS is the control-plane repo — ff-pulled to latest, so its
+                # commit intentionally tracks origin, not the manifest pin.
+                # Never a mismatch warning; the pin is shown for reference only.
+                lines.append(f"✅ {label:<10} {cr_h} (control-plane — ff-pull, pin {st_h})")
+            else:
+                match = cr_h == st_h
+                lines.append(f"{'✅' if match else '⚠️'} {label:<10} {cr_h} {'=' if match else '≠'} {st_h}")
         lines.append("")
         lines.append("✅ Node is up to date" if in_sync else "⚠️ Node is behind — run /update")
         return "\n".join(lines)
