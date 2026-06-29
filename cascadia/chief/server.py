@@ -56,6 +56,25 @@ def _gen_acquire(key: str) -> bool:
 def _gen_release(key: str) -> None:
     with _gen_lock:
         _gen_in_flight.pop(key, None)
+
+
+# ── GPU yield coordinator (Tier 2) ───────────────────────────────────────────
+# Signal RECON to yield the GPU during an LLM-heavy CHIEF dispatch. RECON reads
+# the top-level "gpu_yield" flag from operator_intent.json each cycle and skips
+# its qualify call while it is True. Always cleared in a finally so RECON is
+# never permanently locked out.
+_GPU_YIELD_INTENT = Path("/Users/zyrcon/cascadia-os/data/runtime/operator_intent.json")
+
+
+def _set_gpu_yield(busy: bool) -> None:
+    try:
+        d = json.loads(_GPU_YIELD_INTENT.read_text()) if _GPU_YIELD_INTENT.exists() else {}
+        d["gpu_yield"] = busy
+        _GPU_YIELD_INTENT.write_text(json.dumps(d, indent=2))
+    except Exception as e:
+        log.warning("_set_gpu_yield(%s) failed: %s", busy, e)
+
+
 from cascadia.chief.commands import (
     parse_command, build_help_text, build_operators_text,
     parse_contact_command, parse_quote_command, parse_approval_command,
@@ -2310,27 +2329,33 @@ class ChiefService:
         return f"⚠️ {label}: {res.get('error', 'unexpected response')}"
 
     def _social_generate_command(self) -> str:
-        """POST /api/generate_batch → fresh social posts across X + FB + IG."""
+        """POST /api/generate_batch → fresh social posts across X + FB + IG.
+        This call is SYNCHRONOUS (blocks while social runs the LLM batch), so we
+        hold the GPU-yield flag for its duration → RECON skips qualify meanwhile."""
+        _set_gpu_yield(True)
         try:
-            res = _http_post(
-                "http://localhost:8011/api/generate_batch",
-                {"campaign_duration": "daily", "platforms": ["x", "facebook", "instagram"]},
-                timeout=120,
-            )
-        except Exception as exc:
-            return f"❌ Generate failed: {str(exc)[:80]}"
-        if not res.get("ok"):
-            return f"❌ {res.get('error', 'generate_batch failed')}"
-        gen    = res.get("generated", {})
-        depths = res.get("queue_depth", {})
-        total  = res.get("total", 0)
-        mode   = res.get("mode", "template")
-        lines  = [f"✅ Generated {total} new posts ({mode})"]
-        for slug, label in (("x", "X"), ("facebook", "Facebook"), ("instagram", "Instagram")):
-            n     = gen.get(slug, 0)
-            depth = depths.get(slug, "?")
-            lines.append(f"  {label:<12} +{n}  ({depth} pending)")
-        return "\n".join(lines)
+            try:
+                res = _http_post(
+                    "http://localhost:8011/api/generate_batch",
+                    {"campaign_duration": "daily", "platforms": ["x", "facebook", "instagram"]},
+                    timeout=120,
+                )
+            except Exception as exc:
+                return f"❌ Generate failed: {str(exc)[:80]}"
+            if not res.get("ok"):
+                return f"❌ {res.get('error', 'generate_batch failed')}"
+            gen    = res.get("generated", {})
+            depths = res.get("queue_depth", {})
+            total  = res.get("total", 0)
+            mode   = res.get("mode", "template")
+            lines  = [f"✅ Generated {total} new posts ({mode})"]
+            for slug, label in (("x", "X"), ("facebook", "Facebook"), ("instagram", "Instagram")):
+                n     = gen.get(slug, 0)
+                depth = depths.get(slug, "?")
+                lines.append(f"  {label:<12} +{n}  ({depth} pending)")
+            return "\n".join(lines)
+        finally:
+            _set_gpu_yield(False)
 
     def _ig_gen_image_command(self) -> str:
         """POST /api/ig/gen_image → LLM prompt + Pollinations download + Telegram photo preview."""
