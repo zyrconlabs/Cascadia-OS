@@ -155,6 +155,7 @@ if [[ "$CASCADIA_RUNNING" == "false" ]]; then
     PYTHON="${REPO}/.venv/bin/python3"
     [[ ! -f "$PYTHON" ]] && PYTHON="python3"
     "$PYTHON" -m cascadia.kernel.watchdog --config config.json >> data/logs/flint.log 2>&1 &
+    WATCHDOG_PID=$!
     sleep 10
     FLINT_READY=false
     FLINT_STATE="unknown"
@@ -445,4 +446,18 @@ if [ "$_CHECKS" -lt 2 ]; then
     exit 1
 fi
 echo "✅ Cascadia OS started successfully"
-exit 0
+# Agent (launchd) sets CASCADIA_FOREGROUND=1: stay in the foreground blocking on the
+# watchdog so launchd keeps the job alive and does NOT reap the stack's descendant tree
+# on exit (setsid/nohup can't escape launchd descendant-tracking). update_node and manual
+# runs leave it unset → fork-and-exit as before (start.sh returns, deploy proceeds).
+if [ "${CASCADIA_FOREGROUND:-0}" = "1" ]; then
+    if [ -n "${WATCHDOG_PID:-}" ]; then
+        echo "Foreground mode: waiting on watchdog (PID $WATCHDOG_PID)..."
+        wait "$WATCHDOG_PID"
+    else
+        echo "Foreground mode: supervising existing watchdog..."
+        while pgrep -f 'cascadia.kernel.watchdog' >/dev/null 2>&1; do sleep 5; done
+    fi
+else
+    exit 0
+fi
