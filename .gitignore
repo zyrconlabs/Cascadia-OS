@@ -109,3 +109,4 @@ test_results_session*
 /tmp/zyrcon_media/
 telegram/media/*
 !telegram/media/.gitkeep
+data/runtime/current_release.json
