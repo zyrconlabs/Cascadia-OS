@@ -1303,12 +1303,37 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._ram_status(),
                 ).to_dict()
-            if cmd == "/version":
+            if cmd == "/version" or cmd == "/about":
+                # /about replaces /version — the richer release card.
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
                     selected_type="status", selected_target=cmd,
-                    reply_text=self._version_info(),
+                    reply_text=self._about_info(),
                 ).to_dict()
+            if cmd == "/update":
+                # Owner-only — /update stops + restarts ALL services.
+                if str(chat_id) != str(self._OWNER_CHAT):
+                    return 200, TaskResponse(
+                        ok=True, task_id=task_id,
+                        selected_type="status", selected_target=cmd,
+                        reply_text="🔒 /update is owner-only.",
+                    ).to_dict()
+                try:
+                    _cr = json.load(open(os.path.expanduser(
+                        "~/cascadia-os/data/runtime/current_release.json")))
+                    _v, _nr = _cr.get("version", "?"), _cr.get("node_role", "?")
+                except Exception:
+                    _v, _nr = "?", "?"
+                _tg_send(
+                    chat_id,
+                    ("⚠️ Update Cascadia OS?\n\nThis will STOP all services, pull "
+                     f"the pinned release, and restart.\n\nCurrent: v{_v} ({_nr})"),
+                    reply_markup={"inline_keyboard": [[
+                        {"text": "✅ Yes, update", "callback_data": "cmd_update_confirm"},
+                        {"text": "❌ Cancel",       "callback_data": "cmd_update_cancel"},
+                    ]]},
+                )
+                return 200, {"ok": True, "task_id": task_id, "silent": True}
             if cmd == "/email_status":
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
@@ -1960,6 +1985,86 @@ class ChiefService:
             f"Build:     CalVer {_VERSION}\n"
             f"Repo:      github.com/zyrconlabs/cascadia-os"
         )
+
+    def _about_info(self) -> str:
+        """Release card from current_release.json + live CREW count + uptime.
+        Replaces the old /version output."""
+        import os as _os, time as _time
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZI
+        cr_path = _os.path.expanduser("~/cascadia-os/data/runtime/current_release.json")
+        try:
+            cr = json.load(open(cr_path))
+        except FileNotFoundError:
+            return "⚠ current_release.json not found — run /update first."
+        except Exception as exc:
+            return f"⚠ /about error: {exc}"
+        repos = cr.get("repos", {})
+        core_h = (repos.get("cascadia-os") or "unknown")[:7]
+        ops_h  = (repos.get("cascadia-os-operators") or "unknown")[:7]
+        ent_h  = (repos.get("enterprise") or "unknown")[:7]
+        installed = cr.get("installed_at", "")
+        try:
+            installed_fmt = _dt.fromisoformat(installed).astimezone(
+                _ZI("America/Chicago")).strftime("%Y-%m-%d %I:%M %p CT")
+        except Exception:
+            installed_fmt = installed or "unknown"
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:5100/crew", timeout=3) as _r:
+                crew = json.loads(_r.read().decode())
+            if isinstance(crew, list):
+                crew_count = len(crew)
+            elif isinstance(crew.get("operators"), list):
+                crew_count = len(crew["operators"])
+            else:
+                crew_count = crew.get("crew_size", "?")
+        except Exception:
+            crew_count = "?"
+        try:
+            up = _time.time() - _os.path.getmtime(cr_path)
+            uptime_str = f"{int(up // 3600)}h {int((up % 3600) // 60)}m"
+        except Exception:
+            uptime_str = "unknown"
+        return (
+            f"ℹ️ Cascadia OS v{cr.get('version','unknown')} ({cr.get('channel','stable')})\n"
+            f"───────────────────────\n"
+            f"Node:       {cr.get('node_role','unknown')}\n"
+            f"Core:       {core_h}\n"
+            f"Operators:  {ops_h}\n"
+            f"Enterprise: {ent_h}\n"
+            f"Installed:  {installed_fmt}\n"
+            f"Services:   {crew_count} registered\n"
+            f"Uptime:     {uptime_str}"
+        )
+
+    def _run_update_and_notify(self, chat_id: str) -> None:
+        """Launch update_node.sh detached, poll its log for the terminal state,
+        report back. Runs in a background thread so the callback returns at once."""
+        import subprocess as _sp, os as _os, time as _time
+        script = _os.path.expanduser(
+            "~/Zyrcon/operators/cascadia-os-operators/scripts/update_node.sh")
+        log = "/tmp/update_node_telegram.log"
+        try:
+            with open(log, "w") as _lf:
+                _sp.Popen(["bash", script], stdout=_lf, stderr=_sp.STDOUT,
+                          start_new_session=True)
+        except Exception as exc:
+            _tg_send(chat_id, f"⚠️ Could not launch update: {exc}")
+            return
+        deadline = _time.time() + 300   # poll up to 5 minutes
+        while _time.time() < deadline:
+            _time.sleep(10)
+            try:
+                body = open(log).read()
+            except Exception:
+                continue
+            if "=== SYNC OK" in body:
+                _tg_send(chat_id, "✅ Update complete\n\n" + self._about_info())
+                return
+            if "ROLLBACK COMPLETE" in body:
+                _tg_send(chat_id, "⚠️ Update failed — rolled back. Check /tmp/update_node_telegram.log")
+                return
+        _tg_send(chat_id, "⏳ Update still running — check /about when it settles.")
 
     def _email_status(self) -> str:
         import csv as _csv
@@ -5205,6 +5310,21 @@ class ChiefService:
                 daemon=True, name="chief-cb-fu-cancel",
             ).start()
             _edit("🗑 Cancelling follow-up batch...")
+            return "ok"
+
+        if data == "cmd_update_cancel":
+            _edit("❌ Update cancelled.")
+            return "ok"
+        if data == "cmd_update_confirm":
+            # Owner-only guard (defence in depth — the command already gated).
+            if str(chat_id) != str(self._OWNER_CHAT):
+                _edit("🔒 /update is owner-only.")
+                return "ok"
+            threading.Thread(
+                target=self._run_update_and_notify, args=(chat_id,),
+                daemon=True, name="chief-cb-update",
+            ).start()
+            _edit("🔄 Update started… this may take 2-3 minutes. I'll report when it finishes.")
             return "ok"
 
         if data == "cmd_performance":
