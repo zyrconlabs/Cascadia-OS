@@ -1310,6 +1310,12 @@ class ChiefService:
                     selected_type="status", selected_target=cmd,
                     reply_text=self._about_info(),
                 ).to_dict()
+            if cmd == "/drift":
+                return 200, TaskResponse(
+                    ok=True, task_id=task_id,
+                    selected_type="status", selected_target=cmd,
+                    reply_text=self._drift_info(),
+                ).to_dict()
             if cmd == "/update":
                 # Owner-only — /update stops + restarts ALL services.
                 if str(chat_id) != str(self._OWNER_CHAT):
@@ -2038,6 +2044,46 @@ class ChiefService:
             f"Services:   {crew_count} registered\n"
             f"Uptime:     {uptime_str}"
         )
+
+    def _drift_info(self) -> str:
+        """Compare the deployed release (current_release.json) against the target
+        (releases/stable.json) — overall version + per-repo commit drift.
+        Paths are __file__-relative (portable across nodes)."""
+        import os as _os
+        cr_path = _os.path.normpath(_os.path.join(
+            _os.path.dirname(__file__), "..", "..", "data", "runtime", "current_release.json"))
+        st_path = _os.path.normpath(_os.path.join(
+            _os.path.dirname(__file__), "..", "..", "..",
+            "operators", "cascadia-os-operators", "releases", "stable.json"))
+        try:
+            cr = json.load(open(cr_path))
+            st = json.load(open(st_path))
+        except FileNotFoundError as exc:
+            return f"⚠ /drift — file not found: {exc}"
+        except Exception as exc:
+            return f"⚠ /drift error: {exc}"
+        cr_ver  = cr.get("version", "unknown")
+        st_ver  = st.get("version", "unknown")
+        in_sync = cr_ver == st_ver
+        cr_repos, st_repos = cr.get("repos", {}), st.get("repos", {})
+        lines = [
+            f"{'✅' if in_sync else '⚠️'} Drift Report",
+            "───────────────────────",
+            f"Installed: {cr_ver}",
+            f"Stable:    {st_ver}",
+            "",
+        ]
+        for key, label in (("cascadia-os", "Core"),
+                           ("cascadia-os-operators", "Operators"),
+                           ("enterprise", "Enterprise")):
+            cr_h = (cr_repos.get(key) or "unknown")[:7]
+            st_e = st_repos.get(key, {})
+            st_h = ((st_e.get("commit", "unknown") if isinstance(st_e, dict) else st_e) or "unknown")[:7]
+            match = cr_h == st_h
+            lines.append(f"{'✅' if match else '⚠️'} {label:<10} {cr_h} {'=' if match else '≠'} {st_h}")
+        lines.append("")
+        lines.append("✅ Node is up to date" if in_sync else "⚠️ Node is behind — run /update")
+        return "\n".join(lines)
 
     def _run_update_and_notify(self, chat_id: str) -> None:
         """Launch update_node.sh detached, poll its log for the terminal state,
