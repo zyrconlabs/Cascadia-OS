@@ -350,7 +350,7 @@ def install(
     health_ok = crew_resp.get('health_ok', False)
 
     if port and not health_ok:
-        health_path = manifest.get('health_path', '/health')
+        health_path = manifest.get('health_path') or manifest.get('health_hook') or '/api/health'
         health_ok = poll_health(port, health_path)
 
     if health_ok:
