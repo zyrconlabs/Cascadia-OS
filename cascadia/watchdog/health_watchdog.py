@@ -10,6 +10,7 @@ Standalone by design — not imported by any operator.
 """
 import json
 import logging
+import os
 import re
 import subprocess
 import time
@@ -20,7 +21,7 @@ from pathlib import Path
 
 # ── config ───────────────────────────────────────────────────────────────────
 CHECK_INTERVAL = 300          # 5 minutes
-OWNER_CHAT_ID = "1535010257"
+OWNER_CHAT_ID = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
 TELEGRAM_URL = "http://127.0.0.1:9000/send"
 NODE_NAME = "zyrcon-node-a"
 

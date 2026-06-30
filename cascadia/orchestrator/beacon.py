@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from typing import Any, Dict, Optional
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
@@ -61,7 +62,7 @@ _MG_CONFIG: Dict[str, Any] = {
 
 _OM_URL        = 'http://127.0.0.1:6210'
 _TELEGRAM_URL  = 'http://127.0.0.1:9000/send'
-_OWNER_CHAT_ID = '1535010257'
+_OWNER_CHAT_ID = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
 _INTENT_FILE   = _Path(__file__).parent.parent.parent / 'data' / 'runtime' / 'operator_intent.json'
 
 _governor_slept:  set             = set()

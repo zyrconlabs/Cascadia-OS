@@ -3621,7 +3621,7 @@ class ChiefService:
     # ------------------------------------------------------------------
 
     # Resolve paths from the runtime user's home so this works on any host
-    # (was hardcoded to /Users/andy, which does not exist on every node).
+    # (was hardcoded to a user-specific path, now resolved dynamically).
     _OUTPUT_DIR     = os.path.join(
         os.path.expanduser("~"),
         "Zyrcon", "operators", "cascadia-os-operators", "recon", "output",

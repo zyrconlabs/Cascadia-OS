@@ -851,7 +851,7 @@ class OperatorManager:
             import urllib.request as _ur
             body = "🔴 RAM PRESSURE — RED (%.0f%%)\nNode: zyrcon-node-a\n" % (pressure * 100)
             body += "Slept: " + (", ".join(slept) if slept else "none (all critical/active)")
-            payload = json.dumps({"chat_id": "1535010257", "text": body}).encode()
+            payload = json.dumps({"chat_id": os.environ.get("TELEGRAM_OWNER_CHAT_ID", ""), "text": body}).encode()
             req = _ur.Request("http://127.0.0.1:9000/send", data=payload, method="POST",
                               headers={"Content-Type": "application/json"})
             _ur.urlopen(req, timeout=5)
