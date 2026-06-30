@@ -4,7 +4,7 @@
   "database_path": "./data/runtime/cascadia.db",
   "operators_registry_path": "~/Zyrcon/operators/cascadia-os-operators/registry.json",
   "operators_dir": "~/Zyrcon/operators/cascadia-os-operators",
-  "operators_path": "/Users/zyrcon/Zyrcon/operators/cascadia-os-operators",
+  "operators_path": "~/Zyrcon/operators/cascadia-os-operators",
   "llm": {
     "provider": "llamacpp",
     "model": "qwen2.5-7b-instruct-q4_k_m.gguf",
@@ -12,7 +12,7 @@
     "configured": true,
     "note": "models_dir is relative to the cascadia-os install directory. Run setup-llm.sh to download models and configure automatically.",
     "active_model_id": "qwen2.5-7b",
-    "models_dir": "/Users/zyrcon/cascadia-os/models",
+    "models_dir": "~/cascadia-os/models",
     "llama_bin": "/opt/homebrew/bin/llama-server",
     "n_gpu_layers": 99,
     "ctx_size": 4096
