@@ -352,7 +352,7 @@ class CrewService:
                 'type': rec.get('type', 'unknown'),
                 'autonomy_level': rec.get('autonomy_level', 'assistive'),
                 'capabilities': rec.get('capabilities', []),
-                'health_hook': rec.get('health_hook', '/health'),
+                'health_hook': rec.get('health_hook') or rec.get('health_path') or '/api/health',
             }
             if rec.get('port'):
                 r['port'] = rec['port']
