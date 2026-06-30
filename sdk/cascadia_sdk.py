@@ -107,25 +107,78 @@ def vantage_call(
     )
 
 
-def vault_store(key: str, value: str) -> bool:
+def _derive_operator_id() -> str:
+    """Auto-derive operator_id from the calling module's path.
+
+    Walks the call stack past cascadia_sdk.py and extracts the operator
+    directory name (.../cascadia-os-operators/<op>/server.py -> '<op>').
+    Frames with no real file path (e.g. an interactive '-c'/'<stdin>'
+    invocation) are skipped; as a last resort the current working directory
+    is used. Returns 'unknown' if nothing usable is found."""
+    import inspect
+    import os as _os
+
+    def _op_from_path(p: str) -> Optional[str]:
+        parts = p.split(_os.sep)
+        if 'cascadia-os-operators' in parts:
+            idx = parts.index('cascadia-os-operators')
+            if idx + 1 < len(parts):
+                return parts[idx + 1]
+        return None
+
+    try:
+        for _fi in inspect.stack()[1:]:
+            fpath = _fi.filename or ''
+            if 'cascadia_sdk.py' in fpath:
+                continue
+            if not fpath or fpath.startswith('<'):
+                continue  # <string>/<stdin> — no real path to derive from
+            op = _op_from_path(fpath)
+            if op:
+                return op
+            return _os.path.basename(_os.path.dirname(fpath)) or 'unknown'
+        # No usable stack frame (e.g. called via `python -c`): fall back to CWD.
+        op = _op_from_path(_os.getcwd())
+        if op:
+            return op
+    except Exception:
+        pass
+    return 'unknown'
+
+
+def vault_store(key: str, value: str, operator_id: Optional[str] = None) -> bool:
     """
     Store a value in VAULT under the given key.
+    operator_id is auto-derived from the caller's path when not supplied.
     Returns True on success, False on failure.
     """
     try:
-        result = _post(_PORTS['vault'], '/write', {'key': key, 'value': value})
+        op_id = operator_id or _derive_operator_id()
+        result = _post(_PORTS['vault'], '/write', {
+            'operator_id':  op_id,
+            'key':          key,
+            'value':        value,
+            'capabilities': ['vault.write'],
+        })
         return bool(result and result.get('written', False))
     except Exception:
         return False
 
 
-def vault_get(key: str, namespace: str = "default") -> Optional[str]:
+def vault_get(key: str, namespace: str = "default", operator_id: Optional[str] = None) -> Optional[str]:
     """
     Retrieve a value from VAULT by key.
+    operator_id is auto-derived from the caller's path when not supplied.
     Returns the value string or None if not found or on error.
     """
     try:
-        result = _post(_PORTS['vault'], '/read', {'key': key, 'namespace': namespace})
+        op_id = operator_id or _derive_operator_id()
+        result = _post(_PORTS['vault'], '/read', {
+            'operator_id':  op_id,
+            'key':          key,
+            'namespace':    namespace,
+            'capabilities': ['vault.read'],
+        })
         if result and 'value' in result:
             return result['value']
         return None
