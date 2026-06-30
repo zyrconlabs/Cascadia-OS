@@ -3469,7 +3469,7 @@ document.getElementById('key').addEventListener('keydown', function(e){
                     required_dependencies=data.get("required_dependencies", []),
                     requested_permissions=data.get("requested_permissions", []),
                     autonomy_level=data.get("autonomy_level", "manual_only"),
-                    health_hook=data.get("health_hook", "/health"),
+                    health_hook=data.get("health_hook") or data.get("health_path") or "/api/health",
                     description=data.get("description", ""),
                     risk_level=data.get("risk_level", "low"),
                     setup_fields=setup_fields,
