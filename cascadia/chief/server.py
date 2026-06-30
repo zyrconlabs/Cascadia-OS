@@ -919,7 +919,7 @@ class ChiefService:
         try:
             _http_post(
                 f"{TELEGRAM_URL}/send",
-                {"chat_id": "1535010257", "text": report},
+                {"chat_id": os.environ.get("TELEGRAM_OWNER_CHAT_ID", ""), "text": report},
                 timeout=10,
             )
         except Exception as exc:
@@ -2584,7 +2584,7 @@ class ChiefService:
     def _clear_image_command(self) -> str:
         """Discard any images pending in the Telegram operator's memory."""
         try:
-            body = json.dumps({"chat_id": "1535010257"}).encode()
+            body = json.dumps({"chat_id": os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")}).encode()
             req = urllib.request.Request(
                 "http://localhost:9000/api/media/clear", data=body, method="POST",
                 headers={"Content-Type": "application/json"})
@@ -2867,7 +2867,7 @@ class ChiefService:
             if not text:
                 return "❌ Meter returned empty report"
             TELEGRAM   = "http://localhost:9000/send"
-            OWNER_CHAT = "1535010257"
+            OWNER_CHAT = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
             payload = json.dumps(
                 {"chat_id": OWNER_CHAT, "text": text, "parse_mode": "HTML"}
             ).encode()
@@ -3025,7 +3025,7 @@ class ChiefService:
         except Exception as exc:
             return f"❌ Code operator not reachable: {exc}"
 
-    _OWNER_CHAT = "1535010257"
+    _OWNER_CHAT = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
                   "instagram": "/api/ig/post"}
     _DIRECT_LABEL = {"x": "@beast_popovich", "facebook": "Facebook",
@@ -5711,7 +5711,7 @@ class ChiefService:
     def handle_callback(self, payload: dict) -> tuple[int, dict]:
         """POST /callback — receives inline keyboard taps from Telegram connector."""
         chat_id = str(payload.get("chat_id", ""))
-        owner   = "1535010257"
+        owner   = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
         if chat_id != owner:
             self.runtime.logger.warning("CHIEF callback: unauthorized chat_id=%s", chat_id)
             return 403, {"ok": False, "error": "unauthorized"}
@@ -6153,7 +6153,7 @@ class ChiefService:
                 msg = "\n".join(msg_parts)
                 _http_post(
                     f"{TELEGRAM_URL}/send",
-                    {"chat_id": "1535010257", "text": msg},
+                    {"chat_id": os.environ.get("TELEGRAM_OWNER_CHAT_ID", ""), "text": msg},
                     timeout=10,
                 )
                 self.runtime.logger.info(

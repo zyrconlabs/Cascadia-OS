@@ -401,7 +401,7 @@ echo "▸ Starting memory pressure watchdog..."
                     >> "$REPO/data/logs/memwatch.log"
                 curl -s -X POST http://127.0.0.1:6211/task \
                     -H "Content-Type: application/json" \
-                    -d "{\"task\":\"SYSTEM ALERT\\n\\n🔴 SWAP MEMORY HIGH\\nSwap used: ${_SWAP} MB\\nThreshold: ${_SWAP_ALERT_THRESHOLD} MB\\n\\nRun /ram for full details.\\nConsider restarting idle services.\",\"metadata\":{\"chat_id\":\"1535010257\",\"source\":\"memwatch\",\"bypass_llm\":true}}" \
+                    -d "{\"task\":\"SYSTEM ALERT\\n\\n🔴 SWAP MEMORY HIGH\\nSwap used: ${_SWAP} MB\\nThreshold: ${_SWAP_ALERT_THRESHOLD} MB\\n\\nRun /ram for full details.\\nConsider restarting idle services.\",\"metadata\":{\"chat_id\":\"${TELEGRAM_OWNER_CHAT_ID:-}\",\"source\":\"memwatch\",\"bypass_llm\":true}}" \
                     --connect-timeout 3 --silent 2>/dev/null || true
             fi
         fi
