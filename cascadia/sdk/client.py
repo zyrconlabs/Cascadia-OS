@@ -118,7 +118,7 @@ def crew_register(manifest: Dict[str, Any]) -> bool:
             'type':         manifest.get('type', 'service'),
             'autonomy_level': manifest.get('autonomy_level', 'assistive'),
             'capabilities': manifest.get('capabilities', []),
-            'health_hook':  manifest.get('health_hook', '/health'),
+            'health_hook':  manifest.get('health_hook') or manifest.get('health_path') or '/api/health',
             'version':      manifest.get('version', ''),
             'name':         manifest.get('name', ''),
         })
