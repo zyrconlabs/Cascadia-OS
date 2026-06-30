@@ -505,7 +505,7 @@ class CrewService:
             'type': manifest.get('type', 'community'),
             'autonomy_level': manifest.get('autonomy_level', 'assistive'),
             'capabilities': manifest.get('capabilities', []),
-            'health_hook': manifest.get('health_path', '/health'),
+            'health_hook': manifest.get('health_path', '/api/health'),
             'version': manifest.get('version'),
             'source': source,
         }
@@ -722,7 +722,7 @@ class CrewService:
             'operator_id': op_id,
             'autonomy_level': op_entry.get('autonomy_level', 'assistive'),
             'capabilities': op_entry.get('capabilities', []),
-            'health_hook': op_entry.get('health_path', '/health'),
+            'health_hook': op_entry.get('health_path', '/api/health'),
             'version': op_entry.get('version'),
             'source': 'restored',
         }
@@ -1241,7 +1241,9 @@ class CrewService:
                     port = rec.get('port')
                     if not port:
                         continue
-                    health_hook = rec.get('health_hook', '/health')
+                    health_hook = (rec.get('health_hook')
+                                   or rec.get('health_path')
+                                   or '/api/health')
                     try:
                         with _urllib_request.urlopen(
                             f'http://127.0.0.1:{port}{health_hook}', timeout=3
