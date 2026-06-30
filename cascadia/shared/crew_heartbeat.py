@@ -12,8 +12,10 @@ or path never crashes the operator):
         ...
         try:
             import sys as _sys
-            if "/Users/zyrcon/cascadia-os" not in _sys.path:
-                _sys.path.insert(0, "/Users/zyrcon/cascadia-os")
+            from pathlib import Path as _Path
+            _repo_root = str(_Path(__file__).resolve().parents[2])
+            if _repo_root not in _sys.path:
+                _sys.path.insert(0, _repo_root)
             from cascadia.shared.crew_heartbeat import start_crew_heartbeat
             start_crew_heartbeat(Path(__file__).parent / "manifest.json")
         except Exception as exc:
