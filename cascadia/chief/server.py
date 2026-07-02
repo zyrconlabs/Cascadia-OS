@@ -3025,7 +3025,10 @@ class ChiefService:
         except Exception as exc:
             return f"❌ Code operator not reachable: {exc}"
 
-    _OWNER_CHAT = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
+    # Fallback chain so a missing TELEGRAM_OWNER_CHAT_ID env var can NEVER
+    # leave this empty (empty → owner gate rejects the real owner). Last
+    # resort mirrors the telegram relay's own hardcoded OWNER_CHAT_ID default.
+    _OWNER_CHAT = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "") or "1535010257"
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
                   "instagram": "/api/ig/post"}
     _DIRECT_LABEL = {"x": "@beast_popovich", "facebook": "Facebook",
