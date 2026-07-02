@@ -102,6 +102,16 @@ BEACON_URL = os.environ.get("BEACON_URL", "http://127.0.0.1:6200")
 MISSION_MANAGER_URL = os.environ.get("MISSION_MANAGER_URL", "http://127.0.0.1:6207")
 BELL_URL   = os.environ.get("BELL_URL", "http://127.0.0.1:6204")
 TELEGRAM_URL = os.environ.get("TELEGRAM_URL", "http://127.0.0.1:9000")
+
+
+def _resolve_owner_chat_id() -> str:
+    """Single source of truth for the owner chat_id. Fallback chain so a
+    missing/empty TELEGRAM_OWNER_CHAT_ID env var can NEVER yield "" — which
+    would make the owner gate reject the real owner and silently drop owner
+    notifications. Last resort mirrors the telegram relay's hardcoded default.
+    Every read (the _OWNER_CHAT class attr + all direct call sites) routes
+    through here so they can't diverge again — completes b544b12."""
+    return os.environ.get("TELEGRAM_OWNER_CHAT_ID", "") or "1535010257"
 OM_URL     = os.environ.get("OM_URL", "http://127.0.0.1:6210")
 
 _PENDING_OUTREACH_PATH = Path(os.path.expanduser(
@@ -919,7 +929,7 @@ class ChiefService:
         try:
             _http_post(
                 f"{TELEGRAM_URL}/send",
-                {"chat_id": os.environ.get("TELEGRAM_OWNER_CHAT_ID", ""), "text": report},
+                {"chat_id": _resolve_owner_chat_id(), "text": report},
                 timeout=10,
             )
         except Exception as exc:
@@ -2586,7 +2596,7 @@ class ChiefService:
     def _clear_image_command(self) -> str:
         """Discard any images pending in the Telegram operator's memory."""
         try:
-            body = json.dumps({"chat_id": os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")}).encode()
+            body = json.dumps({"chat_id": _resolve_owner_chat_id()}).encode()
             req = urllib.request.Request(
                 "http://localhost:9000/api/media/clear", data=body, method="POST",
                 headers={"Content-Type": "application/json"})
@@ -2869,7 +2879,7 @@ class ChiefService:
             if not text:
                 return "❌ Meter returned empty report"
             TELEGRAM   = "http://localhost:9000/send"
-            OWNER_CHAT = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
+            OWNER_CHAT = _resolve_owner_chat_id()
             payload = json.dumps(
                 {"chat_id": OWNER_CHAT, "text": text, "parse_mode": "HTML"}
             ).encode()
@@ -3027,10 +3037,9 @@ class ChiefService:
         except Exception as exc:
             return f"❌ Code operator not reachable: {exc}"
 
-    # Fallback chain so a missing TELEGRAM_OWNER_CHAT_ID env var can NEVER
-    # leave this empty (empty → owner gate rejects the real owner). Last
-    # resort mirrors the telegram relay's own hardcoded OWNER_CHAT_ID default.
-    _OWNER_CHAT = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "") or "1535010257"
+    # Guarded owner chat_id — routed through the module-level single source
+    # so this and every direct read site share one fallback definition.
+    _OWNER_CHAT = _resolve_owner_chat_id()
     _DIRECT_EP = {"x": "/api/x/post", "facebook": "/api/fb/post",
                   "instagram": "/api/ig/post"}
     _DIRECT_LABEL = {"x": "@beast_popovich", "facebook": "Facebook",
@@ -5716,7 +5725,7 @@ class ChiefService:
     def handle_callback(self, payload: dict) -> tuple[int, dict]:
         """POST /callback — receives inline keyboard taps from Telegram connector."""
         chat_id = str(payload.get("chat_id", ""))
-        owner   = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
+        owner   = _resolve_owner_chat_id()
         if chat_id != owner:
             self.runtime.logger.warning("CHIEF callback: unauthorized chat_id=%s", chat_id)
             return 403, {"ok": False, "error": "unauthorized"}
@@ -6158,7 +6167,7 @@ class ChiefService:
                 msg = "\n".join(msg_parts)
                 _http_post(
                     f"{TELEGRAM_URL}/send",
-                    {"chat_id": os.environ.get("TELEGRAM_OWNER_CHAT_ID", ""), "text": msg},
+                    {"chat_id": _resolve_owner_chat_id(), "text": msg},
                     timeout=10,
                 )
                 self.runtime.logger.info(
