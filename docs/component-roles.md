@@ -21,7 +21,7 @@ Canonical definition of what each core component owns and does not own.
 | VANGUARD | 6202 | 2 | External channel gateway (inbound normalize + outbound dispatch) |
 | HANDSHAKE | 6203 | 2 | Outbound HTTP/webhook/email execution |
 | BELL | 6204 | 2 | Human-in-the-loop chat interface and approval collection |
-| ALMANAC | 6205 | 2 | Scheduling and calendar |
+| ALMANAC | 6205 | 2 | Field guide / knowledge base (component catalog, glossary, runbooks) |
 | MISSION_MANAGER | 6207 | 2 | Mission package lifecycle and run tracking |
 | DEPOT_API | 6208 | 2 | Operator package store |
 | **CHIEF** | **6210** | **3** | **Task orchestrator — routes tasks to operators via BEACON** |
