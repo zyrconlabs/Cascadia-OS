@@ -23,7 +23,27 @@ from pathlib import Path
 CHECK_INTERVAL = 300          # 5 minutes
 OWNER_CHAT_ID = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
 TELEGRAM_URL = "http://127.0.0.1:9000/send"
-NODE_NAME = "zyrcon-node-a"
+
+# Node identity — derived from node_role so the same file works unchanged on
+# every machine (no per-host hand-editing). Reads current_release.json, falls
+# back to hostname if that's missing/unreadable.
+RELEASE_JSON_PATH = Path(__file__).resolve().parents[2] / "data" / "runtime" / "current_release.json"
+
+
+def _node_role() -> str:
+    try:
+        with open(RELEASE_JSON_PATH) as f:
+            role = json.load(f).get("node_role")
+        if role in ("mini", "air"):
+            return role
+    except Exception:
+        pass
+    import socket
+    return "air" if "air" in socket.gethostname().lower() else "mini"
+
+
+NODE_ROLE = _node_role()
+NODE_NAME = "zyrcon-node-b" if NODE_ROLE == "air" else "zyrcon-node-a"
 
 # (name, port, health_path, critical?). Health paths verified against live
 # services — note vault answers on /health, NOT /api/health.
@@ -40,6 +60,25 @@ SERVICES = [
     ("quote",    8007, "/api/health",  False),
     ("crm",      8015, "/api/health",  False),
 ]
+
+# Per-node service filtering. The SERVICES list above is the canonical
+# (mini/superset) set — we keep ONE list and subtract what a given role does
+# NOT run, rather than maintaining a parallel per-node list that could drift.
+# Air is a lean node (no scout-telegram, quote, or CRM operators).
+# NOTE: stable.json's required_services is names-only AND a different
+# vocabulary (core-plane release-gate names, not these HTTP operator names),
+# so it can't drive this list without dropping most of the mini's services —
+# hence a role-keyed exclusion here instead.
+_NODE_SERVICE_EXCLUSIONS = {
+    "air": {"scout-tg", "quote", "crm"},
+}
+_excluded = _NODE_SERVICE_EXCLUSIONS.get(NODE_ROLE, set())
+_filtered = [s for s in SERVICES if s[0] not in _excluded]
+# Never monitor nothing: if a bad exclusion would empty the list, keep the
+# full set (a noisy watchdog beats a blind one). main() logs if this fires.
+_SERVICES_FALLBACK = not _filtered
+SERVICES = SERVICES if _SERVICES_FALLBACK else _filtered
+
 CRITICAL_THRESHOLD = 1   # alert after 1 failed check (~5 min)
 STANDARD_THRESHOLD = 3   # alert after 3 failed checks (~15 min)
 REMINDER_EVERY = 6       # re-alert every 6 checks (~30 min) while still down
@@ -181,8 +220,11 @@ def _check_all() -> None:
 
 
 def main() -> None:
-    log.info("health watchdog started — %d services every %ds", len(SERVICES), CHECK_INTERVAL)
-    print(f"[WATCHDOG] monitoring {len(SERVICES)} services every {CHECK_INTERVAL//60}min")
+    log.info("health watchdog started — node=%s role=%s — %d services every %ds",
+             NODE_NAME, NODE_ROLE, len(SERVICES), CHECK_INTERVAL)
+    if _SERVICES_FALLBACK:
+        log.warning("node exclusions would have emptied SERVICES — kept full list as fallback")
+    print(f"[WATCHDOG] {NODE_NAME} monitoring {len(SERVICES)} services every {CHECK_INTERVAL//60}min")
     _check_all()
     while True:
         time.sleep(CHECK_INTERVAL)
