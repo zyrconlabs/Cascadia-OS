@@ -2112,11 +2112,13 @@ class ChiefService:
                 body = open(log).read()
             except Exception:
                 continue
+            # Notify removed 2026-07-02: update_node.sh now sends completion/
+            # rollback directly via the same :9000 channel (see scripts/
+            # update_node.sh _notify_telegram). Avoids duplicate messages.
+            # Detection + return kept so the poller still stops on terminal state.
             if "=== SYNC OK" in body:
-                _tg_send(chat_id, "✅ Update complete\n\n" + self._about_info())
                 return
             if "ROLLBACK COMPLETE" in body:
-                _tg_send(chat_id, "⚠️ Update failed — rolled back. Check /tmp/update_node_telegram.log")
                 return
         _tg_send(chat_id, "⏳ Update still running — check /about when it settles.")
 
