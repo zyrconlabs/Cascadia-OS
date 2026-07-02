@@ -4953,6 +4953,21 @@ class ChiefService:
         except Exception as exc:
             return f"❌ Could not start {workflow_id}: {exc}"
 
+    def _handle_mentor_callback(self, data: str) -> str:
+        """Forward a `mentor:` inline-button tap to the Mentor operator (:8213)
+        and return its confirmation text. Mirrors the approve:<id> contract —
+        the operator does the work and returns a string; CHIEF edits the
+        message with it. Mentor's /api/callback is localhost-only + owner-gated
+        here, so no per-operator secret is sent."""
+        try:
+            resp = _http_post(
+                "http://127.0.0.1:8213/api/callback", {"data": data}, timeout=8,
+            )
+            return resp.get("text") or "Done."
+        except Exception as exc:
+            self.runtime.logger.warning("CHIEF mentor callback failed: %s", exc)
+            return "⚠️ Mentor is unavailable right now."
+
     def _handle_callback_query(self, payload: dict) -> str:
         """Route an inline button callback_data string to the right action."""
         data       = payload.get("data", "")
@@ -5322,6 +5337,11 @@ class ChiefService:
         if data.startswith("approve:") or data.startswith("reject:"):
             action, row_id = data.split(":", 1)
             _edit(self._handle_approval(action, row_id, chat_id))
+            return "ok"
+
+        # Mentor wellness-nudge Complete/Delay taps → Mentor operator :8213.
+        if data.startswith("mentor:"):
+            _edit(self._handle_mentor_callback(data))
             return "ok"
 
         # ── Performance operator buttons ──────────────────────────────
