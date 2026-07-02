@@ -43,6 +43,7 @@ SERVICES = [
 CRITICAL_THRESHOLD = 1   # alert after 1 failed check (~5 min)
 STANDARD_THRESHOLD = 3   # alert after 3 failed checks (~15 min)
 REMINDER_EVERY = 6       # re-alert every 6 checks (~30 min) while still down
+AUDIT_PROBE_EVERY = 12   # run audit-pipeline liveness probe every 12 cycles (~1h) — NIST 3.3.4
 
 # ── logging ──────────────────────────────────────────────────────────────────
 _log_path = Path(__file__).resolve().parents[2] / "data" / "logs" / "health_watchdog.log"
@@ -57,6 +58,8 @@ log = logging.getLogger("watchdog")
 # ── state ────────────────────────────────────────────────────────────────────
 _down_counts: dict = {}   # name -> consecutive failed checks
 _alerted: dict = {}       # name -> alert already sent for this outage
+_cycle: int = 0           # check cycles elapsed (for hourly audit probe cadence)
+_audit_probe_alerted: bool = False  # audit-failure alert already sent (avoid spam)
 
 
 def _check(name, port, path) -> bool:
@@ -98,7 +101,51 @@ def _ram_summary() -> str:
         return "RAM: unknown"
 
 
+def _probe_audit_pipeline() -> None:
+    """NIST 3.3.4 — prove the live audit pipeline can still record events.
+
+    Appends one real audit event via the SAME production write path
+    (enterprise features.audit_log.log_event → data/audit.log), then confirms
+    it actually persisted by re-reading the last event's hash. Any failure —
+    import unavailable, write raises, or the event doesn't land — fires an
+    operator alert. The probe event is itself a legitimate audit record
+    proving the pipeline was alive at that hour.
+    """
+    global _audit_probe_alerted
+    try:
+        import sys
+        ent = Path(__file__).resolve().parents[3] / "enterprise"
+        if str(ent) not in sys.path:
+            sys.path.insert(0, str(ent))
+        from features import audit_log
+
+        written = audit_log.log_event(
+            event_type="audit.health_check",
+            operator="watchdog",
+            action="pipeline_liveness_probe",
+        )
+        # Verify the write actually persisted to disk (not just returned).
+        recent = audit_log.get_recent_events(limit=1)
+        if not recent or recent[0].get("hash") != written.get("hash"):
+            raise RuntimeError("probe event did not persist to audit.log")
+
+        if _audit_probe_alerted:
+            _send("✅ Recovered: audit logging pipeline\n"
+                  f"Node: {NODE_NAME}\nAudit writes confirmed landing again.")
+            _audit_probe_alerted = False
+        log.info("audit probe OK — event %s persisted", written.get("hash"))
+    except Exception as e:
+        log.error("AUDIT LOGGING FAILURE: %s", e)
+        if not _audit_probe_alerted:
+            _send(f"🔴 AUDIT LOGGING FAILURE — {NODE_NAME}\n\n"
+                  f"The audit pipeline failed a liveness probe:\n{e}\n\n"
+                  f"Audit records may not be persisting (NIST 3.3.4).\n"
+                  f"Check data/audit.log writability + enterprise features.")
+            _audit_probe_alerted = True
+
+
 def _check_all() -> None:
+    global _cycle
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
     newly_down = []
     for name, port, path, critical in SERVICES:
@@ -125,6 +172,12 @@ def _check_all() -> None:
             for n, cnt, c in newly_down)
         _send(f"⚠️ SERVICE DOWN — {NODE_NAME}\n\n{body}\n\n{_ram_summary()}\n"
               f"Time: {now}\nCheck: launchctl list | grep zyrcon")
+
+    # NIST 3.3.4 — audit-pipeline liveness probe, ~hourly (every 12th cycle,
+    # including the first check at startup).
+    if _cycle % AUDIT_PROBE_EVERY == 0:
+        _probe_audit_pipeline()
+    _cycle += 1
 
 
 def main() -> None:
