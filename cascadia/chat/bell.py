@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import threading
+import urllib.error
 import urllib.request
 import uuid
 from typing import Any, Dict, Optional
@@ -59,6 +60,7 @@ class BellService:
 
         self.runtime.register_route("POST", "/api/bell/chat", self.bell_chat)
         self.runtime.register_route("GET", "/api/chat/stream/{session}", self.chat_stream)
+        self.runtime.register_route("POST", "/api/bell/approve", self.bell_approve)
 
     # --- CHIEF bridge -------------------------------------------------------
 
@@ -145,6 +147,56 @@ class BellService:
             "status": result["status"],
             "block_message": result["block_message"],
         }
+
+    def bell_approve(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Proxy an approve/reject decision to CHIEF /approve.
+
+        Body: {mobile_session_id, run_id, approval_id, decision}
+              (decision: "approved" | "denied")
+        Resolves the CHIEF session via the same _session_map /api/bell/chat
+        populated, coerces approval_id to int (CHIEF's record_decision requires
+        int), and passes CHIEF's response back to the client unmodified.
+        """
+        mobile_session_id = payload.get("mobile_session_id") or ""
+        run_id = payload.get("run_id") or ""
+        approval_id = payload.get("approval_id")
+        decision = payload.get("decision", "")
+
+        with self._lock:
+            chief_session = self._session_map.get(mobile_session_id)
+        if chief_session is None:
+            return 404, {"error": "no CHIEF session for this mobile session"}
+        if approval_id is None:
+            return 400, {"error": "approval_id required"}
+        try:
+            approval_id_int = int(approval_id)
+        except (TypeError, ValueError):
+            return 400, {"error": "approval_id must be an integer"}
+
+        try:
+            chief_response = self._http_post_json(
+                f"{CHIEF_URL}/approve",
+                {
+                    "session_id": chief_session,
+                    "run_id": run_id,
+                    "approval_id": approval_id_int,
+                    "decision": decision,
+                },
+                60,
+            )
+        except urllib.error.HTTPError as e:
+            # CHIEF rejected the request (e.g. 400 bad decision). Surface its
+            # status + body rather than masking it as a generic failure.
+            try:
+                body = json.loads(e.read().decode("utf-8"))
+            except Exception:
+                body = {"error": f"CHIEF returned HTTP {e.code}"}
+            return e.code, body
+        except Exception as exc:
+            self.runtime.logger.error("BELL /approve bridge failed: %s", exc)
+            return 502, {"error": f"CHIEF approve failed: {exc}"}
+
+        return 200, chief_response
 
     def start(self) -> None:
         self.runtime.logger.info("BELL inbound chat interface active (mobile facet)")
