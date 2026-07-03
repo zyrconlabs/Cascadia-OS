@@ -21,18 +21,21 @@ def format_chief_reply_as_blocks(chief_response: dict) -> dict:
         })
 
     approval_id = chief_response.get("pending_approval_id")
+    # Client schema (Swift Codable) types approval_id / pending_approval_id as
+    # String; emit strings so an Int id does not break envelope decoding.
+    approval_id_str = str(approval_id) if approval_id is not None else None
     if approval_id:
         blocks.append({
             "block_type": "approval_card",
-            "approval_id": approval_id,
+            "approval_id": approval_id_str,
             "title": "Approval needed",
             "fields": [],
         })
         blocks.append({
             "block_type": "button_row",
             "buttons": [
-                {"label": "Approve", "action_token": f"approve:{approval_id}", "style": "primary"},
-                {"label": "Reject", "action_token": f"reject:{approval_id}", "style": "destructive"},
+                {"label": "Approve", "action_token": f"approve:{approval_id_str}", "style": "primary"},
+                {"label": "Reject", "action_token": f"reject:{approval_id_str}", "style": "destructive"},
             ],
         })
 
@@ -43,7 +46,7 @@ def format_chief_reply_as_blocks(chief_response: dict) -> dict:
         "blocks": blocks,
         "meta": {
             "run_id": chief_response.get("run_id"),
-            "pending_approval_id": approval_id,
+            "pending_approval_id": approval_id_str,
             "state": chief_response.get("state"),
             "step": chief_response.get("step"),
         },
