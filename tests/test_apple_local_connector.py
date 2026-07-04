@@ -131,8 +131,27 @@ def test_mutating_actions_do_not_mutate_without_approval():
         assert result["status"] == "approval_required"
 
 
-def test_mutating_actions_remain_disabled_after_approval():
-    result = execute_call({"action": "notes.delete_note", "approved": True})
+def test_mutating_actions_execute_when_approved():
+    """An approved mutating action is dispatched to the real bridge adapter
+    method (verified here against a mocked adapter — no real macOS calls)."""
 
-    assert result["ok"] is False
-    assert result["status"] == "phase_1_not_implemented"
+    class _RecordingNotes:
+        def __init__(self):
+            self.called_with = None
+
+        def delete_note(self, **payload):
+            self.called_with = payload
+            return {"ok": True, "deleted": True, "note_id": payload.get("note_id")}
+
+    bridge = AppleBridge(platform_name="Darwin", notes=_RecordingNotes())
+    result = execute_call(
+        {"action": "notes.delete_note", "approved": True, "note_id": "abc123"},
+        bridge=bridge,
+    )
+
+    # No longer the phase-1 stub — the adapter actually ran.
+    assert result["ok"] is True
+    assert result["deleted"] is True
+    assert result["note_id"] == "abc123"
+    assert bridge.notes.called_with["note_id"] == "abc123"
+    assert result.get("status") != "phase_1_not_implemented"
