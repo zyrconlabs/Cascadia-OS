@@ -4968,6 +4968,22 @@ class ChiefService:
             self.runtime.logger.warning("CHIEF mentor callback failed: %s", exc)
             return "⚠️ Mentor is unavailable right now."
 
+    def _handle_apple_callback(self, data: str) -> str:
+        """Forward an `apple:` inline-button tap (Approve/Deny of an Apple
+        Calendar/Reminders/Notes mutation) to the apple-local connector
+        (:9601/api/callback) and return its confirmation text. Mirrors the
+        mentor: contract exactly — the connector does the work and returns a
+        {"text": ...} string; CHIEF edits the message with it. Localhost-only +
+        owner-gated here, so no per-connector secret is sent."""
+        try:
+            resp = _http_post(
+                "http://127.0.0.1:9601/api/callback", {"data": data}, timeout=8,
+            )
+            return resp.get("text") or "Done."
+        except Exception as exc:
+            self.runtime.logger.warning("CHIEF apple callback failed: %s", exc)
+            return "⚠️ Apple Local is unavailable right now."
+
     def _handle_callback_query(self, payload: dict) -> str:
         """Route an inline button callback_data string to the right action."""
         data       = payload.get("data", "")
@@ -5342,6 +5358,11 @@ class ChiefService:
         # Mentor wellness-nudge Complete/Delay taps → Mentor operator :8213.
         if data.startswith("mentor:"):
             _edit(self._handle_mentor_callback(data))
+            return "ok"
+
+        # Apple Local Approve/Deny taps → apple-local connector :9601.
+        if data.startswith("apple:"):
+            _edit(self._handle_apple_callback(data))
             return "ok"
 
         # ── Performance operator buttons ──────────────────────────────
