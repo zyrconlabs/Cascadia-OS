@@ -3716,8 +3716,13 @@ document.getElementById('key').addEventListener('keydown', function(e){
             ok = start_discovery(port=self.runtime.port, role=self.config.get('node_role'))
             if ok:
                 self.runtime.logger.info('mDNS: registered _cascadia._tcp.local.')
-        except Exception:
-            pass  # mDNS is optional
+            else:
+                self.runtime.logger.warning(
+                    'mDNS registration failed — is zeroconf installed? '
+                    'Bonjour discovery unavailable.')
+        except Exception as exc:
+            self.runtime.logger.warning(
+                'mDNS registration error (%s) — Bonjour discovery unavailable.', exc)
         self.runtime.start()
 
     def missions_catalog(self, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:

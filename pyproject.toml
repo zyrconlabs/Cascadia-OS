@@ -17,6 +17,7 @@ dependencies = [
     "stripe>=7.0.0",
     "psutil>=5.9.0",
     "nats-py>=2.15.0",
+    "zeroconf>=0.150.0",
     "pyobjc-framework-EventKit>=12.2.1; sys_platform == 'darwin'",
 ]
 
