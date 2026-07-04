@@ -14,14 +14,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
 try:
-    from .apple_bridge import AppleBridge
+    from .apple_bridge import AppleBridge, build_live_bridge
     from .schemas import (
         approval_required_response,
         phase_1_not_implemented_response,
         unknown_action_response,
     )
 except ImportError:  # pragma: no cover - supports direct script execution
-    from apple_bridge import AppleBridge
+    from apple_bridge import AppleBridge, build_live_bridge
     from schemas import (
         approval_required_response,
         phase_1_not_implemented_response,
@@ -122,7 +122,7 @@ def execute_call(payload: dict[str, Any], bridge: AppleBridge | None = None) -> 
     return unknown_action_response(action)
 
 
-async def handle_event(nc, subject: str, raw: bytes) -> None:
+async def handle_event(nc, subject: str, raw: bytes, bridge: AppleBridge | None = None) -> None:
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -144,7 +144,7 @@ async def handle_event(nc, subject: str, raw: bytes) -> None:
         return
 
     try:
-        result = execute_call(payload)
+        result = execute_call(payload, bridge=bridge)
     except Exception as exc:  # noqa: BLE001
         result = {"ok": False, "error": str(exc)}
 
@@ -153,9 +153,13 @@ async def handle_event(nc, subject: str, raw: bytes) -> None:
 
 
 class _HealthHandler(BaseHTTPRequestHandler):
+    # Set to the live bridge by _start_health_server so /health reflects real
+    # TCC grant state; stays None under tests, which fall back to a stub bridge.
+    bridge: AppleBridge | None = None
+
     def do_GET(self):  # noqa: N802
         if self.path in ("/health", "/api/health"):
-            self._json(200, health_payload())
+            self._json(200, health_payload(self.bridge))
             return
         self._json(404, {"ok": False, "error": "not found"})
 
@@ -171,7 +175,8 @@ class _HealthHandler(BaseHTTPRequestHandler):
         pass
 
 
-def _start_health_server() -> threading.Thread:
+def _start_health_server(bridge: AppleBridge | None = None) -> threading.Thread:
+    _HealthHandler.bridge = bridge
     server = HTTPServer((HOST, PORT), _HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -179,7 +184,7 @@ def _start_health_server() -> threading.Thread:
     return thread
 
 
-async def _nats_main() -> None:
+async def _nats_main(bridge: AppleBridge | None = None) -> None:
     try:
         import nats  # type: ignore
     except ImportError:
@@ -190,7 +195,7 @@ async def _nats_main() -> None:
     nc = await nats.connect(NATS_URL)
 
     async def _cb(msg):
-        await handle_event(nc, msg.subject, msg.data)
+        await handle_event(nc, msg.subject, msg.data, bridge=bridge)
 
     await nc.subscribe(f"cascadia.connectors.{NAME}.>", cb=_cb)
     try:
@@ -200,8 +205,9 @@ async def _nats_main() -> None:
 
 
 def main() -> None:
-    _start_health_server()
-    asyncio.run(_nats_main())
+    bridge = build_live_bridge()
+    _start_health_server(bridge)
+    asyncio.run(_nats_main(bridge))
 
 
 if __name__ == "__main__":

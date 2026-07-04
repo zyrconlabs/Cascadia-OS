@@ -19,6 +19,16 @@ def unavailable_response(domain: str, reason: str) -> dict[str, Any]:
     }
 
 
+def error_response(message: str, domain: str | None = None) -> dict[str, Any]:
+    """A real adapter call reached the Apple app but failed (bad input,
+    save/remove error, timeout). Distinct from ``unavailable_response``,
+    which means the domain was never reachable (no permission / not macOS)."""
+    body: dict[str, Any] = {"ok": False, "status": "error", "error": message}
+    if domain:
+        body["domain"] = domain
+    return body
+
+
 def approval_required_response(action: str) -> dict[str, Any]:
     return {
         "ok": False,
