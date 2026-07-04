@@ -7,6 +7,7 @@ Pairing: 6-digit code, 5-minute TTL, single-use.
 from __future__ import annotations
 
 import secrets
+import socket
 import threading
 import time
 from datetime import datetime, timezone
@@ -15,6 +16,25 @@ from typing import Any, Dict, Optional
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _get_lan_ip() -> str:
+    """Determine the real outbound LAN IP for this host.
+
+    Uses a UDP socket 'connect' (no packets are actually sent) to learn which
+    local interface would route to the internet. This avoids the macOS pitfall
+    where socket.gethostbyname(gethostname()) returns 127.0.0.1 due to
+    /etc/hosts behavior, which would make mDNS advertise an unreachable
+    loopback address to LAN clients.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        return s.getsockname()[0]
+    except Exception:
+        return '127.0.0.1'
+    finally:
+        s.close()
 
 
 # ── mDNS ─────────────────────────────────────────────────────────────────────
@@ -37,10 +57,9 @@ class MdnsRegistrar:
     def register(self) -> bool:
         """Register mDNS service. Returns True on success, False if zeroconf unavailable."""
         try:
-            import socket
             from zeroconf import Zeroconf, ServiceInfo
             hostname = socket.gethostname().split('.')[0]
-            local_ip = socket.gethostbyname(socket.gethostname())
+            local_ip = _get_lan_ip()
             self._zeroconf = Zeroconf()
             self._service_info = ServiceInfo(
                 '_cascadia._tcp.local.',
