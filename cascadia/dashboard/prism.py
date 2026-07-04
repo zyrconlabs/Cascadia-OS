@@ -1433,7 +1433,13 @@ document.getElementById('key').addEventListener('keydown', function(e){
             return 500, {'error': str(exc)}
 
     def pairing_validate(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """Validate a pairing code from the iOS companion app."""
+        """Validate a pairing code from the iOS companion app.
+
+        On success, issues a long-lived token and persists it in paired_devices
+        so the phone never has to re-pair. Failure shapes are unchanged.
+        """
+        import sqlite3 as _sqlite3
+        import secrets as _secrets
         remote = payload.get('__remote_addr__', '')
         if not self._rate_limiter.check(f'pair:{remote}', limit=10, window=60):
             return 429, {'error': 'rate limit exceeded'}
@@ -1441,11 +1447,34 @@ document.getElementById('key').addEventListener('keydown', function(e){
         if not code:
             return 400, {'error': 'code required'}
         try:
-            from cascadia.network.discovery import validate_pairing_code
+            from cascadia.network.discovery import validate_pairing_code, node_display_name
             valid = validate_pairing_code(code)
-            if valid:
-                return 200, {'valid': True, 'message': 'Pairing successful'}
-            return 401, {'valid': False, 'error': 'Invalid, expired, or already-used code'}
+            if not valid:
+                return 401, {'valid': False, 'error': 'Invalid, expired, or already-used code'}
+            # Successful pairing → issue a durable token and persist it.
+            token = _secrets.token_hex(32)
+            device_token = (payload.get('device_token') or '').strip() or None
+            platform = payload.get('platform', 'ios')
+            db_path = Path(self.config.get('database_path', './data/runtime/cascadia.db'))
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            with _sqlite3.connect(str(db_path)) as conn:
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS paired_devices (
+                        token TEXT PRIMARY KEY,
+                        platform TEXT,
+                        device_token TEXT,
+                        paired_at TEXT NOT NULL,
+                        last_seen TEXT
+                    )
+                ''')
+                conn.execute('''
+                    INSERT OR REPLACE INTO paired_devices (token, platform, device_token, paired_at, last_seen)
+                    VALUES (?,?,?,?,?)
+                ''', (token, platform, device_token, _now(), _now()))
+            node_name = node_display_name(self.config.get('node_role'))
+            self.runtime.logger.info('Pairing: issued durable token for platform=%s', platform)
+            return 200, {'valid': True, 'message': 'Pairing successful',
+                         'token': token, 'node_name': node_name}
         except Exception as exc:
             return 500, {'error': str(exc)}
 
@@ -3684,7 +3713,7 @@ document.getElementById('key').addEventListener('keydown', function(e){
         self._start_nats_bridge()
         try:
             from cascadia.network.discovery import start_discovery
-            ok = start_discovery(port=self.runtime.port)
+            ok = start_discovery(port=self.runtime.port, role=self.config.get('node_role'))
             if ok:
                 self.runtime.logger.info('mDNS: registered _cascadia._tcp.local.')
         except Exception:

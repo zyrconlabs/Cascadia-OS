@@ -25,9 +25,11 @@ class MdnsRegistrar:
     Requires the 'zeroconf' package — skips silently if not installed.
     """
 
-    def __init__(self, port: int = 6300, instance_name: str = 'Cascadia OS') -> None:
+    def __init__(self, port: int = 6300, instance_name: str = 'Cascadia OS',
+                 role: Optional[str] = None) -> None:
         self.port = port
         self.instance_name = instance_name
+        self.role = role
         self._zeroconf: Any = None
         self._service_info: Any = None
         self._registered = False
@@ -37,6 +39,7 @@ class MdnsRegistrar:
         try:
             import socket
             from zeroconf import Zeroconf, ServiceInfo
+            hostname = socket.gethostname().split('.')[0]
             local_ip = socket.gethostbyname(socket.gethostname())
             self._zeroconf = Zeroconf()
             self._service_info = ServiceInfo(
@@ -44,7 +47,12 @@ class MdnsRegistrar:
                 f'{self.instance_name}._cascadia._tcp.local.',
                 addresses=[socket.inet_aton(local_ip)],
                 port=self.port,
-                properties={b'version': b'0.44', b'api': b'/api/prism/overview'},
+                properties={
+                    b'version': b'0.44',
+                    b'api': b'/api/prism/overview',
+                    b'role': (self.role or '').encode(),
+                    b'host': hostname.encode(),
+                },
             )
             self._zeroconf.register_service(self._service_info)
             self._registered = True
@@ -125,10 +133,19 @@ _mdns = MdnsRegistrar()
 _pairing = PairingManager()
 
 
-def start_discovery(port: int = 6300, name: str = 'Cascadia OS') -> bool:
+def node_display_name(role: Optional[str] = None) -> str:
+    """Human-readable, per-node name for mDNS/pairing, e.g. 'Zyrcon (air)'."""
+    import socket
+    host = socket.gethostname().split('.')[0]
+    return f'Zyrcon ({role or host})'
+
+
+def start_discovery(port: int = 6300, name: Optional[str] = None,
+                    role: Optional[str] = None) -> bool:
     """Start mDNS discovery. Returns True if zeroconf registered successfully."""
     global _mdns
-    _mdns = MdnsRegistrar(port=port, instance_name=name)
+    display = name or node_display_name(role)
+    _mdns = MdnsRegistrar(port=port, instance_name=display, role=role)
     return _mdns.register()
 
 
