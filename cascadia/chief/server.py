@@ -5002,7 +5002,15 @@ class ChiefService:
             try:
                 _http_post(f"{TELEGRAM_URL}/edit_message", tg_payload, timeout=8)
             except Exception as exc:
+                # Telegram rejects editMessageText on a photo/media message
+                # ("there is no text in the message to edit") → relay 500.
+                # Rather than silently dropping the text (e.g. the
+                # "✅ Posted to…" confirmation on an image-bearing IG/X/FB
+                # approval), deliver it as a NEW message so the owner still
+                # gets the receipt. Generic: fires for any failed edit, not
+                # IG-special-cased; only on genuine failure, never on success.
                 self.runtime.logger.warning("CHIEF edit_message failed: %s", exc)
+                _send(text)
 
         def _send(text: str) -> None:
             try:
