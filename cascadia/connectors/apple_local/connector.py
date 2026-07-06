@@ -335,8 +335,68 @@ async def _nats_main(bridge: AppleBridge | None = None) -> None:
         await nc.drain()
 
 
+# Startup TCC preflight — how long to wait per EventKit domain for the user to
+# answer the permission dialog before proceeding. Health still reports the live
+# status afterward, so a timeout here just means "still not_yet_asked", never a
+# crash or an indefinite hang.
+_PREFLIGHT_TIMEOUT_S = 30.0
+
+
+def _preflight_permissions(bridge: AppleBridge) -> None:
+    """Proactively trigger the macOS TCC prompts from the connector's OWN
+    process at startup (macOS only).
+
+    On a fresh install this makes the connector itself request Calendar,
+    Reminders and Notes access, so the live post-grant status lands in THIS
+    running process — no throwaway probe and no restart needed for that
+    first-run case. Domains already granted or denied are logged and skipped so
+    a normal restart never re-opens a dialog. Each EventKit request reuses
+    Stage 2's threading.Event + timeout wait (capped here at _PREFLIGHT_TIMEOUT_S)
+    and the Notes probe has its own internal timeout, so a never-answered prompt
+    degrades to "still not_yet_asked" instead of blocking server startup.
+
+    Residual case NOT handled here (documented in the README): a permission
+    changed later via System Settings needs a connector restart, because
+    EventKit caches authorization status per-process.
+    """
+    if not getattr(bridge, "is_macos", False):
+        return
+
+    # Calendar + Reminders — the EventKit adapters expose request_access() and a
+    # live `permission` property; the Phase-1 stub adapters expose neither, so a
+    # missing request_access() means there is nothing to preflight.
+    for adapter in (bridge.calendar, bridge.reminders):
+        domain = getattr(adapter, "domain", "?")
+        request_access = getattr(adapter, "request_access", None)
+        if request_access is None:
+            continue
+        status = getattr(adapter, "permission", "unknown")
+        if status == "not_yet_asked":
+            log.info("apple-local preflight: %s not_yet_asked — requesting access", domain)
+            result = request_access(timeout_s=_PREFLIGHT_TIMEOUT_S)
+            log.info(
+                "apple-local preflight: %s request result=%s, status now=%s",
+                domain,
+                result,
+                getattr(adapter, "permission", "unknown"),
+            )
+        else:
+            log.info("apple-local preflight: %s already %s, skipping prompt", domain, status)
+
+    # Notes — reading `.permission` runs the osascript "count folders" probe once,
+    # which surfaces the Automation prompt on first run. notes_permission_state
+    # maps osascript -1743 → denied and a timeout → not_yet_asked internally, so
+    # this neither crashes nor hangs.
+    notes_status = getattr(bridge.notes, "permission", "unknown")
+    if notes_status == "granted":
+        log.info("apple-local preflight: notes already authorized")
+    else:
+        log.info("apple-local preflight: notes automation status=%s", notes_status)
+
+
 def main() -> None:
     bridge = build_live_bridge()
+    _preflight_permissions(bridge)
     _start_health_server(bridge)
     asyncio.run(_nats_main(bridge))
 
