@@ -399,6 +399,22 @@ def handle_get_run(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
     return 200, result
 
 
+def handle_get_run_output(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+    """GET /api/missions/runs/{run_id}/output — completed run content.
+
+    Returns {mission_run_id, status, output}. `output` is null until the run
+    reaches 'completed'; `status` reflects the current state
+    (running/waiting_approval/failed/completed) either way. 404 if unknown.
+    """
+    run_id = payload.get("run_id", "")
+    if _runner is None:
+        return 503, {"error": "runner_not_available"}
+    result = _runner.get_run_output(run_id)
+    if result.get("error") == "run_not_found":
+        return 404, result
+    return 200, result
+
+
 def handle_resume_mission(payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
     run_id = payload.get("run_id", "")
     if _runner is None:
@@ -622,6 +638,7 @@ class MissionManagerService:
         self.runtime.register_route("POST", "/api/missions/events/delivered",                    handle_delivered_events)
         self.runtime.register_route("GET",  "/api/missions/runs",                                handle_list_all_runs)
         self.runtime.register_route("GET",  "/api/missions/runs/{run_id}",                       handle_get_run)
+        self.runtime.register_route("GET",  "/api/missions/runs/{run_id}/output",                handle_get_run_output)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}",                        handle_mission_detail)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}/status",                 handle_status)
         self.runtime.register_route("GET",  "/api/missions/{mission_id}/mobile_schema",          handle_mobile_schema)

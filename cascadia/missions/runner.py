@@ -443,6 +443,31 @@ class MissionRunner:
             "retry_count": run.get("retry_count", 0),
         }
 
+    def get_run_output(self, mission_run_id: str) -> dict:
+        """Return a run's completed output content, or null until it completes.
+
+        complete_mission stores context_data as {"output": <content>}. This
+        reads it back so callers can retrieve the actual mission result over
+        HTTP. Mirrors get_run_status's state reporting but adds `output`,
+        which stays null for any status other than 'completed'.
+        """
+        run = self._get_run(mission_run_id)
+        if run is None:
+            return {"error": "run_not_found", "mission_run_id": mission_run_id}
+        status = run.get("status", "")
+        output = None
+        if status == "completed":
+            try:
+                ctx = json.loads(run.get("context_data") or "{}")
+                output = ctx.get("output")
+            except (TypeError, ValueError):
+                output = None
+        return {
+            "mission_run_id": run["id"],
+            "status": status,
+            "output": output,
+        }
+
     def list_recent_runs(
         self,
         mission_id: Optional[str] = None,
