@@ -155,3 +155,50 @@ def test_mutating_actions_execute_when_approved():
     assert result["note_id"] == "abc123"
     assert bridge.notes.called_with["note_id"] == "abc123"
     assert result.get("status") != "phase_1_not_implemented"
+
+
+def test_pending_approvals_survive_restart(tmp_path, monkeypatch):
+    """Stage 3B: a parked approval persists across a process restart.
+
+    A restart is simulated by reloading the state module — that discards all
+    in-memory state and rebuilds `_pending_approvals` from disk, exactly as a
+    fresh interpreter would on LaunchAgent respawn. The store is pointed at a
+    temp file so the real production pending_approvals JSON is never touched.
+    """
+    import importlib
+
+    from cascadia.connectors.apple_local import state as state_mod
+
+    store = tmp_path / "apple_local_pending_approvals.json"
+    monkeypatch.setenv("APPLE_LOCAL_PENDING_STORE", str(store))
+
+    # Boot #1 — picks up the temp store path and starts empty.
+    state1 = importlib.reload(state_mod)
+    try:
+        assert state1.pending_count() == 0
+
+        request_id = state1.add_pending_approval(
+            "calendar.create_event",
+            {"title": "Q3 review", "start": "2026-08-01T10:00"},
+        )
+        assert state1.pending_count() == 1
+        assert store.exists()  # persisted to disk, not just memory
+
+        # Restart proxy: reload discards in-memory state, reloads from disk.
+        state2 = importlib.reload(state_mod)
+        entry = state2.get_pending_approval(request_id)
+        assert entry is not None, "approval was lost across restart"
+        assert entry["action"] == "calendar.create_event"
+        assert entry["payload"]["title"] == "Q3 review"
+        assert state2.pending_count() == 1
+
+        # A pop is persisted too — a second restart must not resurrect it.
+        popped = state2.pop_pending_approval(request_id)
+        assert popped is not None
+        state3 = importlib.reload(state_mod)
+        assert state3.get_pending_approval(request_id) is None
+        assert state3.pending_count() == 0
+    finally:
+        # Restore the module to its default-path state for any later test.
+        monkeypatch.delenv("APPLE_LOCAL_PENDING_STORE", raising=False)
+        importlib.reload(state_mod)
