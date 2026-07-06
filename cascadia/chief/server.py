@@ -103,6 +103,21 @@ MISSION_MANAGER_URL = os.environ.get("MISSION_MANAGER_URL", "http://127.0.0.1:62
 BELL_URL   = os.environ.get("BELL_URL", "http://127.0.0.1:6204")
 TELEGRAM_URL = os.environ.get("TELEGRAM_URL", "http://127.0.0.1:9000")
 
+# Natural-language chat triggers → real missions. First substring match wins,
+# so more specific phrases are listed before broader single words. CONFIRMED
+# missions only — no evening_brief / close_the_job / get_paid.
+# Each entry: (phrase, mission_id, workflow_id).
+_MISSION_CHAT_TRIGGERS = [
+    ("morning brief",  "run_work",  "morning_brief"),
+    ("weekly summary", "run_work",  "weekly_summary"),
+    ("review request", "run_work",  "review_request"),
+    ("end of day",     "run_work",  "end_of_day_report"),
+    ("eod",            "run_work",  "end_of_day_report"),
+    ("reactivate",     "find_work", "lead_reactivation"),
+    ("blockers",       "run_work",  "blocker_watch"),
+    ("schedule",       "run_work",  "schedule_check"),
+]
+
 
 def _resolve_owner_chat_id() -> str:
     """Single source of truth for the owner chat_id. Fallback chain so a
@@ -4953,6 +4968,68 @@ class ChiefService:
         except Exception as exc:
             return f"❌ Could not start {workflow_id}: {exc}"
 
+    def _summarize_mission_output(self, label: str, output: Any) -> str:
+        """Render a mission's completed output into a chat-friendly text block."""
+        if not output:
+            return f"✅ {label} complete — no content was returned."
+        if isinstance(output, str):
+            return f"✅ {label}\n\n{output.strip()}"
+        if isinstance(output, dict):
+            # Prefer a natural narrative field if the workflow produced one.
+            for key in ("summary", "brief", "narrative", "report",
+                        "text", "message", "content"):
+                val = output.get(key)
+                if isinstance(val, str) and val.strip():
+                    return f"✅ {label}\n\n{val.strip()}"
+            # Otherwise surface top-level scalar fields, falling back to JSON.
+            lines = [f"• {k}: {v}" for k, v in output.items()
+                     if isinstance(v, (str, int, float, bool))]
+            if lines:
+                return f"✅ {label}\n\n" + "\n".join(lines)
+            try:
+                dumped = json.dumps(output, indent=2, default=str)
+            except Exception:
+                dumped = str(output)
+            return f"✅ {label}\n\n{dumped[:2000]}"
+        return f"✅ {label}\n\n{str(output)[:2000]}"
+
+    def _run_mission_and_wait(
+        self, mission_id: str, workflow_id: str, budget_seconds: float = 45.0,
+    ) -> tuple[str, str, Any]:
+        """Trigger a mission workflow and poll its output endpoint to completion.
+
+        Returns (run_id, status, output). status is the last-seen run status:
+        'completed' (output populated), 'waiting_approval', 'failed',
+        'cancelled', or 'timeout' if it did not finish within budget_seconds.
+        The budget stays under BELL's 60s /message timeout so this call never
+        outlives its caller. Extends the trigger-then-poll shape _trigger_mission
+        established with a bounded, backing-off poll of the run's output endpoint.
+        """
+        trigger_url = f"{MISSION_MANAGER_URL}/api/missions/{mission_id}/run/{workflow_id}"
+        started = _http_post(trigger_url, {}, timeout=15)
+        run_id = started.get("mission_run_id") or started.get("run_id") or ""
+        if not run_id:
+            return "", "failed", None
+        output_url = f"{MISSION_MANAGER_URL}/api/missions/runs/{run_id}/output"
+        deadline = time.monotonic() + budget_seconds
+        status = started.get("status") or "running"
+        delay = 1.0
+        while time.monotonic() < deadline:
+            time.sleep(delay)
+            try:
+                res = _http_get(output_url, timeout=5)
+            except Exception as exc:
+                self.runtime.logger.warning(
+                    "CHIEF mission poll failed for %s: %s", run_id, exc)
+                res = {}
+            status = res.get("status") or status
+            if status == "completed":
+                return run_id, "completed", res.get("output")
+            if status in ("failed", "cancelled", "waiting_approval"):
+                return run_id, status, None
+            delay = min(delay * 1.5, 6.0)
+        return run_id, "timeout", None
+
     def _handle_mentor_callback(self, data: str) -> str:
         """Forward a `mentor:` inline-button tap to the Mentor operator (:8213)
         and return its confirmation text. Mirrors the approve:<id> contract —
@@ -5880,6 +5957,57 @@ class ChiefService:
                 return 200, result
             except Exception as exc:
                 self.runtime.logger.warning('SettingsChatAssistant error: %s', exc)
+
+        # ── Mission chat routing ────────────────────────────────────────────
+        # Match natural-language triggers to real missions, run them to
+        # completion (start-then-poll against the run's output endpoint), and
+        # return the actual output as the assistant reply. No match falls
+        # through to the lead_follow_up default below, unchanged.
+        lowered = content.lower()
+        matched = next(
+            ((mid, wf) for phrase, mid, wf in _MISSION_CHAT_TRIGGERS if phrase in lowered),
+            None,
+        )
+        if matched:
+            mission_id, mission_workflow = matched
+            label = mission_workflow.replace('_', ' ').title()
+            try:
+                run_id, mstatus, output = self._run_mission_and_wait(
+                    mission_id, mission_workflow)
+            except Exception as exc:
+                self.runtime.logger.error('CHIEF mission chat routing failed: %s', exc)
+                return 502, {'error': f'mission {mission_workflow} failed to start: {exc}'}
+
+            if mstatus == 'completed':
+                message_text = self._summarize_mission_output(label, output)
+            elif mstatus == 'waiting_approval':
+                message_text = (f"🕓 {label} needs your approval before it can finish. "
+                                f"Open the approvals view to review it.")
+            elif mstatus == 'timeout':
+                message_text = f"⏳ {label} is still running — check back in a moment."
+            else:
+                message_text = f"❌ {label} did not complete (status: {mstatus})."
+
+            with self._chat_lock:
+                if run_id and run_id not in session.linked_run_ids:
+                    session.linked_run_ids.append(run_id)
+                if message_text:
+                    session.add_message('assistant', message_text)
+
+            self.runtime.logger.info(
+                'CHIEF mission chat run %s (%s/%s) — status: %s',
+                run_id, mission_id, mission_workflow, mstatus,
+            )
+            return 200, {
+                'run_id': run_id,
+                'mission_run_id': run_id,
+                'mission_id': mission_id,
+                'workflow_id': mission_workflow,
+                'assistant_message': message_text,
+                'run_state': mstatus,
+                'current_step': mission_workflow,
+                'status': mstatus,
+            }
 
         workflow_id = payload.get('workflow_id', 'lead_follow_up')
         definition = self._chat_wf_definitions.get(workflow_id)
