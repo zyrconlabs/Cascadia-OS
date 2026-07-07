@@ -102,11 +102,7 @@ COMMANDS: dict[str, dict] = {
     "/node_sync":           {"operator": None, "description": "Sync Grid nodes"},
     "/node_sync_status":    {"operator": None, "description": "Grid node sync status"},
     # Performance
-    "/performance":         {"operator": "performance", "description": "Trigger morning performance report now"},
-    "/performance_noon":    {"operator": "performance", "description": "Trigger noon KPI check now"},
-    "/performance_kpis":    {"operator": "performance", "description": "Show current KPI snapshot"},
-    "/performance_evening": {"operator": "performance", "description": "Trigger evening performance scorecard"},
-    "/performance_history": {"operator": "performance", "description": "Show 7-day KPI trend"},
+    "/performance":         {"operator": "performance", "description": "KPI spark report (today vs yesterday + 7-day trend)"},
 }
 
 

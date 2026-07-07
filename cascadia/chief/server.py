@@ -525,7 +525,6 @@ def _daily_ops_menu_keyboard() -> dict:
         ],
         [
             {"text": "📊 Performance",  "callback_data": "cmd_performance"},
-            {"text": "📈 KPIs",         "callback_data": "cmd_performance_kpis"},
         ],
         [
             {"text": "🏃 Management",   "callback_data": "menu_management"},
@@ -1188,24 +1187,15 @@ class ChiefService:
                     ok=True, task_id=task_id, selected_type="none",
                     reply_text=reply_text,
                 ).to_dict()
-            if cmd.startswith("/performance"):
-                # /performance, /performance_morning, /performance_noon,
-                # /performance_evening, /performance_kpis, /performance_history
-                suffix = cmd[len("/performance"):].lstrip("_") or "morning"
-                if suffix in ("kpis", "snapshot"):
-                    action = "snapshot"
-                elif suffix == "history":
-                    action = "history"
-                elif suffix == "noon":
-                    action = "noon"
-                elif suffix == "evening":
-                    action = "evening"
-                else:
-                    action = "morning"
+            if cmd == "/performance":
+                # Single consolidated spark report (on-demand). The old
+                # _noon/_evening/_kpis/_history variants were retired; those
+                # commands are no longer registered and fall through to the
+                # graceful "unknown command" handler above.
                 return 200, TaskResponse(
                     ok=True, task_id=task_id,
                     selected_type="status", selected_target=cmd,
-                    reply_text=self._performance_command(action),
+                    reply_text=self._performance_command(),
                 ).to_dict()
             if cmd.startswith("/token") or cmd.startswith("/meter"):
                 # /token, /token_day, /token_week, /token_month, /token_all
@@ -2908,56 +2898,17 @@ class ChiefService:
         except Exception as e:
             return f"❌ Meter error: {str(e)[:80]}"
 
-    def _performance_command(self, action: str = "morning") -> str:
-        """Handle /performance* commands. Calls performance operator at :8030."""
+    def _performance_command(self) -> str:
+        """Handle /performance — fetch the single spark KPI report from the
+        performance operator (:8030) and return its rendered text so it
+        appears inline in the reply. The old morning/noon/evening/snapshot/
+        history variants were retired (consolidated to one spark report)."""
         PERF = "http://localhost:8030"
-        endpoints = {
-            "morning":  f"{PERF}/api/performance/morning",
-            "noon":     f"{PERF}/api/performance/noon",
-            "evening":  f"{PERF}/api/performance/evening",
-            "snapshot": f"{PERF}/api/performance/snapshot",
-            "history":  f"{PERF}/api/performance/history",
-        }
-        url = endpoints.get(action, endpoints["morning"])
         try:
-            with urllib.request.urlopen(url, timeout=10) as r:
+            with urllib.request.urlopen(
+                    f"{PERF}/api/performance/report", timeout=15) as r:
                 data = json.loads(r.read())
-            if action in ("morning", "noon", "evening"):
-                sent = data.get("sent", False)
-                return ("✅ Performance report sent to Telegram" if sent
-                        else "✅ Check complete — on track, no alert needed")
-            if action == "snapshot":
-                kpis = data.get("kpis", {})
-                lines = ["📊 <b>Performance KPIs</b>\n"]
-                labels = {
-                    "leads_researched": "Leads",
-                    "emails_sent":      "Emails sent",
-                    "hot_leads":        "Hot leads",
-                    "token_cost_usd":   "Token cost",
-                    "demo_sessions":    "Demo sessions",
-                    "operator_uptime":  "Operators up",
-                }
-                for k, label in labels.items():
-                    v = kpis.get(k, "—")
-                    if k == "token_cost_usd" and isinstance(v, (int, float)):
-                        v = f"${v:.4f}"
-                    lines.append(f"  {label}: {v}")
-                return "\n".join(lines)
-            if action == "history":
-                days = data.get("days", [])
-                if not days:
-                    return "No KPI history yet."
-                lines = ["📈 <b>Performance — Last 7 Days</b>\n"]
-                for d in days:
-                    cost = d.get("token_cost_usd", 0)
-                    lines.append(
-                        f"  {d.get('snap_date','?')}  "
-                        f"leads={d.get('leads_researched',0)}  "
-                        f"emails={d.get('emails_sent',0)}  "
-                        f"cost=${cost:.2f}"
-                    )
-                return "\n".join(lines)
-            return "✅ Done"
+            return data.get("text") or "❌ Performance report unavailable"
         except Exception as e:
             return f"❌ Performance operator error: {str(e)[:80]}"
 
@@ -5522,16 +5473,7 @@ class ChiefService:
             return "ok"
 
         if data == "cmd_performance":
-            _edit(self._performance_command("morning"))
-            return "ok"
-        if data == "cmd_performance_kpis":
-            _edit(self._performance_command("snapshot"))
-            return "ok"
-        if data == "cmd_performance_noon":
-            _edit(self._performance_command("noon"))
-            return "ok"
-        if data == "cmd_performance_history":
-            _edit(self._performance_command("history"))
+            _edit(self._performance_command())
             return "ok"
 
         # ── Code operator menu buttons ─────────────────────────────────
