@@ -242,16 +242,32 @@ class VanguardService:
             self.runtime.logger.error('VANGUARD: CHIEF dispatch error: %s', exc)
             reply_text = '❌ Something went wrong. Please try again.'
 
-        # 3. Send final reply
+        # 3. Send final reply. CHIEF's reply_text often carries HTML (<b>/<pre>),
+        # so send with parse_mode="HTML" to render it. reply_text is opaque to
+        # VANGUARD, though, and can contain a bare &/</> (e.g. "Johnson & Johnson"
+        # in a relayed CRM result) that isn't valid HTML — Telegram then rejects
+        # the whole message ("can't parse entities"). To avoid dropping the reply
+        # entirely, fall back to a plain send (no parse_mode) on failure, so the
+        # owner still receives it. Mirrors CHIEF's _edit()->_send() fallback.
         try:
             self._telegram_post(
                 f'{TELEGRAM_CONNECTOR_URL}/send',
-                {'chat_id': chat_id, 'text': reply_text},
+                {'chat_id': chat_id, 'text': reply_text, 'parse_mode': 'HTML'},
             )
         except Exception as exc:
-            self.runtime.logger.error(
-                'VANGUARD: failed to send Telegram reply to chat_id=%s: %s', chat_id, exc
+            self.runtime.logger.warning(
+                'VANGUARD: HTML reply send failed (%s) — retrying as plain text', exc
             )
+            try:
+                self._telegram_post(
+                    f'{TELEGRAM_CONNECTOR_URL}/send',
+                    {'chat_id': chat_id, 'text': reply_text},
+                )
+            except Exception as exc2:
+                self.runtime.logger.error(
+                    'VANGUARD: failed to send Telegram reply to chat_id=%s: %s',
+                    chat_id, exc2
+                )
 
     def receive_webhook(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """
