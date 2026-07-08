@@ -21,13 +21,33 @@ set -e
 # Clear intentional-stop flag so LaunchAgent resumes normal KeepAlive
 rm -f "$REPO/data/runtime/cascadia.stopped"
 
-# ── Singleton guard ───────────────────────────────────────────────────────
-_LOCK="$REPO/data/runtime/cascadia.start.lock"
+# ── Already-running guard (verify against REAL state, not a PID file) ──────
+# Primary guard: if a HEALTHY kernel from THIS install dir is already
+# answering on :4011, there is nothing to do — exit cleanly instead of
+# launching a duplicate stack that would fight over ports and can tear down a
+# working llama-server. We do NOT trust a PID lock alone here: start.sh
+# forks-and-exits in the manual/deploy path, and its EXIT trap removes any
+# lock while the child watchdog keeps running — so a later run would find no
+# lock and wrongly start a second full stack (the confirmed duplicate bug).
 mkdir -p "$REPO/data/runtime"
+if curl -sf http://127.0.0.1:4011/health >/dev/null 2>&1; then
+    _RUN_PID=$(pgrep -f "cascadia.kernel.watchdog" | head -1)
+    if [ -n "$_RUN_PID" ] && ps -p "$_RUN_PID" -o command= 2>/dev/null | grep -qF "$REPO"; then
+        echo "[cascadia] Already running and healthy (kernel PID $_RUN_PID, port 4011) — nothing to do"
+        exit 0
+    fi
+    echo "[cascadia] Port 4011 up but not owned by $REPO — will reconcile below"
+fi
+
+# Secondary guard: block two concurrent start.sh runs racing during a cold
+# start (before :4011 is up). A live-PID lock is sufficient for concurrency;
+# a strictly-later run is intentionally allowed through, since every section
+# below is idempotent (checks its own port/health before starting).
+_LOCK="$REPO/data/runtime/cascadia.start.lock"
 if [ -f "$_LOCK" ]; then
     _PID=$(cat "$_LOCK" 2>/dev/null || echo "")
     if [ -n "$_PID" ] && kill -0 "$_PID" 2>/dev/null; then
-        echo "[cascadia] Already running (PID $_PID) — exiting"
+        echo "[cascadia] Another start.sh is already running (PID $_PID) — exiting"
         exit 0
     else
         echo "[cascadia] Clearing stale lock"
@@ -58,7 +78,7 @@ MODELS_DIR=$(python3 -c "import json,os; c=json.load(open('config.json')); d=c.g
 MODEL_FILE=$(python3 -c "import json; c=json.load(open('config.json')); print(c.get('llm',{}).get('model','qwen2.5-3b-instruct-q4_k_m.gguf'))" 2>/dev/null || echo "qwen2.5-3b-instruct-q4_k_m.gguf")
 LLAMA_MODEL="$MODELS_DIR/$MODEL_FILE"
 
-mkdir -p data/runtime/pids
+mkdir -p data/runtime/pids data/logs
 
 echo "Starting Cascadia OS full stack..."
 
