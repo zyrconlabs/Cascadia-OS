@@ -781,10 +781,32 @@ class OperatorManager:
     # ── RAM pressure governor (additive) ──────────────────────────────────────
 
     def _sample_ram_pressure(self) -> float:
-        """Sample system RAM pressure as a 0.0-1.0 fraction via vm_stat.
+        """Sample system RAM pressure as a 0.0-1.0 fraction.
+
+        Uses macOS's own memory-pressure indicator (`memory_pressure`), which
+        reports the kernel free-memory percentage — the same signal that drives
+        swap. Pressure = 1 - free_pct/100, so it can never exceed 1.0.
+
+        This replaces an earlier calculation that summed vm_stat "Pages active"
+        + "Pages wired down". "Pages active" includes reclaimable file-backed
+        cache (often several GB), so that formula over-reported pressure by
+        30-50% on an otherwise idle machine and could push the governor into
+        spurious YELLOW/RED. If memory_pressure is unavailable we fall back to
+        vm_stat wired + compressor (non-reclaimable resident memory) — never
+        "active", to avoid re-introducing the same overcount.
         Cheap (one subprocess), no psutil dependency."""
+        import subprocess as _sp
+        # Primary: kernel memory-pressure free percentage.
         try:
-            import subprocess as _sp
+            out = _sp.check_output(["memory_pressure"], timeout=3).decode()
+            m = re.search(r"free percentage:\s*(\d+)%", out)
+            if m:
+                free = int(m.group(1))
+                return round(max(0.0, 1.0 - free / 100.0), 3)
+        except Exception:
+            pass
+        # Fallback: wired + compressor as a fraction of physical RAM.
+        try:
             vm = _sp.check_output(["vm_stat"], timeout=3).decode()
             try:
                 total_mb = int(_sp.check_output(
@@ -797,7 +819,7 @@ class OperatorManager:
                 m = re.search(rf"{label}[^:]*:\s+(\d+)", vm)
                 return int(m.group(1)) * page // (1024 ** 2) if m else 0
 
-            used = _pg("Pages active") + _pg("Pages wired down")
+            used = _pg("Pages wired down") + _pg("Pages occupied by compressor")
             return round(used / total_mb, 3) if total_mb else 0.0
         except Exception as e:
             self.logger.warning("[GOVERNOR] RAM sample error: %s", e)
