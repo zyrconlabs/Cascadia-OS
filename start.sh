@@ -97,6 +97,8 @@ if lsof -i :4222 >/dev/null 2>&1; then
 else
     if command -v nats-server >/dev/null 2>&1; then
         _NATS="nats-server"
+    elif [ -x "$HOME/Zyrcon/runtime/bin/nats-server" ]; then
+        _NATS="$HOME/Zyrcon/runtime/bin/nats-server"
     elif [ -f "$HOME/.local/bin/nats-server" ]; then
         _NATS="$HOME/.local/bin/nats-server"
     else
