@@ -24,12 +24,16 @@ urllib callers catch exactly as they catch connection-refused today.
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import os
+import sqlite3
 import threading
 import urllib.error
 import urllib.request
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from cascadia.shared.config import load_config
@@ -37,6 +41,10 @@ from cascadia.shared.service_runtime import ServiceRuntime
 from cascadia.dashboard.chat_blocks import format_chief_reply_as_blocks
 
 CHIEF_URL = os.environ.get("CHIEF_URL", "http://127.0.0.1:6211")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class BellService:
@@ -117,9 +125,63 @@ class BellService:
                 "block_message": block_message,
             }
 
+    # --- auth gate ----------------------------------------------------------
+
+    def _authenticate(self, payload: Dict[str, Any]) -> Optional[tuple[int, Dict[str, Any]]]:
+        """Require a valid paired-device bearer token.
+
+        Reads `Authorization: Bearer <token>` from the request headers
+        (ServiceRuntime injects them as payload['__headers__'] on POST),
+        validates the token against the paired_devices table with a
+        constant-time comparison, and refreshes last_seen on success.
+
+        Returns None when the caller is authenticated (proceed), or a
+        (status, body) 401 tuple the route must return immediately.
+        """
+        headers = payload.get("__headers__") or {}
+        auth = ""
+        for key, value in headers.items():
+            if key.lower() == "authorization":
+                auth = value or ""
+                break
+        if not auth.startswith("Bearer "):
+            return 401, {"error": "authentication required"}
+        token = auth[len("Bearer "):].strip()
+        if not token:
+            return 401, {"error": "authentication required"}
+        if not self._token_is_valid(token):
+            return 401, {"error": "invalid or expired token"}
+        return None
+
+    def _token_is_valid(self, token: str) -> bool:
+        """Constant-time check of `token` against paired_devices; touch last_seen."""
+        db_path = str(Path(self.config.get("database_path", "./data/runtime/cascadia.db")))
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute("SELECT token FROM paired_devices").fetchall()
+                match: Optional[str] = None
+                for (stored,) in rows:
+                    # Compare EVERY row (no early break) so timing does not leak
+                    # which row matched; each compare is itself constant-time.
+                    if stored and hmac.compare_digest(str(stored), token):
+                        match = stored
+                if match is None:
+                    return False
+                conn.execute(
+                    "UPDATE paired_devices SET last_seen=? WHERE token=?", (_now(), match)
+                )
+                return True
+        except sqlite3.OperationalError:
+            # paired_devices does not exist yet (no device has ever paired) —
+            # treat as "no valid tokens" and reject.
+            return False
+
     # --- routes -------------------------------------------------------------
 
     def bell_chat(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        denied = self._authenticate(payload)
+        if denied is not None:
+            return denied
         session_id = payload.get("session_id") or ""
         message = payload.get("message", "")
         message_id = uuid.uuid4().hex
@@ -157,6 +219,9 @@ class BellService:
         populated, coerces approval_id to int (CHIEF's record_decision requires
         int), and passes CHIEF's response back to the client unmodified.
         """
+        denied = self._authenticate(payload)
+        if denied is not None:
+            return denied
         mobile_session_id = payload.get("mobile_session_id") or ""
         run_id = payload.get("run_id") or ""
         approval_id = payload.get("approval_id")
