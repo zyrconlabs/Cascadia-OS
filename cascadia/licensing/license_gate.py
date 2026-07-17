@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib import request as urllib_request
 
+from cascadia.licensing.tier_validator import TierValidator
 from cascadia.shared.logger import get_logger
 
 logger = get_logger('license_gate')
@@ -173,35 +174,127 @@ def _load_license_key() -> Optional[str]:
     return None
 
 
-def _build_status(key: Optional[str]) -> Dict[str, Any]:
-    """Validate license key and return status dict."""
-    today = date.today()
-    expires = (today + timedelta(days=365)).isoformat()
+def _resolve_signing_secret() -> Optional[str]:
+    """Resolve the HMAC signing secret using the SAME order as the mint path
+    (cascadia/core/stripe_webhook.py): env LICENSE_SIGNING_SECRET > VAULT
+    (op email_operator, key license_secret, ns default) > config.json
+    license_secret. Returns None if none resolves (gate then cannot verify
+    signatures — callers must fail closed, never grant off an unverified key).
+    """
+    # 1. Environment variable
+    env_secret = os.environ.get('LICENSE_SIGNING_SECRET', '').strip()
+    if env_secret:
+        return env_secret
 
-    if not key:
-        return {
-            'valid':          False,
-            'tier':           'lite',
-            'operator_limit': OPERATOR_LIMITS['lite'],
-            'expires':        None,
-        }
+    # 2. VAULT read (email_operator / license_secret / default)
+    try:
+        payload = json.dumps({
+            'operator_id': 'email_operator',
+            'key':         'license_secret',
+            'namespace':   'default',
+        }).encode('utf-8')
+        req = urllib_request.Request(
+            'http://127.0.0.1:5101/read',
+            data=payload,
+            headers={'Content-Type': 'application/json'},
+        )
+        with urllib_request.urlopen(req, timeout=3) as r:
+            vault_secret = (json.loads(r.read()).get('value', '') or '').strip()
+            if vault_secret:
+                return vault_secret
+    except Exception:
+        pass
 
-    m = LICENSE_REGEX.match(key)
-    if not m:
-        return {
-            'valid':          False,
-            'tier':           'lite',
-            'operator_limit': OPERATOR_LIMITS['lite'],
-            'expires':        None,
-        }
+    # 3. config.json license_secret (repo root, 2 levels up from this package)
+    config_path = Path(__file__).parents[2] / 'config.json'
+    if config_path.exists():
+        try:
+            cfg = json.loads(config_path.read_text())
+            cfg_secret = (cfg.get('license_secret', '') or '').strip()
+            if cfg_secret:
+                return cfg_secret
+        except Exception:
+            pass
 
-    tier = m.group(1).lower()
+    return None
+
+
+def _lite_status() -> Dict[str, Any]:
+    """Fail-closed status: invalid, lite tier, no expiry."""
     return {
-        'valid':          True,
-        'tier':           tier,
-        'operator_limit': OPERATOR_LIMITS.get(tier, 2),
-        'expires':        expires,
+        'valid':          False,
+        'tier':           'lite',
+        'operator_limit': OPERATOR_LIMITS['lite'],
+        'expires':        None,
     }
+
+
+def _build_status(key: Optional[str]) -> Dict[str, Any]:
+    """Validate a license key and return status dict.
+
+    Order for a present key:
+      a) Format A (HMAC v2) via TierValidator with the resolved secret.
+      b) Legacy Format C regex (ZYRCON-<TIER>-<16hex>) — TEMPORARY dual-accept.
+      c) Neither → fail closed to lite.
+    If the signing secret does not resolve at all, HMAC cannot be verified;
+    we fall back to Format C ONLY (never granting above the key's literal tier).
+    """
+    fallback_expires = (date.today() + timedelta(days=365)).isoformat()
+
+    # No key present → fail closed. (Closes prior no-key fail-open.)
+    if not key:
+        return _lite_status()
+
+    secret = _resolve_signing_secret()
+
+    # a) Format A — HMAC-signed key, cryptographically verified.
+    if secret:
+        try:
+            result = TierValidator(secret).validate(key)
+        except Exception as exc:
+            logger.warning('tier_validator error (last4=%s): %s', key[-4:], exc)
+            result = {'valid': False}
+        if result.get('valid'):
+            tier = result.get('tier', 'lite')
+            # Map into a tier the gate serves an entitlement profile for;
+            # unknown/higher-granularity tiers fail closed to lite.
+            if tier not in ENTITLEMENT_PROFILES:
+                tier = 'lite'
+            exp_ts = result.get('expires_at')
+            try:
+                expires = (date.fromtimestamp(exp_ts).isoformat()
+                           if exp_ts else fallback_expires)
+            except Exception:
+                expires = fallback_expires
+            logger.info('license valid (HMAC v2) — tier=%s last4=%s', tier, key[-4:])
+            return {
+                'valid':          True,
+                'tier':           tier,
+                'operator_limit': OPERATOR_LIMITS.get(tier, 2),
+                'expires':        expires,
+            }
+    else:
+        logger.warning(
+            'license signing secret unresolved — HMAC verification unavailable; '
+            'Format C regex fallback only (last4=%s)',
+            key[-4:],
+        )
+
+    # b) TODO(A2-S4): remove Format C dual-accept after Mini 16 re-key.
+    m = LICENSE_REGEX.match(key)
+    if m:
+        tier = m.group(1).lower()
+        logger.info('license accepted (legacy Format C) — tier=%s last4=%s', tier, key[-4:])
+        return {
+            'valid':          True,
+            'tier':           tier,
+            'operator_limit': OPERATOR_LIMITS.get(tier, 2),
+            'expires':        fallback_expires,
+        }
+
+    # c) Neither format matched → fail closed to lite.
+    logger.info('license rejected — last4=%s', key[-4:])
+    return _lite_status()
 
 
 def _get_status() -> Dict[str, Any]:
@@ -290,7 +383,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(200, {
                 **profile,
                 'key_present': bool(key),
-                'valid':       status['valid'] or not bool(key),
+                'valid':       status['valid'],
             })
         elif path in ('/api/health', '/health'):
             status = _get_status()
