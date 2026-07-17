@@ -138,6 +138,13 @@ ENTITLEMENT_PROFILES: Dict[str, Any] = {
 
 CACHE_TTL = 60  # seconds
 
+# Bounded retry for signing-secret resolution. Protects against the cold-boot
+# race where the gate polls before VAULT (:5101) is listening: a transient
+# resolution failure must NOT get cached as a fail-closed Lite result.
+# Total sleep budget = 0.4 + 0.8 + 1.2 = 2.4s (< ~3s) so a poll never hangs.
+SECRET_RESOLVE_ATTEMPTS = 4
+SECRET_RESOLVE_BACKOFF  = 0.4  # seconds; linear escalation (backoff * attempt)
+
 # ---------------------------------------------------------------------------
 # In-memory cache
 # ---------------------------------------------------------------------------
@@ -219,6 +226,24 @@ def _resolve_signing_secret() -> Optional[str]:
     return None
 
 
+def _resolve_signing_secret_with_retry() -> Optional[str]:
+    """Resolve the signing secret with a bounded retry, for the cold-boot race.
+
+    env/config lookups are synchronous and return on the first attempt; the
+    only thing that gets retried is the VAULT read — i.e. exactly the case
+    where VAULT (:5101) is not yet listening at boot. Returns the secret, or
+    None if it still could not be resolved within the sleep budget (the caller
+    then treats the result as INDETERMINATE and does not cache it).
+    """
+    for attempt in range(1, SECRET_RESOLVE_ATTEMPTS + 1):
+        secret = _resolve_signing_secret()
+        if secret:
+            return secret
+        if attempt < SECRET_RESOLVE_ATTEMPTS:
+            time.sleep(SECRET_RESOLVE_BACKOFF * attempt)
+    return None
+
+
 def _lite_status() -> Dict[str, Any]:
     """Fail-closed status: invalid, lite tier, no expiry."""
     return {
@@ -232,55 +257,32 @@ def _lite_status() -> Dict[str, Any]:
 def _build_status(key: Optional[str]) -> Dict[str, Any]:
     """Validate a license key and return status dict.
 
-    Order for a present key:
-      a) Format A (HMAC v2) via TierValidator with the resolved secret.
-      b) Legacy Format C regex (ZYRCON-<TIER>-<16hex>) — TEMPORARY dual-accept.
-      c) Neither → fail closed to lite.
-    If the signing secret does not resolve at all, HMAC cannot be verified;
-    we fall back to Format C ONLY (never granting above the key's literal tier).
+    Ordered so that SECRET-INDEPENDENT determinations resolve first; only a
+    Format-A key actually needs the signing secret. Each returned status is
+    either DEFINITIVE (safe to cache for the full TTL) or INDETERMINATE
+    (marked non-cacheable via an internal '_cacheable' flag that _get_status
+    strips before returning — see below):
+
+      a) no key                       → definitive lite
+      b) Format C regex match         → definitive dual-accept (secret irrelevant)
+      c) Format A shape:
+           secret resolved + valid    → definitive tier
+           secret resolved + bad sig  → definitive lite (a real determination)
+           secret NOT resolved        → INDETERMINATE lite (non-cacheable, retry)
+
+    Fail-closed everywhere: an unresolved secret or invalid key never yields a
+    tier above the key's literal/lite floor.
     """
     fallback_expires = (date.today() + timedelta(days=365)).isoformat()
 
-    # No key present → fail closed. (Closes prior no-key fail-open.)
+    # a) No key present → definitive fail-closed lite. (cacheable)
     if not key:
         return _lite_status()
 
-    secret = _resolve_signing_secret()
-
-    # a) Format A — HMAC-signed key, cryptographically verified.
-    if secret:
-        try:
-            result = TierValidator(secret).validate(key)
-        except Exception as exc:
-            logger.warning('tier_validator error (last4=%s): %s', key[-4:], exc)
-            result = {'valid': False}
-        if result.get('valid'):
-            tier = result.get('tier', 'lite')
-            # Map into a tier the gate serves an entitlement profile for;
-            # unknown/higher-granularity tiers fail closed to lite.
-            if tier not in ENTITLEMENT_PROFILES:
-                tier = 'lite'
-            exp_ts = result.get('expires_at')
-            try:
-                expires = (date.fromtimestamp(exp_ts).isoformat()
-                           if exp_ts else fallback_expires)
-            except Exception:
-                expires = fallback_expires
-            logger.info('license valid (HMAC v2) — tier=%s last4=%s', tier, key[-4:])
-            return {
-                'valid':          True,
-                'tier':           tier,
-                'operator_limit': OPERATOR_LIMITS.get(tier, 2),
-                'expires':        expires,
-            }
-    else:
-        logger.warning(
-            'license signing secret unresolved — HMAC verification unavailable; '
-            'Format C regex fallback only (last4=%s)',
-            key[-4:],
-        )
-
-    # b) TODO(A2-S4): remove Format C dual-accept after Mini 16 re-key.
+    # b) Legacy Format C — secret-independent, definitive dual-accept. Checked
+    #    BEFORE secret resolution so a transition key survives a VAULT-not-ready
+    #    cold-boot race. (cacheable)
+    #    TODO(A2-S4): remove Format C dual-accept after Mini 16 re-key.
     m = LICENSE_REGEX.match(key)
     if m:
         tier = m.group(1).lower()
@@ -292,21 +294,74 @@ def _build_status(key: Optional[str]) -> Dict[str, Any]:
             'expires':        fallback_expires,
         }
 
-    # c) Neither format matched → fail closed to lite.
-    logger.info('license rejected — last4=%s', key[-4:])
+    # c) Format A shape — HMAC verification requires the signing secret.
+    secret = _resolve_signing_secret_with_retry()
+
+    if not secret:
+        # INDETERMINATE: secret could not be resolved (e.g. VAULT not yet ready
+        # at cold boot). Fail closed for THIS call, but DO NOT cache it — the
+        # next poll re-evaluates and self-heals once the secret is reachable,
+        # instead of freezing Enterprise→Lite for the full 60s TTL.
+        logger.warning(
+            'license signing secret unresolved; indeterminate; not caching; '
+            'next poll will re-evaluate (last4=%s)',
+            key[-4:],
+        )
+        status = _lite_status()
+        status['_cacheable'] = False
+        return status
+
+    # Secret resolved → definitive determination either way.
+    try:
+        result = TierValidator(secret).validate(key)
+    except Exception as exc:
+        logger.warning('tier_validator error (last4=%s): %s', key[-4:], exc)
+        result = {'valid': False}
+    if result.get('valid'):
+        tier = result.get('tier', 'lite')
+        # Map into a tier the gate serves an entitlement profile for;
+        # unknown/higher-granularity tiers fail closed to lite.
+        if tier not in ENTITLEMENT_PROFILES:
+            tier = 'lite'
+        exp_ts = result.get('expires_at')
+        try:
+            expires = (date.fromtimestamp(exp_ts).isoformat()
+                       if exp_ts else fallback_expires)
+        except Exception:
+            expires = fallback_expires
+        logger.info('license valid (HMAC v2) — tier=%s last4=%s', tier, key[-4:])
+        return {
+            'valid':          True,
+            'tier':           tier,
+            'operator_limit': OPERATOR_LIMITS.get(tier, 2),
+            'expires':        expires,
+        }
+
+    # Secret resolved but signature invalid / expired → DEFINITIVE lite.
+    # (A real determination, NOT transient — safe to cache.)
+    logger.info('license rejected (HMAC verify failed) — last4=%s', key[-4:])
     return _lite_status()
 
 
 def _get_status() -> Dict[str, Any]:
-    """Return cached license status, refreshing if expired."""
+    """Return cached license status, refreshing if expired.
+
+    Only DEFINITIVE results are stored for the full TTL. An INDETERMINATE
+    result (Format-A key whose signing secret could not be resolved) carries
+    an internal '_cacheable': False flag; it is returned for this call but
+    NEVER cached, so the next poll re-evaluates and self-heals. The flag is
+    stripped before returning so the HTTP response shape is byte-identical.
+    """
     now = time.time()
     if _cache['result'] is not None and now < _cache['expires_at']:
         return _cache['result']
 
     key = _load_license_key()
     result = _build_status(key)
-    _cache['result'] = result
-    _cache['expires_at'] = now + CACHE_TTL
+    cacheable = result.pop('_cacheable', True)
+    if cacheable:
+        _cache['result'] = result
+        _cache['expires_at'] = now + CACHE_TTL
     return result
 
 
