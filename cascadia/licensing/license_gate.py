@@ -154,25 +154,54 @@ _cache: Dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 def _load_license_key() -> Optional[str]:
-    """Return license key from env var or config.json, or None."""
-    # 1. Environment variable takes precedence
-    env_key = os.environ.get('ZYRCON_LICENSE_KEY', '').strip()
-    if env_key:
-        return env_key
+    """Return the license KEY, with config.json AUTHORITATIVE.
 
-    # 2. config.json at repo root (2 levels up from this file's package)
+    Precedence (config-primary, S4a):
+      1. config.json license_key present → use it. If ZYRCON_LICENSE_KEY is
+         also set and DIFFERS, config wins and env is ignored (redacted
+         deprecation warning) — so a config re-key can never again be silently
+         overridden by a stale .env.
+      2. only env ZYRCON_LICENSE_KEY set (config empty) → use env with a
+         redacted deprecation warning (backward-tolerant transition).
+      3. neither → None (lite).
+
+    NOTE: this is the KEY loader only. The SECRET resolver
+    (_resolve_signing_secret) deliberately keeps its env→VAULT→config order.
+    """
+    env_key = os.environ.get('ZYRCON_LICENSE_KEY', '').strip()
+
+    # config.json at repo root (2 levels up from this file's package)
     config_path = Path(__file__).parents[2] / 'config.json'
     if not config_path.exists():
         config_path = Path(__file__).parent / 'config.json'
+    cfg_key = ''
     if config_path.exists():
         try:
             cfg = json.loads(config_path.read_text())
-            key = cfg.get('license_key', '').strip()
-            if key:
-                return key
+            cfg_key = cfg.get('license_key', '').strip()
         except Exception:
-            pass
+            cfg_key = ''
 
+    # 1. config.json is authoritative when present
+    if cfg_key:
+        if env_key and env_key != cfg_key:
+            logger.warning(
+                'ZYRCON_LICENSE_KEY (env, last4=%s) differs from config.json '
+                'license_key (last4=%s); config wins, env ignored (deprecated)',
+                env_key[-4:], cfg_key[-4:],
+            )
+        return cfg_key
+
+    # 2. env-only fallback (config empty) — deprecated transition path
+    if env_key:
+        logger.warning(
+            'using ZYRCON_LICENSE_KEY from env (last4=%s); config.json '
+            'license_key is empty — env as a KEY source is deprecated, move it '
+            'into config.json', env_key[-4:],
+        )
+        return env_key
+
+    # 3. neither → no key
     return None
 
 
