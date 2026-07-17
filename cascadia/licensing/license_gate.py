@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import threading
 import time
 from datetime import date, timedelta
@@ -34,10 +33,6 @@ logger = get_logger('license_gate')
 
 PORT = 6100
 CREW_URL = "http://127.0.0.1:5100"
-
-LICENSE_REGEX = re.compile(
-    r'^ZYRCON-(LITE|PRO|BUSINESS|ENTERPRISE)-([0-9A-Fa-f]{16})$'
-)
 
 OPERATOR_LIMITS: Dict[str, int] = {
     'lite':       2,
@@ -264,11 +259,13 @@ def _build_status(key: Optional[str]) -> Dict[str, Any]:
     strips before returning — see below):
 
       a) no key                       → definitive lite
-      b) Format C regex match         → definitive dual-accept (secret irrelevant)
-      c) Format A shape:
+      b) Format A shape:
            secret resolved + valid    → definitive tier
            secret resolved + bad sig  → definitive lite (a real determination)
            secret NOT resolved        → INDETERMINATE lite (non-cacheable, retry)
+
+    Format C (ZYRCON-<TIER>-<hex>) was retired in S4a — such a string is now
+    just an invalid Format-A key → lite.
 
     Fail-closed everywhere: an unresolved secret or invalid key never yields a
     tier above the key's literal/lite floor.
@@ -279,22 +276,9 @@ def _build_status(key: Optional[str]) -> Dict[str, Any]:
     if not key:
         return _lite_status()
 
-    # b) Legacy Format C — secret-independent, definitive dual-accept. Checked
-    #    BEFORE secret resolution so a transition key survives a VAULT-not-ready
-    #    cold-boot race. (cacheable)
-    #    TODO(A2-S4): remove Format C dual-accept after Mini 16 re-key.
-    m = LICENSE_REGEX.match(key)
-    if m:
-        tier = m.group(1).lower()
-        logger.info('license accepted (legacy Format C) — tier=%s last4=%s', tier, key[-4:])
-        return {
-            'valid':          True,
-            'tier':           tier,
-            'operator_limit': OPERATOR_LIMITS.get(tier, 2),
-            'expires':        fallback_expires,
-        }
-
-    # c) Format A shape — HMAC verification requires the signing secret.
+    # b) Format A shape — HMAC verification requires the signing secret.
+    #    (Format C dual-accept was retired in S4a: an old ZYRCON-<TIER>-<hex>
+    #    string is now just an invalid Format-A key and falls through to lite.)
     secret = _resolve_signing_secret_with_retry()
 
     if not secret:
