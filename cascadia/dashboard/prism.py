@@ -1159,14 +1159,14 @@ document.getElementById('key').addEventListener('keydown', function(e){
                 tier = status['tier']
         except Exception as exc:
             return 500, {'error': f'validation error: {exc}'}
-        # Persist to config.json
-        import json as _json
-        from pathlib import Path as _Path
-        config_path = _Path(__file__).parents[2] / 'config.json'
+        # Persist to config.json — atomic + locked, serialising against the setup
+        # wizard and any other config.json writer. Uses the canonical config path so
+        # the flock lock file is shared. Store unchanged (still config.json —
+        # unification with the enterprise store is S-A1c).
+        config_path = Path(self.config.get('__config_path__')
+                           or (Path(__file__).parents[2] / 'config.json'))
         try:
-            cfg = _json.loads(config_path.read_text())
-            cfg['license_key'] = key
-            config_path.write_text(_json.dumps(cfg, indent=2))
+            self._atomic_locked_update(config_path, {'license_key': key})
             self.config['license_key'] = key
         except Exception as exc:
             return 500, {'error': f'could not save config: {exc}'}
@@ -2991,16 +2991,48 @@ document.getElementById('key').addEventListener('keydown', function(e){
 
     def _write_wizard_state(self, updates: Dict[str, Any]) -> None:
         """Atomically update wizard keys in config.json without touching other keys."""
-        import tempfile, os
-        path = self._wizard_config_path()
-        try:
-            existing = json.loads(path.read_text()) if path.exists() else {}
-        except Exception:
-            existing = {}
-        existing.update(updates)
-        tmp = path.with_suffix('.tmp')
-        tmp.write_text(json.dumps(existing, indent=2))
-        os.replace(str(tmp), str(path))
+        self._atomic_locked_update(self._wizard_config_path(), updates)
+
+    def _atomic_locked_update(self, path: Path, updates: Dict[str, Any]) -> None:
+        """Read-modify-write a JSON config ATOMICALLY and under an EXCLUSIVE LOCK.
+
+        Generalises the former inline wizard writer (atomic-rename only) by adding
+        an fcntl.flock on a sidecar .lock file, so writers to the same config.json
+        (setup wizard, license activation) serialise instead of racing. Writes to a
+        temp file in the same dir, fsyncs, then os.replace()s it in — so a crash
+        mid-write can never truncate the live config. Only `updates` keys change;
+        all other keys are preserved.
+        """
+        import fcntl as _fcntl
+        import os as _os
+        import tempfile as _tempfile
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = path.with_suffix(path.suffix + '.lock')
+        with open(lock_path, 'w') as lock_f:
+            _fcntl.flock(lock_f, _fcntl.LOCK_EX)
+            try:
+                try:
+                    existing = json.loads(path.read_text()) if path.exists() else {}
+                except Exception:
+                    existing = {}
+                existing.update(updates)
+                fd, tmp = _tempfile.mkstemp(dir=str(path.parent),
+                                            prefix=path.name + '.', suffix='.tmp')
+                try:
+                    with _os.fdopen(fd, 'w') as tf:
+                        tf.write(json.dumps(existing, indent=2))
+                        tf.flush()
+                        _os.fsync(tf.fileno())
+                    _os.replace(tmp, str(path))
+                except Exception:
+                    try:
+                        _os.unlink(tmp)
+                    except OSError:
+                        pass
+                    raise
+            finally:
+                _fcntl.flock(lock_f, _fcntl.LOCK_UN)
 
     def serve_wizard(self, _) -> tuple[int, Dict[str, Any]]:
         """GET /setup — serve onboarding wizard, or redirect to / if already complete."""
