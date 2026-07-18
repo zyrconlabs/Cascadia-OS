@@ -1141,22 +1141,28 @@ document.getElementById('key').addEventListener('keydown', function(e){
         key = (payload.get('license_key') or '').strip()
         if not key:
             return 400, {'error': 'license_key required'}
+        # Validate via the SAME secret resolution the gate uses (env -> VAULT ->
+        # config) with the S3.5 bounded retry, then HMAC-verify. Distinguish an
+        # INDETERMINATE result (secret not resolvable yet — e.g. VAULT still coming
+        # up at cold boot) from a genuinely invalid key: a VALID key pasted during
+        # that window must NOT be rejected as invalid — it is retryable. This
+        # replaces the dead self.config['license_secret'] branch (empty on real
+        # boxes — the secret lives in VAULT) and the _build_status fallback that
+        # falsely rejected valid keys during a VAULT-down window.
         try:
+            from cascadia.licensing.license_gate import _resolve_signing_secret_with_retry
             from cascadia.licensing.tier_validator import TierValidator
-            secret = self.config.get('license_secret', '')
-            if secret:
-                validator = TierValidator(secret)
-                result = validator.validate(key)
-                if not result.get('valid'):
-                    return 400, {'error': result.get('error', 'invalid_license')}
-                tier = result['tier']
-            else:
-                # No HMAC secret — accept any well-formed key (license_gate handles format check)
-                from cascadia.licensing.license_gate import _build_status
-                status = _build_status(key)
-                if not status.get('valid'):
-                    return 400, {'error': 'invalid_license_format'}
-                tier = status['tier']
+            secret = _resolve_signing_secret_with_retry()
+            if not secret:
+                return 503, {
+                    'error': 'activation_pending_services_starting',
+                    'retryable': True,
+                    'message': 'Licensing service is still starting — retry in a moment.',
+                }
+            result = TierValidator(secret).validate(key)
+            if not result.get('valid'):
+                return 400, {'error': result.get('error', 'invalid_license')}
+            tier = result['tier']
         except Exception as exc:
             return 500, {'error': f'validation error: {exc}'}
         # Persist to config.json — atomic + locked, serialising against the setup
@@ -1170,7 +1176,7 @@ document.getElementById('key').addEventListener('keydown', function(e){
             self.config['license_key'] = key
         except Exception as exc:
             return 500, {'error': f'could not save config: {exc}'}
-        return 200, {'ok': True, 'tier': tier, 'key_prefix': key[:24] + '...'}
+        return 200, {'ok': True, 'tier': tier, 'key_last4': key[-4:]}
 
     def operator_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Live status of all registered operators from registry.json.
