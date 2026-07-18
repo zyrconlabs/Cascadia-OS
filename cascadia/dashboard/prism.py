@@ -1083,8 +1083,61 @@ document.getElementById('key').addEventListener('keydown', function(e){
 </html>"""
         return 200, html
 
+    def _authenticate_paired(self, payload: Dict[str, Any]) -> Optional[tuple[int, Dict[str, Any]]]:
+        """Require a valid paired-device bearer token (Authorization: Bearer <token>).
+
+        Reads headers from payload['__headers__'] (ServiceRuntime injects them on
+        POST) and validates the token against the CORE paired_devices table — the
+        same store BELL uses (cascadia/chat/bell.py). This resolves entirely from
+        core/paired-device state, so it works on :6300 in LITE with no enterprise
+        stack up, and a paired phone can still activate. Returns None when
+        authenticated, or a (401, body) tuple the route must return immediately.
+        """
+        headers = payload.get('__headers__') or {}
+        auth = ''
+        for hk, hv in headers.items():
+            if hk.lower() == 'authorization':
+                auth = hv or ''
+                break
+        if not auth.startswith('Bearer '):
+            return 401, {'error': 'authentication required'}
+        token = auth[len('Bearer '):].strip()
+        if not token or not self._paired_token_is_valid(token):
+            return 401, {'error': 'invalid or expired token'}
+        return None
+
+    def _paired_token_is_valid(self, token: str) -> bool:
+        """Constant-time check of token against the core paired_devices table;
+        touch last_seen on success. Mirrors BELL's _token_is_valid."""
+        import sqlite3 as _sqlite3
+        import hmac as _hmac
+        db_path = str(Path(self.config.get('database_path', './data/runtime/cascadia.db')))
+        try:
+            with _sqlite3.connect(db_path) as conn:
+                rows = conn.execute('SELECT token FROM paired_devices').fetchall()
+                match = None
+                for (stored,) in rows:
+                    # Compare every row (no early break) so timing does not leak
+                    # which row matched; each compare is itself constant-time.
+                    if stored and _hmac.compare_digest(str(stored), token):
+                        match = stored
+                if match is None:
+                    return False
+                conn.execute('UPDATE paired_devices SET last_seen=? WHERE token=?',
+                             (_now(), match))
+                return True
+        except _sqlite3.OperationalError:
+            # paired_devices does not exist yet (nothing paired) — reject.
+            return False
+
     def license_activate_api(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """POST /api/prism/license/activate — validate and save a license key to config."""
+        # AUTH: :6300 binds 0.0.0.0 and is LAN/mDNS-reachable, so this tier-granting
+        # write must be authenticated. Require a paired-device bearer token, checked
+        # against the CORE paired_devices store — works in Lite (no enterprise stack).
+        auth_fail = self._authenticate_paired(payload)
+        if auth_fail is not None:
+            return auth_fail
         key = (payload.get('license_key') or '').strip()
         if not key:
             return 400, {'error': 'license_key required'}
