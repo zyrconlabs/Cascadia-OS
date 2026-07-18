@@ -52,7 +52,7 @@
       "name": "vault",
       "module": "cascadia.memory.vault",
       "port": 5101,
-      "tier": 1,
+      "tier": 0,
       "pulse_file": "./data/runtime/vault.heartbeat"
     },
     {
