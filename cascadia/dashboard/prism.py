@@ -150,9 +150,11 @@ class PrismService:
         self.runtime.register_route('POST', '/api/prism/almanac',          self.almanac_query)
         self.runtime.register_route('GET',  '/api/prism/scheduler',        self.scheduler_status)
         self.runtime.register_route('POST', '/api/prism/runs/outcome',     self.record_run_outcome)
-        self.runtime.register_route('GET',  '/api/prism/pairing/code',     self.pairing_code)
-        self.runtime.register_route('POST', '/api/prism/pairing/validate', self.pairing_validate)
-        self.runtime.register_route('GET',  '/api/prism/pairing/status',   self.pairing_status)
+        self.runtime.register_route('GET',  '/api/prism/pairing/code',         self.pairing_code)
+        self.runtime.register_route('POST', '/api/prism/pairing/validate',     self.pairing_validate)
+        self.runtime.register_route('GET',  '/api/prism/pairing/status',       self.pairing_status)
+        self.runtime.register_route('POST', '/api/prism/pairing/window/open',  self.pairing_window_open)
+        self.runtime.register_route('POST', '/api/prism/pairing/window/close', self.pairing_window_close)
         self.runtime.register_route('POST', '/api/prism/leads/recover',    self.leads_recover)
         # Sprint v2
         self.runtime.register_route('POST', '/api/prism/approve/edit',         self.approve_edit)
@@ -1550,12 +1552,61 @@ document.getElementById('key').addEventListener('keydown', function(e){
             return 500, {'error': str(exc)}
 
     def pairing_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-        """mDNS and pairing status."""
+        """mDNS and pairing status (includes window open/closed + expiry; no code)."""
         try:
             from cascadia.network.discovery import pairing_status
             return 200, pairing_status()
         except Exception as exc:
             return 500, {'error': str(exc)}
+
+    def _is_trusted_loopback(self, payload: Dict[str, Any]) -> bool:
+        """True ONLY for a genuine local caller: the SOCKET PEER (not a header) is
+        loopback AND the request carries no proxy/forwarding headers. __remote_addr__
+        is client_address[0] (service_runtime.py), the accepted-socket peer — it can
+        NOT be spoofed by X-Forwarded-For. But a same-host reverse proxy / tunnel
+        forwarding external traffic to 127.0.0.1 WOULD appear as loopback here; the
+        presence of a forwarding header means the peer is not a local operator, so we
+        fail CLOSED."""
+        remote = payload.get('__remote_addr__', '')
+        if remote not in ('127.0.0.1', '::1', '::ffff:127.0.0.1'):
+            return False
+        fwd = ('x-forwarded-for', 'x-real-ip', 'forwarded', 'x-forwarded-host', 'via')
+        headers = payload.get('__headers__') or {}
+        return not any(str(hk).lower() in fwd for hk in headers)
+
+    def _pairing_open_authorized(self, payload: Dict[str, Any]) -> bool:
+        """A pairing window may be opened by a genuine local operator (loopback) OR an
+        already-paired admin (valid Bearer against paired_devices — the remote/
+        Tailscale path). A fresh box (empty paired_devices) can only open via
+        loopback. Fails closed for a LAN/tunnel caller with neither."""
+        if self._is_trusted_loopback(payload):
+            return True
+        return self._authenticate_paired(payload) is None
+
+    def pairing_window_open(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/pairing/window/open — operator-presence action that opens a
+        time-boxed pairing window (default state is CLOSED). Gated to loopback OR an
+        already-paired caller; a LAN/tunnel caller with neither is rejected 403."""
+        remote = payload.get('__remote_addr__', '')
+        if not self._rate_limiter.check(f'pairwin:{remote}', limit=10, window=60):
+            return 429, {'error': 'rate limit exceeded'}
+        if not self._pairing_open_authorized(payload):
+            self.runtime.logger.warning('Pairing window open DENIED (not loopback, not paired)')
+            return 403, {'error': 'not authorized to open pairing'}
+        from cascadia.network.discovery import open_pairing_window
+        expiry = open_pairing_window()
+        who = 'loopback' if self._is_trusted_loopback(payload) else 'paired-device'
+        self.runtime.logger.info('Pairing window OPENED by %s; expires_at=%s', who, expiry)
+        return 200, {'ok': True, 'pairing_open': True, 'expires_at': expiry}
+
+    def pairing_window_close(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/pairing/window/close — same gate as open."""
+        if not self._pairing_open_authorized(payload):
+            return 403, {'error': 'not authorized'}
+        from cascadia.network.discovery import close_pairing_window
+        close_pairing_window()
+        self.runtime.logger.info('Pairing window CLOSED')
+        return 200, {'ok': True, 'pairing_open': False}
 
     def leads_recover(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """

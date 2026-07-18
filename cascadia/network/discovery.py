@@ -94,6 +94,7 @@ class MdnsRegistrar:
 # ── Pairing codes ─────────────────────────────────────────────────────────────
 
 _PAIR_TTL_SECONDS = 300  # 5 minutes
+_WINDOW_TTL_SECONDS = 300  # a pairing WINDOW auto-closes 5 min after it is opened
 
 
 class PairingManager:
@@ -105,6 +106,7 @@ class PairingManager:
     def __init__(self) -> None:
         self._codes: Dict[str, Dict[str, Any]] = {}  # code → {created_at, used}
         self._lock = threading.Lock()
+        self._window_expires_at = 0.0  # 0 = CLOSED (default); else wall-clock deadline
 
     def generate_code(self) -> str:
         """Generate a fresh 6-digit code. Prunes expired codes as a side effect."""
@@ -146,6 +148,27 @@ class PairingManager:
         with self._lock:
             return len(self._codes)
 
+    # --- pairing window (default CLOSED) -----------------------------------
+    def open_window(self) -> float:
+        """Open the pairing window; returns its expiry epoch. Default state is CLOSED."""
+        with self._lock:
+            self._window_expires_at = time.time() + _WINDOW_TTL_SECONDS
+            return self._window_expires_at
+
+    def close_window(self) -> None:
+        with self._lock:
+            self._window_expires_at = 0.0
+
+    def window_open(self) -> bool:
+        """True ONLY while an unexpired window is open. Any other/unknown state → closed."""
+        with self._lock:
+            return self._window_expires_at > time.time()
+
+    def window_expiry(self) -> float:
+        """Expiry epoch while open, else 0.0 (never leak while closed)."""
+        with self._lock:
+            return self._window_expires_at if self._window_expires_at > time.time() else 0.0
+
 
 # Module-level singletons — used by FLINT and PRISM
 _mdns = MdnsRegistrar()
@@ -180,10 +203,24 @@ def validate_pairing_code(code: str) -> bool:
     return _pairing.validate_code(code)
 
 
+def open_pairing_window() -> float:
+    return _pairing.open_window()
+
+
+def close_pairing_window() -> None:
+    _pairing.close_window()
+
+
+def pairing_window_open() -> bool:
+    return _pairing.window_open()
+
+
 def pairing_status() -> Dict[str, Any]:
     return {
         'mdns_registered': _mdns._registered,
         'pending_codes': _pairing.pending_count(),
         'ttl_seconds': _PAIR_TTL_SECONDS,
+        'pairing_open': _pairing.window_open(),
+        'window_expires_at': _pairing.window_expiry(),
         'generated_at': _now_utc(),
     }
