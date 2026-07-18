@@ -1056,27 +1056,95 @@ class PrismService:
   <div id="msg"></div>
 </div>
 <script>
+var TOKEN_KEY = 'zyrcon_paired_token';
+var msg = document.getElementById('msg');
+var pageToken = null;
+
+// SECURITY ORDERING: read the one-time bootstrap credential from the URL FRAGMENT
+// (never a query param — query strings are access-logged), then IMMEDIATELY strip it
+// from the address bar/history BEFORE any await/POST. read -> blank -> then use.
+var bootstrapCred = null;
+(function(){
+  var m = (location.hash || '').match(/[#&]bootstrap=([^&]+)/);
+  if (m) {
+    bootstrapCred = decodeURIComponent(m[1]);
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+})();
+
+function show(el, text, ok) {
+  el.textContent = text; el.className = ok ? 'ok' : 'err'; el.style.display = 'block';
+}
+function storedToken(){ try { return localStorage.getItem(TOKEN_KEY) || null; } catch(e){ return null; } }
+function disableForm(){
+  var k = document.getElementById('key'); if (k) k.disabled = true;
+  var b = document.querySelector('button'); if (b) b.disabled = true;
+}
+
+// Exchange the one-time credential (BODY, never URL) for a durable paired token, OR
+// reuse a previously stored token (returning operator). The credential is used once
+// and never stored; only the durable token goes to localStorage.
+async function acquireToken(){
+  if (bootstrapCred) {
+    var cred = bootstrapCred; bootstrapCred = null;  // used once, never stored
+    var r = await fetch('/api/prism/pairing/bootstrap', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({credential: cred})
+    });
+    if (r.status === 429) { var e = new Error('rl'); e.kind = 'ratelimit'; throw e; }
+    if (!r.ok)           { var e2 = new Error('bs'); e2.kind = 'bootstrap'; throw e2; }
+    var d = await r.json();
+    if (d && d.token) { try { localStorage.setItem(TOKEN_KEY, d.token); } catch(e){} return d.token; }
+    var e3 = new Error('bs'); e3.kind = 'bootstrap'; throw e3;
+  }
+  return storedToken();
+}
+
+(async function init(){
+  try {
+    pageToken = await acquireToken();
+  } catch(e) {
+    if (e.kind === 'ratelimit')
+      show(msg, 'Too many attempts — wait a moment, then reload this page.', false);
+    else
+      show(msg, 'Activation link expired or already used — re-run the installer to generate a new one.', false);
+    disableForm();
+    return;
+  }
+  if (!pageToken) {
+    show(msg, 'Open activation from the installer, or re-run the installer to generate a new activation link.', false);
+    disableForm();
+  }
+})();
+
 async function activate() {
   var key = document.getElementById('key').value.trim();
-  var msg = document.getElementById('msg');
   if (!key) { show(msg, 'Please enter a license key.', false); return; }
+  if (!pageToken) { show(msg, 'No activation token — re-run the installer for a fresh activation link.', false); return; }
   try {
     var r = await fetch('/api/prism/license/activate', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + pageToken},
       body: JSON.stringify({license_key: key})
     });
-    var d = await r.json();
-    if (r.ok && d.ok) {
-      show(msg, 'License activated! Tier: ' + (d.tier || 'unknown') + '. Restarting dashboard...', true);
+    var d = {};
+    try { d = await r.json(); } catch(e) {}
+    if (r.status === 200 && d.ok) {
+      show(msg, 'License activated — tier ' + (d.tier || 'unknown') + '. Enterprise is starting…', true);
       setTimeout(function(){ window.location.href = '/'; }, 2500);
+    } else if (r.status === 503) {
+      show(msg, 'Services are still starting — wait a moment and click Activate again.', false);
+    } else if (r.status === 401) {
+      try { localStorage.removeItem(TOKEN_KEY); } catch(e){}
+      pageToken = null;
+      show(msg, 'Activation token rejected or expired — re-run the installer for a fresh activation link.', false);
+    } else if (r.status === 400) {
+      show(msg, 'License key invalid: ' + (d.error || 'bad key') + '.', false);
     } else {
-      show(msg, d.error || 'Activation failed.', false);
+      show(msg, (d.error || 'Activation failed') + '.', false);
     }
   } catch(e) { show(msg, 'Request failed: ' + e.message, false); }
-}
-function show(el, text, ok) {
-  el.textContent = text; el.className = ok ? 'ok' : 'err'; el.style.display = 'block';
 }
 document.getElementById('key').addEventListener('keydown', function(e){
   if (e.key === 'Enter') activate();
