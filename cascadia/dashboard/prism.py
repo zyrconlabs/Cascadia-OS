@@ -155,6 +155,7 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/prism/pairing/status',       self.pairing_status)
         self.runtime.register_route('POST', '/api/prism/pairing/window/open',  self.pairing_window_open)
         self.runtime.register_route('POST', '/api/prism/pairing/window/close', self.pairing_window_close)
+        self.runtime.register_route('POST', '/api/prism/pairing/bootstrap',    self.pairing_bootstrap)
         self.runtime.register_route('POST', '/api/prism/leads/recover',    self.leads_recover)
         # Sprint v2
         self.runtime.register_route('POST', '/api/prism/approve/edit',         self.approve_edit)
@@ -1581,6 +1582,60 @@ document.getElementById('key').addEventListener('keydown', function(e){
                 VALUES (?,?,?,?,?)
             ''', (token, platform, device_token, _now(), _now()))
         return token
+
+    def pairing_bootstrap(self, payload: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """POST /api/prism/pairing/bootstrap — exchange an installer-minted one-time
+        bootstrap credential for a durable paired-device token, over the loopback-only
+        boundary. Two factors: the caller must be genuine loopback AND present the
+        credential (verified against a hashed, expiring, single-use file the installer
+        wrote to data/runtime/.activation_bootstrap). Fixes SEAM-1 (the web /activate
+        401) without reopening the LAN race.
+
+        The credential arrives in the POST BODY, never a query param — the request
+        line is access-logged (service_runtime log_message) but the body is not.
+        Fail-closed at every step; the credential file is deleted ONLY on a successful
+        exchange (a wrong guess must not consume a legit pending credential). Never
+        logs the credential or the minted token.
+        """
+        import hashlib as _hashlib
+        import hmac as _hmac
+        remote = payload.get('__remote_addr__', '')
+        # Rate-limit first so the route is never a free brute-force oracle.
+        if not self._rate_limiter.check(f'bootstrap:{remote}', limit=10, window=60):
+            return 429, {'error': 'rate limit exceeded'}
+        # (a) loopback-only (socket peer + no forwarding header) — no credential is
+        #     even read from a non-local caller.
+        if not self._is_trusted_loopback(payload):
+            return 403, {'error': 'not authorized'}
+        # (b) load the installer-written credential record (hash + expiry).
+        cred = (payload.get('credential') or '').strip()
+        if not cred:
+            return 403, {'error': 'no credential'}
+        bootstrap_path = Path(__file__).parents[2] / 'data' / 'runtime' / '.activation_bootstrap'
+        try:
+            record = json.loads(bootstrap_path.read_text())
+            stored_hash = str(record.get('sha256', ''))
+            expires_at = float(record.get('expires_at', 0))
+        except Exception:
+            return 403, {'error': 'no active bootstrap'}
+        if not stored_hash:
+            return 403, {'error': 'no active bootstrap'}
+        # (c) expired → reject and delete the stale file.
+        if expires_at <= _time.time():
+            bootstrap_path.unlink(missing_ok=True)
+            return 403, {'error': 'bootstrap expired'}
+        # (d) constant-time hash compare. A WRONG guess must NOT consume a legit
+        #     pending credential — do not delete on mismatch (expiry + rate-limit
+        #     bound the risk; a 256-bit credential is not brute-forceable).
+        presented_hash = _hashlib.sha256(cred.encode()).hexdigest()
+        if not _hmac.compare_digest(presented_hash, stored_hash):
+            self.runtime.logger.warning('Bootstrap exchange: credential mismatch (rejected)')
+            return 403, {'error': 'invalid credential'}
+        # (f) success → mint a durable paired token, then single-use delete the file.
+        token = self._mint_paired_token('web-activation')
+        bootstrap_path.unlink(missing_ok=True)
+        self.runtime.logger.info('Bootstrap exchanged — paired token minted for web activation')
+        return 200, {'ok': True, 'token': token}
 
     def _is_trusted_loopback(self, payload: Dict[str, Any]) -> bool:
         """True ONLY for a genuine local caller: the SOCKET PEER (not a header) is
