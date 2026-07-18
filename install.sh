@@ -395,13 +395,30 @@ done
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
+# SEAM-1: mint a ONE-TIME activation bootstrap credential. Only its sha256+expiry
+# reach disk (0600); the plaintext is captured into a shell var (never written,
+# never echoed) and rides the URL FRAGMENT to the local /activate page, which
+# exchanges it for a durable paired token. set -x is off, so `open "$URL"` never
+# traces the credential arg.
+_BOOT_DIR="$INSTALL_DIR/data/runtime"
+mkdir -p "$_BOOT_DIR"
+_BOOT_CRED=$("$VENV_DIR/bin/python3" -c "
+import secrets, hashlib, json, time, os
+c = secrets.token_urlsafe(32)
+p = os.path.join('$_BOOT_DIR', '.activation_bootstrap')
+with open(p, 'w') as f:
+    f.write(json.dumps({'sha256': hashlib.sha256(c.encode()).hexdigest(), 'expires_at': int(time.time()) + 600}))
+os.chmod(p, 0o600)
+print(c)
+") || _BOOT_CRED=""
 if [[ ! -f "$INSTALL_DIR/.setup_complete" ]]; then
     [[ "$(uname)" == "Darwin" ]] && \
-        open "http://localhost:6300/setup" 2>/dev/null || true
+        open "http://127.0.0.1:6300/activate#bootstrap=${_BOOT_CRED}" 2>/dev/null || true
 else
     [[ "$(uname)" == "Darwin" ]] && \
         open "http://localhost:6300" 2>/dev/null || true
 fi
+_BOOT_CRED=""
 touch "$INSTALL_DIR/.setup_complete"
 
 echo ""
