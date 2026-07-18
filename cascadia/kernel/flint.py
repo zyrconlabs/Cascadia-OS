@@ -128,12 +128,52 @@ class Flint:
             component.last_error = str(exc)
             return False
 
+    def _diagnose_readiness_timeout(self, group: List[ProcessEntry]) -> str:
+        """Explain a readiness timeout so a startup-ordering CYCLE is visible in
+        the log instead of a bare crash-loop. Names the stuck service(s) and
+        their tier, any declared depends_on that starts in a later-or-equal tier
+        (an inversion), and the later-tier services not yet started — the usual
+        sign of a hidden dependency, e.g. a health check that reads a later-tier
+        service like VAULT (the class of bug that deadlocked S4)."""
+        group_tier = group[0].tier if group else None
+        stuck = [c for c in group if not self._check_health(c)]
+        later = sorted(
+            (c for c in self.components.values()
+             if group_tier is not None and c.tier > group_tier),
+            key=lambda c: (c.tier, c.name),
+        )
+        lines = [
+            f'FLINT readiness TIMEOUT in tier {group_tier}: '
+            + ', '.join(c.name for c in stuck) + ' did not become healthy.'
+        ]
+        for c in stuck:
+            inverted = [d for d in c.depends_on
+                        if d in self.components and self.components[d].tier >= c.tier]
+            if inverted:
+                lines.append(
+                    f'  ORDERING CYCLE: {c.name} (tier {c.tier}) declares depends_on='
+                    f'{inverted} that start in tier >= {c.tier} — move them to an '
+                    f'earlier tier or decouple the dependency.')
+            lines.append(f'  {c.name} last_error: {c.last_error or "(none)"}')
+        if later:
+            lines.append(
+                '  later-tier services NOT yet started: '
+                + ', '.join(f'{c.name}(t{c.tier})' for c in later)
+                + ' — if a stuck service HEALTH check depends on any of these '
+                '(e.g. a VAULT read), that is a startup-ordering cycle: FLINT is '
+                'blocked here, so the later-tier service can never start. Decouple '
+                'the health check or move the dependency to an earlier tier.')
+        return '\n'.join(lines)
+
     def _wait_ready(self, group: List[ProcessEntry], timeout: int = 45) -> None:
         start = time.time()
         while time.time() - start < timeout and not self.shutdown_event.is_set():
             if all(self._check_health(c) for c in group):
                 return
             time.sleep(1)
+        # Fail LOUD with the likely ordering cycle named, then preserve the
+        # existing exit behaviour (RuntimeError -> watchdog restart).
+        self.logger.error('%s', self._diagnose_readiness_timeout(group))
         raise RuntimeError('FLINT readiness timeout: ' + ', '.join(c.name for c in group))
 
     def start_tiers(self) -> None:
