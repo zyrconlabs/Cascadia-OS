@@ -1176,7 +1176,19 @@ document.getElementById('key').addEventListener('keydown', function(e){
             self.config['license_key'] = key
         except Exception as exc:
             return 500, {'error': f'could not save config: {exc}'}
-        return 200, {'ok': True, 'tier': tier, 'key_last4': key[-4:]}
+        # Signal the enterprise launcher to re-validate NOW (S-A1d): touch a sentinel
+        # it watches, so a key activated after a keyless boot self-promotes Lite→full
+        # in seconds instead of waiting for the launcher's daily backstop poll. Only
+        # on SUCCESS (not the 503-indeterminate or 400-invalid paths above).
+        # Best-effort — a failure here does NOT fail the activation (the daily poll
+        # is the backstop).
+        try:
+            sentinel = Path(__file__).parents[2] / 'data' / 'runtime' / 'license_activation.signal'
+            sentinel.parent.mkdir(parents=True, exist_ok=True)
+            sentinel.write_text(_now())
+        except Exception as exc:
+            self.runtime.logger.warning('activation sentinel write failed (non-fatal): %s', exc)
+        return 200, {'ok': True, 'tier': tier, 'key_last4': key[-4:], 'enterprise': 'starting'}
 
     def operator_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
         """Live status of all registered operators from registry.json.
