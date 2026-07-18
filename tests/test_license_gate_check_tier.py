@@ -1,9 +1,21 @@
 """Tests for LICENSE_GATE /api/license/check_tier endpoint."""
 import json
+import os
 import unittest
 from unittest.mock import patch
 
 from cascadia.licensing.license_gate import _build_status, TIER_RANK as _TIER_RANK, _Handler, _ReusableServer
+from cascadia.licensing.tier_validator import TierValidator
+
+# Format-C (ZYRCON-<TIER>-<hex>) was retired in S4a; sign Format-A keys
+# in-process with a known test secret exported via LICENSE_SIGNING_SECRET
+# (which _resolve_signing_secret reads ahead of VAULT/config).
+_TEST_SECRET = 'unit-test-signing-secret-0123456789'
+_FAR_EXPIRY = 4102444800  # 2100-01-01 UTC
+
+
+def _key(tier: str) -> str:
+    return TierValidator(_TEST_SECRET).generate(tier, 'unit-test', _FAR_EXPIRY)
 
 
 def _post_check_tier(tier_required: str, key: str | None = None):
@@ -32,8 +44,16 @@ def _post_check_tier(tier_required: str, key: str | None = None):
 
 class TestCheckTierLogic(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        os.environ['LICENSE_SIGNING_SECRET'] = _TEST_SECRET
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        os.environ.pop('LICENSE_SIGNING_SECRET', None)
+
     def test_pro_meets_pro(self):
-        code, body = _post_check_tier('pro', 'ZYRCON-PRO-0123456789abcdef')
+        code, body = _post_check_tier('pro', _key('pro'))
         self.assertEqual(code, 200)
         self.assertTrue(body['ok'])
         self.assertEqual(body['current_tier'], 'pro')
@@ -45,7 +65,7 @@ class TestCheckTierLogic(unittest.TestCase):
         self.assertIn('tier_insufficient', body['reason'])
 
     def test_enterprise_meets_lite(self):
-        code, body = _post_check_tier('lite', 'ZYRCON-ENTERPRISE-0123456789abcdef')
+        code, body = _post_check_tier('lite', _key('enterprise'))
         self.assertEqual(code, 200)
         self.assertTrue(body['ok'])
         self.assertEqual(body['current_tier'], 'enterprise')

@@ -1,41 +1,62 @@
-"""Tests for the public license_gate.py interface."""
+"""Tests for the public license_gate.py interface.
+
+Format-C (ZYRCON-<TIER>-<hex>) was retired in S4a — the gate now accepts only
+HMAC-signed Format-A keys, verified against the resolved signing secret. Keys are
+signed in-process with a known test secret exported via LICENSE_SIGNING_SECRET
+(which _resolve_signing_secret reads ahead of VAULT/config), keeping the suite
+hermetic. The three LICENSE_REGEX tests were removed with the regex itself; their
+behavioural intent (valid-tier acceptance, unknown-tier / malformed rejection) is
+preserved below via Format-A keys and the malformed-rejection case.
+"""
 from __future__ import annotations
 
+import json
 import os
 import unittest
+from unittest.mock import patch
 
 from cascadia.licensing.license_gate import (
     _build_status,
     _get_status,
     OPERATOR_LIMITS,
-    LICENSE_REGEX,
 )
+from cascadia.licensing.tier_validator import TierValidator
 
-_PRO_KEY        = 'ZYRCON-PRO-1234567890abcdef'
-_LITE_KEY       = 'ZYRCON-LITE-abcdef1234567890'
-_BUSINESS_KEY   = 'ZYRCON-BUSINESS-0a1b2c3d4e5f6a7b'
-_ENTERPRISE_KEY = 'ZYRCON-ENTERPRISE-fedcba9876543210'
+_TEST_SECRET = 'unit-test-signing-secret-0123456789'
+_FAR_EXPIRY = 4102444800  # 2100-01-01 UTC
+
+
+def _key(tier: str) -> str:
+    return TierValidator(_TEST_SECRET).generate(tier, 'unit-test', _FAR_EXPIRY)
 
 
 class LicenseGateTests(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        os.environ['LICENSE_SIGNING_SECRET'] = _TEST_SECRET
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        os.environ.pop('LICENSE_SIGNING_SECRET', None)
+
     def test_valid_pro_key(self):
-        result = _build_status(_PRO_KEY)
+        result = _build_status(_key('pro'))
         self.assertTrue(result['valid'])
         self.assertEqual(result['tier'], 'pro')
 
     def test_valid_enterprise_key(self):
-        result = _build_status(_ENTERPRISE_KEY)
+        result = _build_status(_key('enterprise'))
         self.assertTrue(result['valid'])
         self.assertEqual(result['tier'], 'enterprise')
 
     def test_valid_lite_key(self):
-        result = _build_status(_LITE_KEY)
+        result = _build_status(_key('lite'))
         self.assertTrue(result['valid'])
         self.assertEqual(result['tier'], 'lite')
 
     def test_valid_business_key(self):
-        result = _build_status(_BUSINESS_KEY)
+        result = _build_status(_key('business'))
         self.assertTrue(result['valid'])
         self.assertEqual(result['tier'], 'business')
 
@@ -49,16 +70,25 @@ class LicenseGateTests(unittest.TestCase):
         self.assertFalse(result['valid'])
 
     def test_malformed_key_rejected(self):
+        # None of these are valid HMAC Format-A keys → all fail closed to invalid.
+        # (Includes the old Format-C shapes, now just invalid strings.)
         for bad in ('NOTAKEY', 'ZYRCON-ULTIMATE-1234567890abcdef',
-                    'zyrcon-pro-1234567890abcdef', 'ZYRCON-PRO-tooshort'):
+                    'ZYRCON-PRO-1234567890abcdef', 'zyrcon_pro_missing_sig'):
             with self.subTest(key=bad):
                 self.assertFalse(_build_status(bad)['valid'])
 
+    def test_forged_signature_rejected(self):
+        # A structurally-correct Format-A key signed with the WRONG secret must
+        # fail closed — this is the core HMAC guarantee that replaced regex parsing.
+        forged = TierValidator('a-different-secret').generate('enterprise', 'x', _FAR_EXPIRY)
+        result = _build_status(forged)
+        self.assertFalse(result['valid'])
+        self.assertEqual(result['tier'], 'lite')
+
     def test_operator_limit_in_result_matches_table(self):
-        for tier, key in [('pro', _PRO_KEY), ('lite', _LITE_KEY),
-                          ('business', _BUSINESS_KEY), ('enterprise', _ENTERPRISE_KEY)]:
+        for tier in ('pro', 'lite', 'business', 'enterprise'):
             with self.subTest(tier=tier):
-                result = _build_status(key)
+                result = _build_status(_key(tier))
                 self.assertEqual(result['operator_limit'], OPERATOR_LIMITS[tier])
 
     def test_operator_limits_strictly_ascending(self):
@@ -67,44 +97,47 @@ class LicenseGateTests(unittest.TestCase):
         self.assertLess(OPERATOR_LIMITS['business'], OPERATOR_LIMITS['enterprise'])
 
     def test_enterprise_operator_limit_is_large(self):
-        result = _build_status(_ENTERPRISE_KEY)
+        result = _build_status(_key('enterprise'))
         self.assertGreaterEqual(result['operator_limit'], 100)
 
     def test_lite_operator_limit_is_two(self):
-        result = _build_status(_LITE_KEY)
+        result = _build_status(_key('lite'))
         self.assertEqual(result['operator_limit'], 2)
 
     def test_expires_set_for_valid_key(self):
-        result = _build_status(_PRO_KEY)
+        result = _build_status(_key('pro'))
         self.assertIsNotNone(result['expires'])
 
     def test_expires_none_for_missing_key(self):
         result = _build_status(None)
         self.assertIsNone(result['expires'])
 
-    def test_license_regex_accepts_all_tiers(self):
-        for tier in ('LITE', 'PRO', 'BUSINESS', 'ENTERPRISE'):
-            key = f'ZYRCON-{tier}-1234567890abcdef'
-            self.assertIsNotNone(LICENSE_REGEX.match(key), f'{tier} should match regex')
-
-    def test_license_regex_rejects_unknown_tier(self):
-        self.assertIsNone(LICENSE_REGEX.match('ZYRCON-ULTIMATE-1234567890abcdef'))
-
-    def test_license_regex_requires_16_hex_chars(self):
-        self.assertIsNone(LICENSE_REGEX.match('ZYRCON-PRO-12345'))
-        self.assertIsNone(LICENSE_REGEX.match('ZYRCON-PRO-1234567890abcdefXX'))
-
-    def test_get_status_uses_env_var(self):
+    def test_config_key_wins_over_env(self):
+        # S4a config-primary: config.json license_key is authoritative; a stale
+        # ZYRCON_LICENSE_KEY in env must be ignored when config has a key.
+        # (Config read is mocked so the test never touches the live config.json.)
         import cascadia.licensing.license_gate as _lg
-        os.environ['ZYRCON_LICENSE_KEY'] = _PRO_KEY
-        _lg._cache['result'] = None  # bust the TTL cache
-        try:
-            result = _get_status()
-            self.assertEqual(result['tier'], 'pro')
-            self.assertTrue(result['valid'])
-        finally:
-            del os.environ['ZYRCON_LICENSE_KEY']
-            _lg._cache['result'] = None
+        cfg_key = _key('enterprise')
+        with patch.object(_lg.Path, 'exists', return_value=True), \
+             patch.object(_lg.Path, 'read_text', return_value=json.dumps({'license_key': cfg_key})):
+            os.environ['ZYRCON_LICENSE_KEY'] = _key('pro')
+            try:
+                self.assertEqual(_lg._load_license_key(), cfg_key)  # config wins, env ignored
+            finally:
+                del os.environ['ZYRCON_LICENSE_KEY']
+
+    def test_env_key_used_only_when_config_empty(self):
+        # Deprecated backward-compat fallback: env is used only when config.json
+        # has no license_key.
+        import cascadia.licensing.license_gate as _lg
+        env_key = _key('pro')
+        with patch.object(_lg.Path, 'exists', return_value=True), \
+             patch.object(_lg.Path, 'read_text', return_value=json.dumps({})):
+            os.environ['ZYRCON_LICENSE_KEY'] = env_key
+            try:
+                self.assertEqual(_lg._load_license_key(), env_key)
+            finally:
+                del os.environ['ZYRCON_LICENSE_KEY']
 
     def test_get_status_returns_required_keys(self):
         os.environ.pop('ZYRCON_LICENSE_KEY', None)

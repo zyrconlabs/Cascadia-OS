@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import unittest
 from unittest.mock import patch
 
@@ -9,9 +10,29 @@ from cascadia.licensing.license_gate import (
     _get_status,
     _cache,
 )
+from cascadia.licensing.tier_validator import TierValidator
+
+# Format-C (ZYRCON-<TIER>-<hex>) was retired in S4a; the gate now accepts only
+# HMAC-signed Format-A keys. These tests sign keys in-process with a known test
+# secret exported via LICENSE_SIGNING_SECRET, which _resolve_signing_secret reads
+# ahead of VAULT/config — keeping the suite hermetic (no live VAULT dependency).
+_TEST_SECRET = 'unit-test-signing-secret-0123456789'
+_FAR_EXPIRY = 4102444800  # 2100-01-01 UTC — well beyond any test run
+
+
+def _key(tier: str) -> str:
+    return TierValidator(_TEST_SECRET).generate(tier, 'unit-test', _FAR_EXPIRY)
 
 
 class LicenseGateTests(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        os.environ['LICENSE_SIGNING_SECRET'] = _TEST_SECRET
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        os.environ.pop('LICENSE_SIGNING_SECRET', None)
 
     def setUp(self) -> None:
         # Reset cache before each test
@@ -19,8 +40,7 @@ class LicenseGateTests(unittest.TestCase):
         _cache['expires_at'] = 0.0
 
     def test_valid_pro_license_returns_tier(self) -> None:
-        key = 'ZYRCON-PRO-ABCDEF0123456789'
-        result = _build_status(key)
+        result = _build_status(_key('pro'))
         self.assertTrue(result['valid'])
         self.assertEqual(result['tier'], 'pro')
         self.assertEqual(result['operator_limit'], OPERATOR_LIMITS['pro'])
@@ -41,21 +61,21 @@ class LicenseGateTests(unittest.TestCase):
 
     def test_operator_limits_per_tier(self) -> None:
         cases = [
-            ('ZYRCON-LITE-ABCDEF0123456789', 'lite', 2),
-            ('ZYRCON-PRO-ABCDEF0123456789', 'pro', 6),
-            ('ZYRCON-BUSINESS-ABCDEF0123456789', 'business', 12),
-            ('ZYRCON-ENTERPRISE-ABCDEF0123456789', 'enterprise', 999),
+            ('lite', 2),
+            ('pro', 6),
+            ('business', 12),
+            ('enterprise', 999),
         ]
-        for key, expected_tier, expected_limit in cases:
+        for expected_tier, expected_limit in cases:
             with self.subTest(tier=expected_tier):
-                result = _build_status(key)
+                result = _build_status(_key(expected_tier))
                 self.assertEqual(result['tier'], expected_tier)
                 self.assertEqual(result['operator_limit'], expected_limit)
 
     def test_cache_returns_same_result(self) -> None:
         with patch(
             'cascadia.licensing.license_gate._load_license_key',
-            return_value='ZYRCON-PRO-ABCDEF0123456789',
+            return_value=_key('pro'),
         ) as mock_load:
             first = _get_status()
             second = _get_status()
