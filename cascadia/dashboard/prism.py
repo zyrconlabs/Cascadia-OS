@@ -1498,6 +1498,12 @@ document.getElementById('key').addEventListener('keydown', function(e){
         remote = payload.get('__remote_addr__', '')
         if not self._rate_limiter.check(f'pair:{remote}', limit=10, window=60):
             return 429, {'error': 'rate limit exceeded'}
+        # Issue a code ONLY while a pairing window is open — this closes the
+        # unauthenticated 0.0.0.0 bypass: with the default-closed window, a LAN or
+        # tunnel caller hitting /code gets nothing until an operator opens a window.
+        from cascadia.network.discovery import pairing_window_open
+        if not pairing_window_open():
+            return 403, {'error': 'pairing not open — open a pairing window on the box first'}
         try:
             from cascadia.network.discovery import generate_pairing_code
             code = generate_pairing_code()
@@ -1519,6 +1525,13 @@ document.getElementById('key').addEventListener('keydown', function(e){
         code = payload.get('code', '')
         if not code:
             return 400, {'error': 'code required'}
+        # Validation succeeds ONLY while the window is open: a code issued during an
+        # open window no longer validates once the window closes/expires. /validate
+        # stays REACHABLE to the phone (not loopback-gated) — the app POSTs a
+        # box-generated code here during the operator's open window.
+        from cascadia.network.discovery import pairing_window_open
+        if not pairing_window_open():
+            return 403, {'valid': False, 'error': 'pairing not open'}
         try:
             from cascadia.network.discovery import validate_pairing_code, node_display_name
             valid = validate_pairing_code(code)
