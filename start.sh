@@ -216,7 +216,8 @@ if ! curl -sf http://127.0.0.1:6100/api/health > /dev/null 2>&1; then
     done
 fi
 if curl -sf http://127.0.0.1:6100/api/health >/dev/null 2>&1; then
-    _TIER=$(curl -s http://127.0.0.1:6100/api/health \
+    # /api/health is liveness-only now — read tier from /status (the licensing endpoint)
+    _TIER=$(curl -s http://127.0.0.1:6100/api/license/status \
         | python3 -c "import sys,json; print(json.load(sys.stdin).get('tier','lite'))" \
         2>/dev/null || echo "lite")
     echo "✓ License Gate ready — tier: $_TIER"
@@ -438,8 +439,8 @@ echo " Cascadia OS stack is up."
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 # Component health summary
-_lg_health=$(curl -sf http://127.0.0.1:6100/api/health 2>/dev/null)
-_lg_tier=$(echo "$_lg_health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tier','?'))" 2>/dev/null || echo "?")
+# /api/health is liveness-only — read tier from the /status licensing endpoint
+_lg_tier=$(curl -sf http://127.0.0.1:6100/api/license/status 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tier','?'))" 2>/dev/null || echo "?")
 echo "  License Gate     →  http://127.0.0.1:6100/api/health  (tier: $_lg_tier)"
 echo "  PRISM            →  http://localhost:6300/health"
 echo "  Mission Manager  →  http://localhost:6207/healthz"

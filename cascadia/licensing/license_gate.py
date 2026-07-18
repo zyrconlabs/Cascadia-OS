@@ -454,14 +454,18 @@ class _Handler(BaseHTTPRequestHandler):
                 'valid':       status['valid'],
             })
         elif path in ('/api/health', '/health'):
-            status = _get_status()
+            # LIVENESS ONLY — must NOT touch licensing state: no _get_status,
+            # no secret resolution, no VAULT read on this path. Answering the
+            # moment the HTTP server is bound deletes the FLINT readiness cycle
+            # license_gate(tier 0) -> VAULT(tier 1): the 2s health probe can no
+            # longer block on a not-yet-ready VAULT. Tier/valid live on /status
+            # and /entitlement, which still resolve lazily and self-heal (S3.5
+            # non-cache) once VAULT is up. readiness != licensed.
             self._send_json(200, {
                 'component': 'license_gate',
                 'status':    'ok',
                 'ok':        True,
                 'port':      PORT,
-                'tier':      status['tier'],
-                'valid':     status['valid'],
             })
         else:
             self._send_json(404, {'error': f'unknown route: {path}'})
