@@ -1517,8 +1517,6 @@ document.getElementById('key').addEventListener('keydown', function(e){
         On success, issues a long-lived token and persists it in paired_devices
         so the phone never has to re-pair. Failure shapes are unchanged.
         """
-        import sqlite3 as _sqlite3
-        import secrets as _secrets
         remote = payload.get('__remote_addr__', '')
         if not self._rate_limiter.check(f'pair:{remote}', limit=10, window=60):
             return 429, {'error': 'rate limit exceeded'}
@@ -1538,25 +1536,9 @@ document.getElementById('key').addEventListener('keydown', function(e){
             if not valid:
                 return 401, {'valid': False, 'error': 'Invalid, expired, or already-used code'}
             # Successful pairing → issue a durable token and persist it.
-            token = _secrets.token_hex(32)
             device_token = (payload.get('device_token') or '').strip() or None
             platform = payload.get('platform', 'ios')
-            db_path = Path(self.config.get('database_path', './data/runtime/cascadia.db'))
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-            with _sqlite3.connect(str(db_path)) as conn:
-                conn.execute('''
-                    CREATE TABLE IF NOT EXISTS paired_devices (
-                        token TEXT PRIMARY KEY,
-                        platform TEXT,
-                        device_token TEXT,
-                        paired_at TEXT NOT NULL,
-                        last_seen TEXT
-                    )
-                ''')
-                conn.execute('''
-                    INSERT OR REPLACE INTO paired_devices (token, platform, device_token, paired_at, last_seen)
-                    VALUES (?,?,?,?,?)
-                ''', (token, platform, device_token, _now(), _now()))
+            token = self._mint_paired_token(platform, device_token)
             node_name = node_display_name(self.config.get('node_role'))
             self.runtime.logger.info('Pairing: issued durable token for platform=%s', platform)
             return 200, {'valid': True, 'message': 'Pairing successful',
@@ -1571,6 +1553,34 @@ document.getElementById('key').addEventListener('keydown', function(e){
             return 200, pairing_status()
         except Exception as exc:
             return 500, {'error': str(exc)}
+
+    def _mint_paired_token(self, platform: str, device_token: Optional[str] = None) -> str:
+        """Mint a durable paired-device token and persist it in paired_devices.
+
+        The single token mint shared by pairing_validate (iOS code exchange) and the
+        bootstrap exchange (web activation) — one mint, no parallel token system.
+        Returns the 64-hex token.
+        """
+        import sqlite3 as _sqlite3
+        import secrets as _secrets
+        token = _secrets.token_hex(32)
+        db_path = Path(self.config.get('database_path', './data/runtime/cascadia.db'))
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        with _sqlite3.connect(str(db_path)) as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS paired_devices (
+                    token TEXT PRIMARY KEY,
+                    platform TEXT,
+                    device_token TEXT,
+                    paired_at TEXT NOT NULL,
+                    last_seen TEXT
+                )
+            ''')
+            conn.execute('''
+                INSERT OR REPLACE INTO paired_devices (token, platform, device_token, paired_at, last_seen)
+                VALUES (?,?,?,?,?)
+            ''', (token, platform, device_token, _now(), _now()))
+        return token
 
     def _is_trusted_loopback(self, payload: Dict[str, Any]) -> bool:
         """True ONLY for a genuine local caller: the SOCKET PEER (not a header) is
