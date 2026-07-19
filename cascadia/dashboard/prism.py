@@ -205,6 +205,7 @@ class PrismService:
         self.runtime.register_route('GET',  '/api/watchdog/status',            self.watchdog_status)
         # License gate
         self.runtime.register_route('GET',  '/api/prism/license',              self.license_status)
+        self.runtime.register_route('GET',  '/api/activation/status',          self.activation_status)
         self.runtime.register_route('GET',  '/activate',                        self.license_activate_page)
         self.runtime.register_route('POST', '/api/prism/license/activate',      self.license_activate_api)
         # Sales Funnel trigger (Sprint 4)
@@ -1019,6 +1020,55 @@ class PrismService:
             'error': 'license_gate not running',
         }
         return 200, {**status, 'generated_at': _now()}
+
+    def activation_status(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """GET /api/activation/status — honest, OBSERVABLE-ONLY 3-state machine for the
+        /activate page's post-activation poll. :6300 cannot (and must not) read the
+        enterprise launcher's in-proc promotion flag — it is a separate process — so
+        every state is derived from what :6300 can actually observe:
+
+          enterprise : a REAL :6301 liveness check succeeds. This is the ONLY path to
+                       'enterprise' — never inferred from key-presence or any flag
+                       (stage-2 lesson: promotion 'triggered' != :6301 actually serving).
+          lite       : no license_key in config.json AND :6301 not serving.
+          starting   : key present but :6301 not yet serving. 'activating' vs 'pending'
+                       are NOT distinguishable from here, so we honestly collapse to
+                       'starting' + an elapsed hint (from the activation sentinel mtime):
+                       <=30s 'starting'; >30s 'still_starting' (the decay-retry window —
+                       a hint, NOT an error).
+
+        Returns only a state string (+ elapsed hint) — never the license key or a token.
+        """
+        # (1) Real :6301 liveness — the ONLY route to 'enterprise'. SHORT timeout so a
+        #     down/refused/hanging sidecar fails fast and never hangs this poll.
+        if _http_get(6301, '/health', timeout=1.0) is not None:
+            return 200, {'state': 'enterprise'}
+        # (2) License key present in config.json? Read fresh from disk (self.config may
+        #     be stale relative to an activation write); never echo the key back.
+        config_path = Path(self.config.get('__config_path__')
+                           or (Path(__file__).parents[2] / 'config.json'))
+        has_key = False
+        try:
+            has_key = bool((json.loads(config_path.read_text()).get('license_key') or '').strip())
+        except Exception:
+            has_key = False
+        if not has_key:
+            return 200, {'state': 'lite'}
+        # (3) Key present, :6301 not serving → 'starting'. Elapsed derived from an
+        #     observable: the activation sentinel mtime (fallback: config.json mtime).
+        sentinel = Path(__file__).parents[2] / 'data' / 'runtime' / 'license_activation.signal'
+        elapsed_s: Optional[int] = None
+        for marker in (sentinel, config_path):
+            try:
+                elapsed_s = max(0, int(_time.time() - marker.stat().st_mtime))
+                break
+            except OSError:
+                continue
+        detail = 'still_starting' if (elapsed_s is not None and elapsed_s > 30) else 'starting'
+        resp: Dict[str, Any] = {'state': 'starting', 'detail': detail}
+        if elapsed_s is not None:
+            resp['elapsed_s'] = elapsed_s
+        return 200, resp
 
     def license_activate_page(self, _: Dict[str, Any]) -> tuple[int, str]:
         """Serve the license activation HTML page."""
