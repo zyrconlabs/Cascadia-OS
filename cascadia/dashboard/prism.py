@@ -1181,8 +1181,9 @@ async function activate() {
     var d = {};
     try { d = await r.json(); } catch(e) {}
     if (r.status === 200 && d.ok) {
-      show(msg, 'License activated — tier ' + (d.tier || 'unknown') + '. Enterprise is starting…', true);
-      setTimeout(function(){ window.location.href = '/'; }, 2500);
+      show(msg, 'License activated — tier ' + (d.tier || 'unknown') + '. Enterprise starting…', true);
+      disableForm();
+      pollActivationStatus();
     } else if (r.status === 503) {
       show(msg, 'Services are still starting — wait a moment and click Activate again.', false);
     } else if (r.status === 401) {
@@ -1195,6 +1196,38 @@ async function activate() {
       show(msg, (d.error || 'Activation failed') + '.', false);
     }
   } catch(e) { show(msg, 'Request failed: ' + e.message, false); }
+}
+
+// Poll the observable-only activation status every 2s and flip to ✓ ONLY when :6301
+// is REALLY serving (state=enterprise). Honest 'still starting' past the decay window;
+// a 5-minute stop shows a truthful 'still finishing' message (the decay may still be
+// mid-promotion), NOT an error. Carries no secret — status is state/elapsed only.
+function pollActivationStatus() {
+  var POLL_MS = 2000, MAX_MS = 5 * 60 * 1000, started = Date.now(), timer = null;
+  function stop(){ if (timer) { clearInterval(timer); timer = null; } }
+  timer = setInterval(async function(){
+    if (Date.now() - started > MAX_MS) {
+      stop();
+      show(msg, 'Taking longer than expected — the box will finish shortly. You can close this page; Enterprise comes up on its own.', true);
+      return;
+    }
+    var s = {};
+    try {
+      var r = await fetch('/api/activation/status');
+      s = await r.json();
+    } catch(e) { return; }  // transient network blip — keep polling
+    if (s.state === 'enterprise') {
+      stop();
+      show(msg, '✓ Enterprise running.', true);
+    } else if (s.state === 'lite') {
+      stop();
+      show(msg, 'Enterprise did not come up — re-run the installer to activate.', false);
+    } else {  // starting
+      show(msg, (s.detail === 'still_starting')
+        ? 'Enterprise starting — still starting, this can take a moment…'
+        : 'Enterprise starting…', true);
+    }
+  }, POLL_MS);
 }
 document.getElementById('key').addEventListener('keydown', function(e){
   if (e.key === 'Enter') activate();
