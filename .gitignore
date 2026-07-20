@@ -110,3 +110,4 @@ test_results_session*
 telegram/media/*
 !telegram/media/.gitkeep
 data/runtime/current_release.json
+config.json.bak*
