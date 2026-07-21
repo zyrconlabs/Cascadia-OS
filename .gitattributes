@@ -1,0 +1,23 @@
+# Paths excluded from `git archive` — i.e. from the customer payload staged
+# into the installer DMG (cascadia-os.tar.gz). They stay in the repo for
+# development; they simply never ship.
+#
+# tests/ is excluded because:
+#   • Disclosure — the suite documents the security model in detail
+#     (licensing, tier gating, entitlements, signing, kill switch, vault
+#     encryption, API-key auth, Stripe HMAC), including tampered_manifest /
+#     tampered_file fixtures that spell out what the verifier catches.
+#   • Dead weight — no test runner ships in the bundled runtime (no pytest in
+#     the 49-wheel wheelhouse), so the files are unrunnable on a customer box.
+#   • 135 of 673 archive entries (~20% of files, 0.9 MB of 16.1 MB).
+#   • It also removes the last hardcoded owner chat id, in
+#     tests/test_chief_messaging.py (the runtime sites were fixed in 3ed8b27).
+#
+# Verified safe: nothing under cascadia/ imports tests/, no runtime code reads
+# tests/fixtures or conftest, and no installer script references tests/.
+#
+# PATTERN NOTE: the bare name is deliberate. `tests/ export-ignore` (trailing
+# slash) matches NOTHING in .gitattributes — verified with git check-attr — and
+# `tests/**` leaves an empty tests/ entry behind. The bare `tests` marks the
+# directory itself, so git archive skips the whole subtree, at any depth.
+tests export-ignore
