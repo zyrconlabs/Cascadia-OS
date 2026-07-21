@@ -45,7 +45,13 @@ RESPONSE_SUBJECT = f"cascadia.connectors.{NAME}.response"
 # its own inline-keyboard prompts rather than routing through the dormant
 # generic approval-gate bus.
 TELEGRAM_URL = os.environ.get("TELEGRAM_URL", "http://127.0.0.1:9000")
-OWNER_CHAT_ID = int(os.environ.get("OWNER_CHAT_ID", "1535010257"))
+# Owner identity is configuration, never code. Reads the SAME env var as the
+# rest of core (chief, watchdog, operator_manager, beacon) — this used to read a
+# differently-named OWNER_CHAT_ID, so the documented variable silently had no
+# effect here. None means "unconfigured": the chat_id is then omitted entirely
+# and the telegram relay resolves the owner itself (operators 8045630).
+_owner_env = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "").strip()
+OWNER_CHAT_ID = int(_owner_env) if _owner_env.isdigit() else None
 
 # Approved mutating action → (bridge domain, adapter method). Only actions with
 # a real adapter method are listed; update/complete/archive have no adapter yet
@@ -184,7 +190,6 @@ def _send_telegram_approval(request_id: str, action: str, payload: dict[str, Any
     telegram operator can never stall the NATS handler.
     """
     body = {
-        "chat_id": OWNER_CHAT_ID,
         "text": f"🍎 Apple Local wants to: {_human_summary(action, payload)}",
         "reply_markup": {
             "inline_keyboard": [[
@@ -193,6 +198,10 @@ def _send_telegram_approval(request_id: str, action: str, payload: dict[str, Any
             ]]
         },
     }
+    # Only pin a destination when one is configured; otherwise the relay routes
+    # to its own configured owner rather than us sending a null chat_id.
+    if OWNER_CHAT_ID is not None:
+        body["chat_id"] = OWNER_CHAT_ID
     try:
         req = urllib.request.Request(
             f"{TELEGRAM_URL}/send",

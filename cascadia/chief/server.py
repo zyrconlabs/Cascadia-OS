@@ -120,13 +120,38 @@ _MISSION_CHAT_TRIGGERS = [
 
 
 def _resolve_owner_chat_id() -> str:
-    """Single source of truth for the owner chat_id. Fallback chain so a
-    missing/empty TELEGRAM_OWNER_CHAT_ID env var can NEVER yield "" — which
-    would make the owner gate reject the real owner and silently drop owner
-    notifications. Last resort mirrors the telegram relay's hardcoded default.
+    """Single source of truth for the owner chat_id — CONFIGURATION, never code.
+
+    Reads TELEGRAM_OWNER_CHAT_ID and returns "" when it is unset. There is
+    deliberately no built-in default: an unconfigured node has no owner, and
+    every owner-gated action then DENIES (see _is_owner). Notifications sent
+    with an empty chat_id are resolved to the configured owner by the telegram
+    relay itself (operators 8045630).
+
+    Historical note: this used to fall back to a hardcoded personal id, on the
+    reasoning that "" would make the owner gate reject the real owner. That was
+    half the story — with a bare != comparison, an empty owner ALSO matched a
+    request that carried no chat_id at all, admitting anonymous callers to
+    owner-only actions. The literal is gone and the gates are fail-closed; the
+    relay-side default it mirrored was removed in operators 8045630.
+
     Every read (the _OWNER_CHAT class attr + all direct call sites) routes
     through here so they can't diverge again — completes b544b12."""
-    return os.environ.get("TELEGRAM_OWNER_CHAT_ID", "") or "1535010257"
+    return os.environ.get("TELEGRAM_OWNER_CHAT_ID", "")
+
+
+def _is_owner(chat_id, cfg_owner) -> bool:
+    """Fail-closed owner check for owner-gated actions.
+
+    Compares as STRINGS so a missing/garbage value can never raise. If no owner
+    is configured, NOBODY is the owner — in particular an absent chat_id must
+    never match an absent owner, which is exactly how a bare `!=` would have
+    authorized an unauthenticated caller.
+    """
+    owner = str(cfg_owner or "").strip()
+    return bool(owner) and str(chat_id).strip() == owner
+
+
 OM_URL     = os.environ.get("OM_URL", "http://127.0.0.1:6210")
 
 _PENDING_OUTREACH_PATH = Path(os.path.expanduser(
@@ -1333,7 +1358,7 @@ class ChiefService:
                 ).to_dict()
             if cmd == "/update":
                 # Owner-only — /update stops + restarts ALL services.
-                if str(chat_id) != str(self._OWNER_CHAT):
+                if not _is_owner(chat_id, self._OWNER_CHAT):
                     return 200, TaskResponse(
                         ok=True, task_id=task_id,
                         selected_type="status", selected_target=cmd,
@@ -5462,7 +5487,7 @@ class ChiefService:
             return "ok"
         if data == "cmd_update_confirm":
             # Owner-only guard (defence in depth — the command already gated).
-            if str(chat_id) != str(self._OWNER_CHAT):
+            if not _is_owner(chat_id, self._OWNER_CHAT):
                 _edit("🔒 /update is owner-only.")
                 return "ok"
             threading.Thread(
@@ -5794,7 +5819,7 @@ class ChiefService:
         """POST /callback — receives inline keyboard taps from Telegram connector."""
         chat_id = str(payload.get("chat_id", ""))
         owner   = _resolve_owner_chat_id()
-        if chat_id != owner:
+        if not _is_owner(chat_id, owner):
             self.runtime.logger.warning("CHIEF callback: unauthorized chat_id=%s", chat_id)
             return 403, {"ok": False, "error": "unauthorized"}
         result = self._handle_callback_query(payload)
