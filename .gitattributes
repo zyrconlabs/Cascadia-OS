@@ -21,3 +21,10 @@
 # `tests/**` leaves an empty tests/ entry behind. The bare `tests` marks the
 # directory itself, so git archive skips the whole subtree, at any depth.
 tests export-ignore
+
+# Vendor-side licensing tooling — excluded from the customer payload.
+# setup-stripe.sh MINTS a license_secret into config.json. Because license keys
+# are symmetric HMAC (the verify secret IS the signing secret), shipping this
+# alongside a key generator gave a customer a one-command path to issue
+# themselves any tier. It stays in the repo for vendor use; it just never ships.
+scripts/setup-stripe.sh export-ignore
