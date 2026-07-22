@@ -1295,25 +1295,29 @@ document.getElementById('key').addEventListener('keydown', function(e){
         key = (payload.get('license_key') or '').strip()
         if not key:
             return 400, {'error': 'license_key required'}
-        # Validate via the SAME secret resolution the gate uses (env -> VAULT ->
-        # config) with the S3.5 bounded retry, then HMAC-verify. Distinguish an
-        # INDETERMINATE result (secret not resolvable yet — e.g. VAULT still coming
-        # up at cold boot) from a genuinely invalid key: a VALID key pasted during
-        # that window must NOT be rejected as invalid — it is retryable. This
-        # replaces the dead self.config['license_secret'] branch (empty on real
-        # boxes — the secret lives in VAULT) and the _build_status fallback that
-        # falsely rejected valid keys during a VAULT-down window.
+        # Verify against the PUBLIC key bundle shipped inside the package (v3,
+        # Ed25519). The old retryable-503 "licensing service is still starting"
+        # branch is gone: it existed because verification needed the HMAC SIGNING
+        # secret fetched from env/VAULT/config, which on a fresh customer install
+        # was never present at all — so activation returned "retry in a moment"
+        # forever, for an event that could never occur. A public key is not a
+        # secret; it ships with the product and is readable immediately.
         try:
-            from cascadia.licensing.license_gate import _resolve_signing_secret_with_retry
+            from cascadia.licensing.license_gate import _resolve_verify_keys
             from cascadia.licensing.tier_validator import TierValidator
-            secret = _resolve_signing_secret_with_retry()
-            if not secret:
+            validator = TierValidator(_resolve_verify_keys())
+            if not validator.has_keys:
+                # Genuinely exceptional: the bundle is part of the payload, so
+                # this means a damaged install rather than a transient state.
+                # Reported as NOT retryable — telling the user to wait would
+                # repeat the old bug in a new place.
                 return 503, {
-                    'error': 'activation_pending_services_starting',
-                    'retryable': True,
-                    'message': 'Licensing service is still starting — retry in a moment.',
+                    'error': 'licensing_verify_key_unavailable',
+                    'retryable': False,
+                    'message': ('Licensing verification key is missing from this '
+                                'installation — reinstall Cascadia OS.'),
                 }
-            result = TierValidator(secret).validate(key)
+            result = validator.validate(key)
             if not result.get('valid'):
                 return 400, {'error': result.get('error', 'invalid_license')}
             tier = result['tier']
@@ -2284,9 +2288,12 @@ document.getElementById('key').addEventListener('keydown', function(e){
         if not curtain_secret or curtain_secret.startswith('replace-'):
             issues.append('curtain.signing_secret not set')
 
-        license_secret = self.config.get('license_secret', '')
-        if not license_secret or license_secret.startswith('replace-'):
-            issues.append('license_secret not set')
+        # v3 needs no license_secret — verification uses the shipped public key
+        # bundle. Flag the bundle instead, since that is what can actually be
+        # missing on a damaged install.
+        from cascadia.licensing.tier_validator import load_key_bundle
+        if not load_key_bundle():
+            issues.append('license verify key bundle missing')
 
         if not self.config.get('stripe', {}).get('webhook_secret'):
             issues.append('stripe.webhook_secret not set')
@@ -2461,7 +2468,9 @@ document.getElementById('key').addEventListener('keydown', function(e){
             key = self.config.get('license_key', '')
             if not key:
                 return 403, {'error': 'tier_required', 'tier_required': required, 'upgrade_url': 'https://zyrcon.store'}
-            validator = TierValidator(self.config.get('license_secret', ''))
+            # v3: verify against the shipped public key bundle, not a config
+            # secret (config.json never carried one on a real install).
+            validator = TierValidator()
             info = validator.validate(key)
             if not info:
                 return 403, {'error': 'invalid_license'}
@@ -3027,11 +3036,11 @@ document.getElementById('key').addEventListener('keydown', function(e){
         """GET /api/prism/tier — return current license tier and rank."""
         from cascadia.licensing.tier_validator import TierValidator, TIER_RANKS
         license_key = self.config.get('license_key', '')
-        license_secret = self.config.get('license_secret', '')
-        if not license_key or not license_secret:
+        if not license_key:
             return 200, {'tier': 'lite', 'rank': 0}
         try:
-            result = TierValidator(license_secret).validate(license_key)
+            # v3: public key bundle ships with the product — no secret needed.
+            result = TierValidator().validate(license_key)
             if result.get('valid'):
                 tier = result['tier']
                 return 200, {'tier': tier, 'rank': TIER_RANKS.get(tier, 0)}

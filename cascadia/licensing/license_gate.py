@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib import request as urllib_request
 
-from cascadia.licensing.tier_validator import TierValidator
+from cascadia.licensing.tier_validator import TierValidator, load_key_bundle
 from cascadia.shared.logger import get_logger
 
 logger = get_logger('license_gate')
@@ -133,12 +133,10 @@ ENTITLEMENT_PROFILES: Dict[str, Any] = {
 
 CACHE_TTL = 60  # seconds
 
-# Bounded retry for signing-secret resolution. Protects against the cold-boot
-# race where the gate polls before VAULT (:5101) is listening: a transient
-# resolution failure must NOT get cached as a fail-closed Lite result.
-# Total sleep budget = 0.4 + 0.8 + 1.2 = 2.4s (< ~3s) so a poll never hangs.
-SECRET_RESOLVE_ATTEMPTS = 4
-SECRET_RESOLVE_BACKOFF  = 0.4  # seconds; linear escalation (backoff * attempt)
+# NOTE: the bounded signing-secret retry that used to live here is gone. It
+# existed for the cold-boot race where the gate polled before VAULT (:5101) was
+# listening. v3 verifies against a PUBLIC key bundle shipped inside the package,
+# so there is no runtime fetch and no race to absorb.
 
 # ---------------------------------------------------------------------------
 # In-memory cache
@@ -165,8 +163,8 @@ def _load_license_key() -> Optional[str]:
          redacted deprecation warning (backward-tolerant transition).
       3. neither → None (lite).
 
-    NOTE: this is the KEY loader only. The SECRET resolver
-    (_resolve_signing_secret) deliberately keeps its env→VAULT→config order.
+    NOTE: this is the KEY loader only — the licence key itself, which is not
+    secret. The PUBLIC verify keys come from _resolve_verify_keys().
     """
     env_key = os.environ.get('ZYRCON_LICENSE_KEY', '').strip()
 
@@ -205,67 +203,26 @@ def _load_license_key() -> Optional[str]:
     return None
 
 
-def _resolve_signing_secret() -> Optional[str]:
-    """Resolve the HMAC signing secret using the SAME order as the mint path
-    (cascadia/core/stripe_webhook.py): env LICENSE_SIGNING_SECRET > VAULT
-    (op email_operator, key license_secret, ns default) > config.json
-    license_secret. Returns None if none resolves (gate then cannot verify
-    signatures — callers must fail closed, never grant off an unverified key).
+def _resolve_verify_keys() -> dict:
+    """Load the PUBLIC key bundle used to verify v3 licence keys.
+
+    Order: env ZYRCON_LICENSE_KEYS_PATH (testing/rotation escape hatch) > the
+    bundle shipped inside the package. Returns {} when nothing is readable, and
+    the caller then treats the result as INDETERMINATE rather than granting.
+
+    There is no secret and no VAULT round-trip here. Under the old symmetric
+    HMAC scheme the verify secret was also the SIGNING secret, so it could never
+    ship and had to be fetched at runtime — which is what created the cold-boot
+    race the retry helper existed for. A public key is not a secret: it ships in
+    the payload and is readable the moment the process starts.
     """
-    # 1. Environment variable
-    env_secret = os.environ.get('LICENSE_SIGNING_SECRET', '').strip()
-    if env_secret:
-        return env_secret
-
-    # 2. VAULT read (email_operator / license_secret / default)
-    try:
-        payload = json.dumps({
-            'operator_id': 'email_operator',
-            'key':         'license_secret',
-            'namespace':   'default',
-        }).encode('utf-8')
-        req = urllib_request.Request(
-            'http://127.0.0.1:5101/read',
-            data=payload,
-            headers={'Content-Type': 'application/json'},
-        )
-        with urllib_request.urlopen(req, timeout=3) as r:
-            vault_secret = (json.loads(r.read()).get('value', '') or '').strip()
-            if vault_secret:
-                return vault_secret
-    except Exception:
-        pass
-
-    # 3. config.json license_secret (repo root, 2 levels up from this package)
-    config_path = Path(__file__).parents[2] / 'config.json'
-    if config_path.exists():
-        try:
-            cfg = json.loads(config_path.read_text())
-            cfg_secret = (cfg.get('license_secret', '') or '').strip()
-            if cfg_secret:
-                return cfg_secret
-        except Exception:
-            pass
-
-    return None
-
-
-def _resolve_signing_secret_with_retry() -> Optional[str]:
-    """Resolve the signing secret with a bounded retry, for the cold-boot race.
-
-    env/config lookups are synchronous and return on the first attempt; the
-    only thing that gets retried is the VAULT read — i.e. exactly the case
-    where VAULT (:5101) is not yet listening at boot. Returns the secret, or
-    None if it still could not be resolved within the sleep budget (the caller
-    then treats the result as INDETERMINATE and does not cache it).
-    """
-    for attempt in range(1, SECRET_RESOLVE_ATTEMPTS + 1):
-        secret = _resolve_signing_secret()
-        if secret:
-            return secret
-        if attempt < SECRET_RESOLVE_ATTEMPTS:
-            time.sleep(SECRET_RESOLVE_BACKOFF * attempt)
-    return None
+    env_path = os.environ.get('ZYRCON_LICENSE_KEYS_PATH', '').strip()
+    if env_path:
+        bundle = load_key_bundle(env_path)
+        if bundle:
+            return bundle
+        logger.warning('ZYRCON_LICENSE_KEYS_PATH set but unreadable: %s', env_path)
+    return load_key_bundle()
 
 
 def _lite_status() -> Dict[str, Any]:
@@ -305,18 +262,20 @@ def _build_status(key: Optional[str]) -> Dict[str, Any]:
     if not key:
         return _lite_status()
 
-    # b) Format A shape — HMAC verification requires the signing secret.
-    #    (Format C dual-accept was retired in S4a: an old ZYRCON-<TIER>-<hex>
-    #    string is now just an invalid Format-A key and falls through to lite.)
-    secret = _resolve_signing_secret_with_retry()
+    # b) Ed25519 v3 verification against the PUBLIC key bundle that ships with
+    #    the product. No secret, no VAULT round-trip, and therefore no cold-boot
+    #    race: the bundle is a file inside the package and is readable from the
+    #    moment the process starts.
+    validator = TierValidator(_resolve_verify_keys())
 
-    if not secret:
-        # INDETERMINATE: secret could not be resolved (e.g. VAULT not yet ready
-        # at cold boot). Fail closed for THIS call, but DO NOT cache it — the
-        # next poll re-evaluates and self-heals once the secret is reachable,
-        # instead of freezing Enterprise→Lite for the full 60s TTL.
+    if not validator.has_keys:
+        # INDETERMINATE: this node cannot verify anything (bundle missing or
+        # unreadable). Fail closed for THIS call, but DO NOT cache it, so the
+        # node self-heals if the bundle becomes readable rather than freezing
+        # Enterprise→Lite for the full 60s TTL. Should never happen on a normal
+        # install — the bundle is part of the payload.
         logger.warning(
-            'license signing secret unresolved; indeterminate; not caching; '
+            'license verify key bundle unavailable; indeterminate; not caching; '
             'next poll will re-evaluate (last4=%s)',
             key[-4:],
         )
@@ -324,10 +283,12 @@ def _build_status(key: Optional[str]) -> Dict[str, Any]:
         status['_cacheable'] = False
         return status
 
-    # Secret resolved → definitive determination either way.
+    # Verify keys present → definitive determination either way.
     try:
-        result = TierValidator(secret).validate(key)
+        result = validator.validate(key)
     except Exception as exc:
+        # validate() is contracted never to raise; belt-and-braces so a future
+        # change cannot turn a crash into a grant.
         logger.warning('tier_validator error (last4=%s): %s', key[-4:], exc)
         result = {'valid': False}
     if result.get('valid'):
@@ -342,7 +303,7 @@ def _build_status(key: Optional[str]) -> Dict[str, Any]:
                        if exp_ts else fallback_expires)
         except Exception:
             expires = fallback_expires
-        logger.info('license valid (HMAC v2) — tier=%s last4=%s', tier, key[-4:])
+        logger.info('license valid (Ed25519 v3) — tier=%s last4=%s', tier, key[-4:])
         return {
             'valid':          True,
             'tier':           tier,

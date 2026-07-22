@@ -40,15 +40,20 @@ class HealthLivenessTest(unittest.TestCase):
         with u.urlopen(f'http://127.0.0.1:{self._port}{path}', timeout=2) as r:
             return json.loads(r.read())
 
-    def test_health_is_liveness_only_when_vault_unreachable(self) -> None:
-        """ok:true, fast, and no licensing state — even with VAULT 'down'."""
-        def slow_unreachable_vault():
-            time.sleep(1.5)   # simulate a not-ready VAULT the resolver waits on
-            return None
+    def test_health_is_liveness_only_when_verification_is_slow(self) -> None:
+        """ok:true, fast, and no licensing state — even if verification stalls.
+
+        Under v3 there is no VAULT round-trip to stall on (the verify key is a
+        bundled file), so this now simulates a slow bundle read instead. The
+        property under test is unchanged: /health must never touch licensing.
+        """
+        def slow_unreadable_bundle():
+            time.sleep(1.5)
+            return {}
 
         with patch.object(lg, '_load_license_key', return_value=_FORMAT_A), \
-             patch.object(lg, '_resolve_signing_secret_with_retry',
-                          side_effect=slow_unreachable_vault):
+             patch.object(lg, '_resolve_verify_keys',
+                          side_effect=slow_unreadable_bundle):
             t0 = time.time()
             body = self._get('/api/health')
             elapsed = time.time() - t0
@@ -56,15 +61,19 @@ class HealthLivenessTest(unittest.TestCase):
         self.assertTrue(body.get('ok'), 'liveness must report ok:true')
         self.assertLess(
             elapsed, 0.5,
-            f'/health blocked on secret resolution ({elapsed:.2f}s) — it must '
-            f'not read VAULT on the liveness path')
+            f'/health blocked on verify-key resolution ({elapsed:.2f}s) — it '
+            f'must not touch licensing on the liveness path')
         self.assertNotIn('tier', body, '/health must expose no licensing state')
         self.assertNotIn('valid', body, '/health must expose no licensing state')
 
     def test_status_still_resolves_and_selfheals(self) -> None:
-        """/status keeps the full resolve + S3.5 non-cache self-heal."""
+        """/status keeps the full resolve + S3.5 non-cache self-heal.
+
+        An empty bundle means the node cannot verify anything — indeterminate,
+        so it must fail closed to lite AND stay uncached so it self-heals.
+        """
         with patch.object(lg, '_load_license_key', return_value=_FORMAT_A), \
-             patch.object(lg, '_resolve_signing_secret_with_retry', return_value=None):
+             patch.object(lg, '_resolve_verify_keys', return_value={}):
             body = self._get('/api/license/status')
             self.assertEqual(body['tier'], 'lite')
             self.assertFalse(body['valid'])

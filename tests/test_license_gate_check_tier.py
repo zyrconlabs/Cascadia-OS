@@ -5,17 +5,19 @@ import unittest
 from unittest.mock import patch
 
 from cascadia.licensing.license_gate import _build_status, TIER_RANK as _TIER_RANK, _Handler, _ReusableServer
+from tests._v3_keys import bundle_file, ephemeral_keys, mint
 from cascadia.licensing.tier_validator import TierValidator
 
 # Format-C (ZYRCON-<TIER>-<hex>) was retired in S4a; sign Format-A keys
 # in-process with a known test secret exported via LICENSE_SIGNING_SECRET
 # (which _resolve_signing_secret reads ahead of VAULT/config).
-_TEST_SECRET = 'unit-test-signing-secret-0123456789'
+_KEYS = ephemeral_keys()
+_BUNDLE_PATH = bundle_file(_KEYS)   # for ZYRCON_LICENSE_KEYS_PATH
 _FAR_EXPIRY = 4102444800  # 2100-01-01 UTC
 
 
 def _key(tier: str) -> str:
-    return TierValidator(_TEST_SECRET).generate(tier, 'unit-test', _FAR_EXPIRY)
+    return mint(tier, 'unit-test', _FAR_EXPIRY, _KEYS)
 
 
 def _post_check_tier(tier_required: str, key: str | None = None):
@@ -46,11 +48,11 @@ class TestCheckTierLogic(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        os.environ['LICENSE_SIGNING_SECRET'] = _TEST_SECRET
+        os.environ['ZYRCON_LICENSE_KEYS_PATH'] = _BUNDLE_PATH
 
     @classmethod
     def tearDownClass(cls) -> None:
-        os.environ.pop('LICENSE_SIGNING_SECRET', None)
+        os.environ.pop('ZYRCON_LICENSE_KEYS_PATH', None)
 
     def test_pro_meets_pro(self):
         code, body = _post_check_tier('pro', _key('pro'))

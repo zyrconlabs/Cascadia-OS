@@ -1,23 +1,58 @@
 """
 tier_validator.py — Cascadia OS
-HMAC license key generation and validation.
-Owns: key format, HMAC signing, expiry checking, version gating.
-Does not own: key storage, email delivery, Stripe events.
+Ed25519 license key VALIDATION (verify-only).
+Owns: key format, signature verification, expiry checking, version gating.
+Does not own: key storage, key SIGNING, email delivery, Stripe events.
 
-Key format (v2):
-    zyrcon_{tier}_{customer_id}_{expiry_epoch}_{key_version}_{hmac_sha256}
+Key format (v3):
+    zyrcon_{tier}_{customer_id}_{expiry_epoch}_v3_{ed25519_sig_hex}
 
-Old format (v1, rejected after rotation):
-    zyrcon_{tier}_{customer_id}_{expiry_epoch}_{hmac_sha256}
+Old formats (rejected):
+    v2  zyrcon_{tier}_{customer_id}_{expiry_epoch}_v2_{hmac_sha256}
+    v1  zyrcon_{tier}_{customer_id}_{expiry_epoch}_{hmac_sha256}
+
+WHY ASYMMETRIC
+    v1/v2 were symmetric HMAC: the secret that VERIFIED a key was the same
+    secret that SIGNED one. That secret therefore could never safely ship, so a
+    customer node had no way to verify anything — activation could not work at
+    all. Under v3 a node holds only the PUBLIC key: it can verify, and cannot
+    forge. Signing lives in license_signer.py, which never ships.
+
+FAIL-CLOSED CONTRACT
+    Whenever this module cannot verify — no public key, an unreadable bundle, a
+    malformed key, a signature that does not decode, or any error out of the
+    crypto layer — it returns a not-valid result. It never returns valid, and it
+    never raises. Callers grant tier only on {'valid': True}.
+    Enforced by tests/test_license_ed25519.py.
+
+SIGNATURE ENCODING — HEX, NOT BASE64URL
+    Keys are parsed by splitting on '_' and reading positionally from the end.
+    base64url (what depot/signing.py uses for package manifests) includes '_' in
+    its alphabet, so a base64url signature would corrupt that split for whichever
+    signatures happened to contain one — an intermittent, data-dependent parse
+    bug. Hex is 0-9a-f only, so it can never collide with the delimiter.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
+import base64
+import json
 import time
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Union
 
-CURRENT_KEY_VERSION = 'v2'
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+CURRENT_KEY_VERSION = 'v3'
+
+# The public key bundle shipped with the product: {key_id: base64url_public_key}.
+# Deliberately separate from cascadia/depot/zyrcon_signing_keys.json — depot
+# treats any key in its bundle as authorised to sign mission packages, and a
+# licensing key must never carry that authority.
+DEFAULT_BUNDLE_PATH = Path(__file__).parent / 'zyrcon_license_keys.json'
+
+_SIG_BYTES = 64          # ed25519 signature length
+_SIG_HEX_CHARS = 128     # ...as hex
 
 VALID_TIERS = ('lite', 'pro', 'pro_workspace', 'business', 'enterprise')
 
@@ -42,6 +77,7 @@ def get_max_users(tier: str) -> int:
     """Return the maximum number of users allowed for a given tier."""
     return TIER_MAX_USERS.get(tier, 1)
 
+
 _VERSION_PREFIX = 'v'
 
 
@@ -49,25 +85,133 @@ def _is_version_tag(s: str) -> bool:
     return s.startswith(_VERSION_PREFIX) and s[1:].isdigit()
 
 
+def _decode_public_key(b64: str) -> Optional[Ed25519PublicKey]:
+    """base64url (padding optional) → Ed25519PublicKey, or None if unusable.
+
+    Never raises: malformed key material is a deny, not a crash.
+    """
+    try:
+        s = (b64 or '').strip()
+        if not s:
+            return None
+        raw = base64.urlsafe_b64decode(s + '=' * (-len(s) % 4))
+        return Ed25519PublicKey.from_public_bytes(raw)
+    except Exception:
+        return None
+
+
+def load_key_bundle(path: Union[str, Path, None] = None) -> Dict[str, str]:
+    """Load {key_id: base64url_public_key}. Returns {} if unreadable.
+
+    Absence is a normal state on an unconfigured node, so it is reported as an
+    empty bundle rather than an exception; the validator then denies.
+    """
+    try:
+        p = Path(path) if path else DEFAULT_BUNDLE_PATH
+        if not p.exists():
+            return {}
+        data = json.loads(p.read_text(encoding='utf-8'))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _coerce_public_keys(source: Any) -> List[str]:
+    """Accept any reasonable spelling of "the public keys" → list of base64url.
+
+    Supports: None/'' (none) · a bare base64url key · a bundle dict ·
+    a path to a bundle JSON. Anything unrecognised yields [] (deny).
+    """
+    try:
+        if source is None:
+            return []
+        if isinstance(source, dict):
+            return [v for v in source.values() if isinstance(v, str)]
+        if isinstance(source, Path):
+            return list(load_key_bundle(source).values())
+        if isinstance(source, str):
+            s = source.strip()
+            if not s:
+                return []
+            # A path to a bundle, or the key itself.
+            if s.endswith('.json'):
+                return list(load_key_bundle(s).values())
+            return [s]
+        if isinstance(source, Iterable):
+            return [v for v in source if isinstance(v, str)]
+    except Exception:
+        pass
+    return []
+
+
+class _UseDefaultBundle:
+    """Sentinel: the caller passed nothing, so fall back to the shipped bundle.
+
+    Deliberately NOT None. An explicit None means "I have no key material",
+    which must DENY — collapsing the two would turn a caller that failed to
+    obtain a key into one that silently verifies against the shipped bundle.
+    """
+
+
+_DEFAULT = _UseDefaultBundle()
+
+
 class TierValidator:
-    """Generates and validates HMAC-signed license keys."""
+    """Validates Ed25519-signed license keys. Holds PUBLIC keys only.
 
-    def __init__(self, secret: str, key_version: str = CURRENT_KEY_VERSION) -> None:
-        self._secret = secret
+    public_keys accepts a bundle dict, a bundle path, a single base64url public
+    key, or None. Omit the argument entirely to use the shipped bundle;
+    passing None explicitly means "no keys" and every key then fails to verify.
+    """
+
+    def __init__(self, public_keys: Any = _DEFAULT,
+                 key_version: str = CURRENT_KEY_VERSION) -> None:
         self._key_version = key_version
+        if isinstance(public_keys, _UseDefaultBundle):
+            public_keys = load_key_bundle()
+        self._public_keys: List[Ed25519PublicKey] = [
+            pk for pk in (_decode_public_key(b) for b in _coerce_public_keys(public_keys))
+            if pk is not None
+        ]
 
-    def generate(self, tier: str, customer_id: str, expiry: int) -> str:
-        """Return a signed key string. expiry is a Unix epoch timestamp."""
-        message = f'zyrcon_{tier}_{customer_id}_{expiry}_{self._key_version}'.encode()
-        sig = hmac.new(self._secret.encode(), message, hashlib.sha256).hexdigest()
-        return f'zyrcon_{tier}_{customer_id}_{expiry}_{self._key_version}_{sig}'
+    @property
+    def has_keys(self) -> bool:
+        """True when at least one usable public key was loaded.
+
+        Lets a caller distinguish "this node cannot verify anything"
+        (indeterminate) from "this key is genuinely bad" (definitive).
+        """
+        return bool(self._public_keys)
+
+    def _verify(self, message: bytes, sig_hex: str) -> bool:
+        """True only if some loaded public key verifies the signature."""
+        if len(sig_hex) != _SIG_HEX_CHARS:
+            return False
+        try:
+            sig = bytes.fromhex(sig_hex)
+        except ValueError:
+            return False
+        if len(sig) != _SIG_BYTES:
+            return False
+        for pub in self._public_keys:
+            try:
+                pub.verify(sig, message)
+                return True
+            except InvalidSignature:
+                continue
+            except Exception:
+                # Any other crypto-layer failure is a deny for THIS key, never
+                # an exception to the caller.
+                continue
+        return False
 
     def validate(self, key: str) -> Dict[str, Any]:
         """
         Parse and cryptographically verify a license key.
         Returns dict with 'valid' bool and details, or 'error' on failure.
+        Never raises.
         """
-        if not key or not key.startswith('zyrcon_'):
+        if not key or not isinstance(key, str) or not key.startswith('zyrcon_'):
             return {'valid': False, 'error': 'invalid_format'}
 
         # Match tier by prefix (handles tiers that contain underscores, e.g. pro_workspace)
@@ -109,15 +253,19 @@ class TierValidator:
         except ValueError:
             return {'valid': False, 'error': 'invalid_expiry'}
 
-        # HMAC verification
-        if key_version == 'v1':
-            message = f'zyrcon_{tier}_{customer_id}_{expiry_str}'.encode()
-        else:
-            message = f'zyrcon_{tier}_{customer_id}_{expiry_str}_{key_version}'.encode()
-        expected = hmac.new(self._secret.encode(), message, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, sig):
+        # No usable public key → this node cannot verify anything. Deny, and say
+        # so distinctly so the gate can treat it as indeterminate rather than as
+        # a definitive "this key is forged".
+        if not self._public_keys:
+            return {'valid': False, 'error': 'no_verify_key'}
+
+        # Ed25519 verification — over exactly the key minus the trailing _{sig}.
+        message = f'zyrcon_{tier}_{customer_id}_{expiry_str}_{key_version}'.encode()
+        if not self._verify(message, sig):
             return {'valid': False, 'error': 'invalid_signature'}
 
+        # Signature is good; only now does expiry matter (so an expired but
+        # genuine key reports 'expired', not 'invalid_signature').
         now = int(time.time())
         if expiry_ts < now:
             return {'valid': False, 'error': 'expired',

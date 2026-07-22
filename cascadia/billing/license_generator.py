@@ -50,12 +50,16 @@ class LicenseGenerator:
             self._vault_port = vault_port or 5101
 
     def generate_key(self, tier: str, customer_id: str, days: int = 365) -> str:
-        """Generate a signed v2 license key. Requires license_secret to be configured."""
-        if not self._secret:
-            raise ValueError('license_secret not configured — cannot generate key')
-        from cascadia.licensing.tier_validator import TierValidator
+        """Generate a signed v3 (Ed25519) license key. VENDOR-SIDE ONLY.
+
+        Requires the private licensing key at ~/.config/zyrcon/licensing.key.
+        license_signer is export-ignored and never reaches a customer node, so
+        this raises there rather than minting anything — which is the point:
+        under v3 only the holder of the private key can issue a licence.
+        """
+        from cascadia.licensing.license_signer import LicenseSigner
         expiry = int(time.time()) + days * 86400
-        return TierValidator(self._secret).generate(tier, customer_id, expiry)
+        return LicenseSigner().generate(tier, customer_id, expiry)
 
     def store_in_vault(self, customer_id: str, license_key: str,
                        customer_email: str) -> bool:

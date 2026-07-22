@@ -59,3 +59,8 @@ docs/legal/terms-of-service.html export-ignore
 # RFC specs still in flux — not published to third-party developers yet.
 docs/mission-package-spec.md export-ignore
 docs/package-canonicalization.md export-ignore
+
+# Vendor-only license SIGNING. Holds the path to the private Ed25519 key and is
+# the only code that can mint a licence. A customer node needs the verifier
+# (tier_validator.py) and the public bundle, never this.
+cascadia/licensing/license_signer.py export-ignore

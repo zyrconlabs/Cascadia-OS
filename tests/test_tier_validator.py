@@ -1,4 +1,8 @@
-"""Tests for TierValidator — HMAC key generation and validation."""
+"""Tests for TierValidator — Ed25519 (v3) license key validation.
+
+TierValidator is verify-only, so keys are minted here with an ephemeral
+keypair via tests/_v3_keys.py rather than through the validator.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -6,6 +10,8 @@ import hmac
 import os
 import time
 import unittest
+
+from tests._v3_keys import ephemeral_keys, mint
 
 from cascadia.licensing.tier_validator import (
     CURRENT_KEY_VERSION,
@@ -16,8 +22,9 @@ from cascadia.licensing.tier_validator import (
     get_max_users,
 )
 
-SECRET_V2 = os.environ.get('TEST_LICENSE_SECRET', 'test-fixture-not-real-aaaa1111bbbb2222cccc3333dddd4444eeff0011223344556677889900aabbcc')
-SECRET_OLD = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+KEYS = ephemeral_keys()          # the 'real' signer for these tests
+OTHER_KEYS = ephemeral_keys()    # a different signer — must never validate
+SECRET_OLD = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'  # v1 HMAC fixture
 FUTURE = int(time.time()) + 86400 * 365
 
 
@@ -30,8 +37,8 @@ def _make_v1_key(secret: str, tier: str, customer_id: str, expiry: int) -> str:
 
 class TestTierValidatorConstants(unittest.TestCase):
 
-    def test_current_version_is_v2(self) -> None:
-        self.assertEqual(CURRENT_KEY_VERSION, 'v2')
+    def test_current_version_is_v3(self) -> None:
+        self.assertEqual(CURRENT_KEY_VERSION, 'v3')
 
     def test_tier_ranks_ordering(self) -> None:
         self.assertLess(TIER_RANKS['lite'], TIER_RANKS['pro'])
@@ -62,19 +69,19 @@ class TestTierValidatorConstants(unittest.TestCase):
 class TestTierValidatorGenerate(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.v = TierValidator(SECRET_V2)
+        self.v = TierValidator(KEYS.public_b64)
 
-    def test_generate_returns_v2_format(self) -> None:
-        key = self.v.generate('pro', 'acme', FUTURE)
+    def test_minted_key_is_v3_format(self) -> None:
+        key = mint('pro', 'acme', FUTURE, KEYS)
         parts = key.split('_')
         self.assertEqual(len(parts), 6)
         self.assertEqual(parts[0], 'zyrcon')
         self.assertEqual(parts[1], 'pro')
         self.assertEqual(parts[2], 'acme')
-        self.assertEqual(parts[4], 'v2')
+        self.assertEqual(parts[4], 'v3')
 
     def test_generate_then_validate_roundtrip(self) -> None:
-        key = self.v.generate('enterprise', 'customer99', FUTURE)
+        key = mint('enterprise', 'customer99', FUTURE, KEYS)
         result = self.v.validate(key)
         self.assertTrue(result['valid'])
         self.assertEqual(result['tier'], 'enterprise')
@@ -83,7 +90,7 @@ class TestTierValidatorGenerate(unittest.TestCase):
 
     def test_generate_all_tiers(self) -> None:
         for tier in VALID_TIERS:
-            key = self.v.generate(tier, 'testcust', FUTURE)
+            key = mint(tier, 'testcust', FUTURE, KEYS)
             result = self.v.validate(key)
             self.assertTrue(result['valid'], f'tier {tier} failed')
             self.assertEqual(result['tier'], tier)
@@ -93,7 +100,7 @@ class TestV1KeyRejection(unittest.TestCase):
     """After secret rotation, v1-format keys must be rejected regardless of signature correctness."""
 
     def setUp(self) -> None:
-        self.v = TierValidator(SECRET_V2)
+        self.v = TierValidator(KEYS.public_b64)
 
     def test_v1_key_with_old_secret_rejected(self) -> None:
         key = _make_v1_key(SECRET_OLD, 'pro', 'cust1', FUTURE)
@@ -103,7 +110,7 @@ class TestV1KeyRejection(unittest.TestCase):
 
     def test_v1_key_with_new_secret_rejected(self) -> None:
         # Even if someone re-signs a v1 key with the new secret, version is still rejected
-        key = _make_v1_key(SECRET_V2, 'enterprise', 'cust2', FUTURE)
+        key = _make_v1_key(SECRET_OLD, 'enterprise', 'cust2', FUTURE)
         result = self.v.validate(key)
         self.assertFalse(result['valid'])
         self.assertEqual(result['error'], 'key_version_rejected')
@@ -112,23 +119,23 @@ class TestV1KeyRejection(unittest.TestCase):
 class TestInvalidSignature(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.v = TierValidator(SECRET_V2)
+        self.v = TierValidator(KEYS.public_b64)
 
     def test_key_signed_with_wrong_secret_rejected(self) -> None:
-        key = TierValidator(SECRET_OLD).generate('pro', 'cust3', FUTURE)
+        key = mint('pro', 'cust3', FUTURE, OTHER_KEYS)
         result = self.v.validate(key)
         self.assertFalse(result['valid'])
         self.assertIn(result['error'], ('key_version_rejected', 'invalid_signature'))
 
     def test_tampered_tier_rejected(self) -> None:
-        key = self.v.generate('pro', 'cust4', FUTURE)
+        key = mint('pro', 'cust4', FUTURE, KEYS)
         tampered = key.replace('_pro_', '_enterprise_', 1)
         result = self.v.validate(tampered)
         self.assertFalse(result['valid'])
         self.assertEqual(result['error'], 'invalid_signature')
 
     def test_tampered_sig_rejected(self) -> None:
-        key = self.v.generate('business', 'cust5', FUTURE)
+        key = mint('business', 'cust5', FUTURE, KEYS)
         tampered = key[:-4] + 'ffff'
         result = self.v.validate(tampered)
         self.assertFalse(result['valid'])
@@ -138,11 +145,11 @@ class TestInvalidSignature(unittest.TestCase):
 class TestExpiredKey(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.v = TierValidator(SECRET_V2)
+        self.v = TierValidator(KEYS.public_b64)
 
     def test_expired_key_invalid(self) -> None:
         past = int(time.time()) - 86400 * 2  # expired 2 days ago
-        key = self.v.generate('pro', 'cust6', past)
+        key = mint('pro', 'cust6', past, KEYS)
         result = self.v.validate(key)
         self.assertFalse(result['valid'])
         self.assertEqual(result['error'], 'expired')
@@ -152,7 +159,7 @@ class TestExpiredKey(unittest.TestCase):
 class TestMalformedKeys(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.v = TierValidator(SECRET_V2)
+        self.v = TierValidator(KEYS.public_b64)
 
     def test_empty_string(self) -> None:
         self.assertFalse(self.v.validate('')['valid'])

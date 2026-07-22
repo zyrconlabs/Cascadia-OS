@@ -20,25 +20,27 @@ from cascadia.licensing.license_gate import (
     _get_status,
     OPERATOR_LIMITS,
 )
+from tests._v3_keys import bundle_file, ephemeral_keys, mint
 from cascadia.licensing.tier_validator import TierValidator
 
-_TEST_SECRET = 'unit-test-signing-secret-0123456789'
+_KEYS = ephemeral_keys()
+_BUNDLE_PATH = bundle_file(_KEYS)   # for ZYRCON_LICENSE_KEYS_PATH
 _FAR_EXPIRY = 4102444800  # 2100-01-01 UTC
 
 
 def _key(tier: str) -> str:
-    return TierValidator(_TEST_SECRET).generate(tier, 'unit-test', _FAR_EXPIRY)
+    return mint(tier, 'unit-test', _FAR_EXPIRY, _KEYS)
 
 
 class LicenseGateTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        os.environ['LICENSE_SIGNING_SECRET'] = _TEST_SECRET
+        os.environ['ZYRCON_LICENSE_KEYS_PATH'] = _BUNDLE_PATH
 
     @classmethod
     def tearDownClass(cls) -> None:
-        os.environ.pop('LICENSE_SIGNING_SECRET', None)
+        os.environ.pop('ZYRCON_LICENSE_KEYS_PATH', None)
 
     def test_valid_pro_key(self):
         result = _build_status(_key('pro'))
@@ -80,7 +82,8 @@ class LicenseGateTests(unittest.TestCase):
     def test_forged_signature_rejected(self):
         # A structurally-correct Format-A key signed with the WRONG secret must
         # fail closed — this is the core HMAC guarantee that replaced regex parsing.
-        forged = TierValidator('a-different-secret').generate('enterprise', 'x', _FAR_EXPIRY)
+        # Signed by a DIFFERENT keypair — the shape is perfect, the signature is not.
+        forged = mint('enterprise', 'x', _FAR_EXPIRY, ephemeral_keys())
         result = _build_status(forged)
         self.assertFalse(result['valid'])
         self.assertEqual(result['tier'], 'lite')

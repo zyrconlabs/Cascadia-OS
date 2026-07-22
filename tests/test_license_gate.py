@@ -10,29 +10,31 @@ from cascadia.licensing.license_gate import (
     _get_status,
     _cache,
 )
+from tests._v3_keys import bundle_file, ephemeral_keys, mint
 from cascadia.licensing.tier_validator import TierValidator
 
 # Format-C (ZYRCON-<TIER>-<hex>) was retired in S4a; the gate now accepts only
 # HMAC-signed Format-A keys. These tests sign keys in-process with a known test
 # secret exported via LICENSE_SIGNING_SECRET, which _resolve_signing_secret reads
 # ahead of VAULT/config — keeping the suite hermetic (no live VAULT dependency).
-_TEST_SECRET = 'unit-test-signing-secret-0123456789'
+_KEYS = ephemeral_keys()
+_BUNDLE_PATH = bundle_file(_KEYS)   # for ZYRCON_LICENSE_KEYS_PATH
 _FAR_EXPIRY = 4102444800  # 2100-01-01 UTC — well beyond any test run
 
 
 def _key(tier: str) -> str:
-    return TierValidator(_TEST_SECRET).generate(tier, 'unit-test', _FAR_EXPIRY)
+    return mint(tier, 'unit-test', _FAR_EXPIRY, _KEYS)
 
 
 class LicenseGateTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        os.environ['LICENSE_SIGNING_SECRET'] = _TEST_SECRET
+        os.environ['ZYRCON_LICENSE_KEYS_PATH'] = _BUNDLE_PATH
 
     @classmethod
     def tearDownClass(cls) -> None:
-        os.environ.pop('LICENSE_SIGNING_SECRET', None)
+        os.environ.pop('ZYRCON_LICENSE_KEYS_PATH', None)
 
     def setUp(self) -> None:
         # Reset cache before each test
