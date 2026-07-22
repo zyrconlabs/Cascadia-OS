@@ -28,3 +28,34 @@ tests export-ignore
 # alongside a key generator gave a customer a one-command path to issue
 # themselves any tier. It stays in the repo for vendor use; it just never ships.
 scripts/setup-stripe.sh export-ignore
+
+# ── docs/ split ───────────────────────────────────────────────────────────────
+# The 26 customer-facing docs still ship (technical guides + the finalised legal
+# .md set); README links six of them, so docs/ must never be excluded wholesale.
+# Everything below is commercial, internal, or not fit to publish.
+
+# Vendor/business docs — commercial + internal process, not product docs.
+docs/business export-ignore
+docs/templates export-ignore
+docs/woocommerce_setup.md export-ignore
+docs/woocommerce_email_template.md export-ignore
+docs/apple_pay_setup.md export-ignore
+docs/production_checklist.md export-ignore
+docs/operator_store_page.md export-ignore
+docs/compliance_marketing.md export-ignore
+docs/sprint-2a-rfc-audit-2026-05-12.md export-ignore
+docs/sprint-2b-implementation-plan.md export-ignore
+
+# Unreviewed legal DRAFTS — every one opens "DRAFT — PENDING LEGAL REVIEW —
+# Do not publish without attorney review". Shipping them risks a customer
+# treating a draft EULA/ToS as binding. The finalised docs/legal/*.md still ship.
+docs/legal/acceptable-use.html export-ignore
+docs/legal/depot-developer-agreement.html export-ignore
+docs/legal/eula.html export-ignore
+docs/legal/privacy-policy.html export-ignore
+docs/legal/refund-policy.html export-ignore
+docs/legal/terms-of-service.html export-ignore
+
+# RFC specs still in flux — not published to third-party developers yet.
+docs/mission-package-spec.md export-ignore
+docs/package-canonicalization.md export-ignore
