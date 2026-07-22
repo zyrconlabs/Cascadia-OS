@@ -1070,8 +1070,14 @@ class PrismService:
             resp['elapsed_s'] = elapsed_s
         return 200, resp
 
-    def license_activate_page(self, _: Dict[str, Any]) -> tuple[int, str]:
-        """Serve the license activation HTML page."""
+    def license_activate_page(self, _: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
+        """Serve the license activation HTML page.
+
+        Returned via the {'__html__': bytes} envelope so the runtime dispatches
+        to _send_html and sets Content-Type: text/html. Returning a bare string
+        fell through to _send_json, so the browser received the markup as JSON
+        and rendered escaped source instead of the page.
+        """
         html = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1235,7 +1241,8 @@ document.getElementById('key').addEventListener('keydown', function(e){
 </script>
 </body>
 </html>"""
-        return 200, html
+        # .encode() because _send_html writes bytes (serve_ui uses read_bytes()).
+        return 200, {"__html__": html.encode()}
 
     def _authenticate_paired(self, payload: Dict[str, Any]) -> Optional[tuple[int, Dict[str, Any]]]:
         """Require a valid paired-device bearer token (Authorization: Bearer <token>).
